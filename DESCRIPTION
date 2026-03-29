@@ -1,0 +1,29 @@
+Package: ggmethylation
+Title: Read-Level Methylation Visualisation from Long-Read Sequencing
+Version: 0.1.0
+Authors@R: person("Luuk", "Harbers", role = c("aut", "cre"),
+    email = "l.j.w.harbers@gmail.com")
+Author: Luuk Harbers [aut, cre]
+Maintainer: Luuk Harbers <l.j.w.harbers@gmail.com>
+Description: Visualise read-level base modification data from long-read
+    sequencing (Oxford Nanopore, PacBio). Parses MM/ML tags from modBAM
+    files and produces ggplot2 read-level methylation plots with optional
+    group summary panels.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    Rsamtools,
+    GenomicRanges,
+    GenomicAlignments,
+    IRanges,
+    ggplot2,
+    ggnewscale,
+    patchwork,
+    rlang,
+    stats
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+biocViews: Sequencing, DNAMethylation, Visualization

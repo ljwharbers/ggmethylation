@@ -1,0 +1,14 @@
+# R package build artifacts
+*.Rproj.user
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# Compiled code
+*.o
+*.so
+*.dll
+
+# Superpowers
+.superpowers/
