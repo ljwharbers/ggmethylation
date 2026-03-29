@@ -1,0 +1,233 @@
+---
+title: "Visualising read-level methylation with ggmethylation"
+author: "Luuk Harbers"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Visualising read-level methylation with ggmethylation}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 5
+)
+```
+
+## Introduction
+
+`ggmethylation` provides read-level visualisation of 5-methylcytosine (5mC)
+from long-read sequencing data stored in modBAM format. It parses the MM/ML
+auxiliary tags written by tools such as pb-CpG-tools or modkit and produces
+a two-panel `patchwork` figure:
+
+- **Top panel** — per-group methylation summary (mean smoothed curve or bar).
+- **Bottom panel** — individual read methylation tiles, coloured by per-site
+  modification probability.
+
+Reads can be grouped by any BAM auxiliary tag (e.g. haplotype tag `HP`) or by
+the genotype at a user-supplied SNV position. Grouping drives both panels
+independently, so the relationship between haplotype/genotype and methylation
+state is immediately apparent.
+
+**Index requirement.** `ggmethylation` uses `Rsamtools` to query reads by
+genomic region. A BAM index (`.bai` file, produced with `samtools index`) must
+be present alongside the BAM file before calling `read_methylation()`.
+
+## Installation
+
+```{r installation, eval = FALSE}
+# Bioconductor dependencies
+BiocManager::install(c(
+  "Rsamtools",
+  "GenomicRanges",
+  "GenomicAlignments",
+  "IRanges"
+))
+
+# Install ggmethylation from GitHub
+devtools::install_github("lharbers/ggmethylation")
+```
+
+## Basic usage: ungrouped methylation plot
+
+`read_methylation()` fetches all reads overlapping a genomic region and
+returns a `methylation_data` S3 object containing tidy data frames ready for
+plotting.
+
+```{r read-basic, eval = FALSE, echo = TRUE}
+library(ggmethylation)
+
+bam    <- "path/to/sample.bam"
+region <- "chr21:34500000-34510000"
+
+meth_basic <- read_methylation(bam, region)
+```
+
+```{r load-cache, eval = TRUE, echo = FALSE}
+cache      <- readRDS(system.file("extdata", "vignette_cache.rds",
+                                  package = "ggmethylation"))
+meth_basic <- cache$meth_basic
+```
+
+Printing the object gives a concise summary of the region, read count, and
+available grouping:
+
+```{r print-basic, eval = TRUE, echo = TRUE}
+print(meth_basic)
+```
+
+Pass the object directly to `plot_methylation()` to produce the two-panel
+figure:
+
+```{r plot-basic, eval = TRUE, echo = TRUE}
+library(ggmethylation)
+plot_methylation(meth_basic)
+```
+
+## Accessing the methylation_data object
+
+The `methylation_data` object is a named list. The two most useful elements
+are `$reads` (one row per read per CpG site) and `$sites` (genomic-coordinate
+summary).
+
+```{r str-basic, eval = TRUE, echo = TRUE}
+str(meth_basic, max.level = 1)
+```
+
+```{r head-reads, eval = TRUE, echo = TRUE}
+head(meth_basic$reads)
+```
+
+```{r head-sites, eval = TRUE, echo = TRUE}
+head(meth_basic$sites)
+```
+
+## Haplotype-based grouping (HP tag)
+
+PacBio HiFi data processed with DeepVariant + WhatsHap carries a per-read
+haplotype tag (`HP`). Supply `group_tag = "HP"` to stratify the plot by
+haplotype.
+
+```{r read-hp, eval = FALSE, echo = TRUE}
+meth_hp <- read_methylation(bam, region, group_tag = "HP")
+```
+
+```{r load-hp, eval = TRUE, echo = FALSE}
+meth_hp <- cache$meth_hp
+```
+
+```{r plot-hp, eval = TRUE, echo = TRUE}
+plot_methylation(meth_hp)
+```
+
+Group colours can be overridden with a named character vector passed to
+`group_colours`. Names must match the levels returned by the HP tag.
+
+```{r plot-hp-colours, eval = TRUE, echo = TRUE}
+plot_methylation(
+  meth_hp,
+  group_colours = c("1" = "steelblue", "2" = "coral")
+)
+```
+
+## SNV-based grouping
+
+When a heterozygous SNV is present in the region, reads can be split by
+allele using `snv_position`, `ref_base`, and `alt_base`. A dashed vertical
+line marks the SNV position in the read panel so the allele split is easy to
+locate visually.
+
+```{r read-snv, eval = FALSE, echo = TRUE}
+# Replace snv_position with the actual coordinate of a heterozygous SNV
+meth_snv <- read_methylation(
+  bam, region,
+  snv_position = 34505000L,
+  ref_base     = "C",
+  alt_base     = "T"
+)
+```
+
+```{r load-snv, eval = TRUE, echo = FALSE}
+meth_snv <- cache$meth_snv
+```
+
+```{r plot-snv, eval = TRUE, echo = TRUE}
+plot_methylation(meth_snv)
+```
+
+The dashed vertical line in the lower panel marks the SNV position and
+visually anchors the two allele groups. In the top panel, the mean methylation
+curves for REF and ALT reads are overlaid for direct comparison.
+
+## Customising plot appearance
+
+`plot_methylation()` exposes several arguments for fine-tuning the figure.
+The examples below use `meth_hp` from the cache.
+
+```{r custom-colours, eval = TRUE, echo = TRUE}
+# Custom methylation colour gradient
+plot_methylation(
+  meth_hp,
+  colour_low  = "white",
+  colour_high = "darkgreen"
+)
+```
+
+```{r custom-dots, eval = TRUE, echo = TRUE}
+# Larger dots and a wider smoother
+plot_methylation(
+  meth_hp,
+  dot_size    = 2.5,
+  smooth_span = 0.4
+)
+```
+
+```{r custom-panels, eval = TRUE, echo = TRUE}
+# Taller summary panel relative to read panel
+plot_methylation(
+  meth_hp,
+  panel_heights = c(2, 3)
+)
+```
+
+```{r custom-sort, eval = TRUE, echo = TRUE}
+# Sort reads by group membership (default) vs. by genomic start
+plot_methylation(meth_hp, sort_by = "position")
+```
+
+## Composing with ggplot2
+
+`plot_methylation()` returns a `patchwork` object, which can be modified with
+standard ggplot2 theme calls applied via `&` (applies to all panels) or `+`
+(applies to the last panel only).
+
+```{r ggplot2-compose, eval = TRUE, echo = TRUE}
+library(ggplot2)
+
+p <- plot_methylation(meth_basic)
+
+# Increase base font size across both panels
+p & theme(text = element_text(size = 14))
+```
+
+Save to file with `ggplot2::ggsave()`. Supply explicit `width` and `height`
+because patchwork objects do not carry intrinsic dimensions.
+
+```{r ggsave, eval = FALSE, echo = TRUE}
+ggsave("my_methylation_plot.pdf", p, width = 10, height = 6)
+```
+
+Patchwork operators (`/`, `|`, `+`) can be used to combine a
+`plot_methylation()` output with other ggplot2 panels in a larger figure
+layout.
+
+## Session info
+
+```{r session-info, eval = TRUE, echo = TRUE}
+sessionInfo()
+```

@@ -3,3 +3,4 @@
 ^\.gitignore$
 ^LICENSE\.md$
 ^.*\.Rproj$
+^data-raw$
