@@ -4,7 +4,7 @@
 \alias{empty_methylation_data}
 \title{Create an empty methylation_data object}
 \usage{
-empty_methylation_data(gr, mod_code, group_tag)
+empty_methylation_data(gr, mod_code, group_tag, snv_position = NULL)
 }
 \arguments{
 \item{gr}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object.}

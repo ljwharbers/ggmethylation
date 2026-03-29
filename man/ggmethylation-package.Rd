@@ -9,7 +9,7 @@
 Visualise read-level base modification data from long-read sequencing (Oxford Nanopore, PacBio). Parses MM/ML tags from modBAM files and produces ggplot2 read-level methylation plots with optional group summary panels.
 }
 \author{
-\strong{Maintainer}: Luuk Harbers \email{luuk.harbers@example.com}
+\strong{Maintainer}: Luuk Harbers \email{l.j.w.harbers@gmail.com}
 
 }
 \keyword{internal}

@@ -4,7 +4,7 @@
 \alias{smooth_methylation}
 \title{Smooth methylation probabilities per group using loess}
 \usage{
-smooth_methylation(sites, group_col = "group", span = 0.3)
+smooth_methylation(sites, group_col = "group", mod_code_col = NULL, span = 0.3)
 }
 \arguments{
 \item{sites}{A data.frame with columns \code{position}, \code{mod_prob}, and a

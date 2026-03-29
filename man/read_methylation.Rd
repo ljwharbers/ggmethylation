@@ -9,7 +9,14 @@ read_methylation(
   region,
   mod_code = "m",
   group_tag = NULL,
-  max_reads = 200L
+  snv_position = NULL,
+  ref_base = NULL,
+  alt_base = NULL,
+  max_reads = 200L,
+  per_group_downsample = FALSE,
+  min_mapq = 0L,
+  strand_filter = c("+", "-"),
+  min_read_length = 0L
 )
 }
 \arguments{
@@ -25,6 +32,24 @@ for 5-methylcytosine).}
 
 \item{max_reads}{Integer. Maximum number of reads to return (default 200).
 If more reads overlap the region, a random subset is kept.}
+
+\item{per_group_downsample}{Logical. When \code{TRUE} and grouping is active
+(via \code{group_tag} or \code{snv_position}), the \code{max_reads} cap is applied
+independently per group. When \code{FALSE} (default), the existing global
+cap behaviour is unchanged.}
+
+\item{min_mapq}{Integer. Minimum mapping quality (MAPQ) threshold
+(default \code{0L}, no filtering). Reads with MAPQ below this value,
+or with missing MAPQ, are excluded before MM/ML parsing.}
+
+\item{strand_filter}{Character vector. Which strands to include. One or
+both of \code{"+"} and \code{"-"} (default \code{c("+", "-")}, both
+strands). Use \code{"+"} or \code{"-"} alone to restrict to a single
+strand.}
+
+\item{min_read_length}{Integer. Minimum read length in reference-space
+base pairs (default \code{0L}, no filtering). Reads shorter than this
+value are excluded before MM/ML parsing.}
 }
 \value{
 A \code{methylation_data} object (S3 list) with elements:

@@ -10,7 +10,10 @@ plot_methylation(
   colour_low = "#BDBDBD",
   colour_high = "#C62828",
   dot_size = 1.5,
+  colour_strand = FALSE,
+  strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
   group_colours = NULL,
+  mod_code_shapes = NULL,
   smooth_span = 0.3,
   panel_heights = c(3, 1)
 )
@@ -29,6 +32,14 @@ when ungrouped or \code{c("group", "start", "mean_mod_prob")} when grouped.}
 \code{"#C62828"}).}
 
 \item{dot_size}{Size of modification dots (default 1.5).}
+
+\item{colour_strand}{Logical. When \code{TRUE}, read bars are coloured by strand
+(\code{"+"} = forward, \code{"-"} = reverse). Ignored when data is grouped; group
+colour takes precedence. Default \code{FALSE}.}
+
+\item{strand_colours}{Named character vector with \code{"+"} and \code{"-"} entries
+giving bar colours for each strand. Only used when \code{colour_strand = TRUE}
+and data is ungrouped. Default \code{c("+" = "#4393C3", "-" = "#D6604D")}.}
 
 \item{group_colours}{Named character vector of colours per group, or NULL
 to use ggplot2 defaults.}
