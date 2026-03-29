@@ -16,27 +16,35 @@
 #'   return raw per-site means instead.
 #'
 #' @keywords internal
-smooth_methylation <- function(sites, group_col = "group", span = 0.3) {
-  out_cols <- c("position", "mean_prob", group_col)
+smooth_methylation <- function(sites, group_col = "group",
+                               mod_code_col = NULL, span = 0.3) {
+  if (!is.null(mod_code_col) && mod_code_col %in% names(sites)) {
+    sites$.smooth_group <- paste(sites[[group_col]], sites[[mod_code_col]], sep = ":::")
+    effective_group_col <- ".smooth_group"
+  } else {
+    effective_group_col <- group_col
+  }
+
+  out_cols <- c("position", "mean_prob", effective_group_col)
 
   if (is.null(sites) || nrow(sites) == 0L) {
     out <- data.frame(
-      position = numeric(0L),
+      position  = numeric(0L),
       mean_prob = numeric(0L),
-      group = character(0L),
+      group     = character(0L),
       stringsAsFactors = FALSE
     )
-    names(out)[3L] <- group_col
+    names(out)[3L] <- effective_group_col
     return(out)
   }
 
-  groups <- unique(sites[[group_col]])
+  groups <- unique(sites[[effective_group_col]])
   groups <- groups[!is.na(groups)]
   result_list <- vector("list", length(groups))
 
   for (k in seq_along(groups)) {
     grp <- groups[k]
-    sub <- sites[sites[[group_col]] == grp, , drop = FALSE]
+    sub <- sites[sites[[effective_group_col]] == grp, , drop = FALSE]
 
     # Compute per-site mean modification probability
     agg <- stats::aggregate(
@@ -56,11 +64,21 @@ smooth_methylation <- function(sites, group_col = "group", span = 0.3) {
       df <- data.frame(position = grid, mean_prob = pred)
     }
 
-    df[[group_col]] <- grp
+    df[[effective_group_col]] <- grp
     result_list[[k]] <- df
   }
 
   out <- do.call(rbind, result_list)
   rownames(out) <- NULL
-  out[, out_cols, drop = FALSE]
+  out <- out[, out_cols, drop = FALSE]
+
+  # Split composite key back into original columns
+  if (!is.null(mod_code_col) && mod_code_col %in% names(sites)) {
+    parts <- strsplit(out[[".smooth_group"]], ":::", fixed = TRUE)
+    out[[group_col]]    <- vapply(parts, `[[`, character(1L), 1L)
+    out[[mod_code_col]] <- vapply(parts, `[[`, character(1L), 2L)
+    out[[".smooth_group"]] <- NULL
+  }
+
+  out
 }

@@ -37,6 +37,13 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
                              snv_position = NULL, ref_base = NULL,
                              alt_base = NULL, max_reads = 200L) {
   # --- 1. Validate inputs ---
+  mod_code <- as.character(mod_code)          # coerce in case of factor
+  if (length(mod_code) == 0L || any(!nzchar(mod_code))) {
+    stop("'mod_code' must be a non-empty character vector of modification codes.",
+         call. = FALSE)
+  }
+  mod_code <- unique(mod_code)                # drop accidental duplicates
+
   if (!is.null(group_tag) && !is.null(snv_position)) {
     stop("'group_tag' and 'snv_position' are mutually exclusive.", call. = FALSE)
   }
@@ -147,34 +154,37 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   sites_list <- vector("list", length(keep))
 
   for (j in seq_along(keep)) {
-    idx <- keep[j]
-    seq_str <- as.character(bam_data$seq[[idx]])
-    mm <- bam_data$tag$MM[idx]
-    ml <- bam_data$tag$ML[[idx]]
+    idx       <- keep[j]
+    seq_str   <- as.character(bam_data$seq[[idx]])
+    mm        <- bam_data$tag$MM[idx]
+    ml        <- bam_data$tag$ML[[idx]]
 
-    result <- parse_mm_ml(
-      seq = seq_str,
-      mm_tag = mm,
-      ml_tag = ml,
-      mod_code = mod_code,
-      strand = reads$strand[j],
-      cigar = bam_data$cigar[idx],
-      pos = bam_data$pos[idx]
-    )
-
-    if (nrow(result) > 0L) {
-      result$read_name <- reads$read_name[j]
+    code_results <- vector("list", length(mod_code))
+    for (ci in seq_along(mod_code)) {
+      result <- parse_mm_ml(
+        seq      = seq_str,
+        mm_tag   = mm,
+        ml_tag   = ml,
+        mod_code = mod_code[ci],
+        strand   = reads$strand[j],
+        cigar    = bam_data$cigar[idx],
+        pos      = bam_data$pos[idx]
+      )
+      result$read_name <- if (nrow(result) > 0L) reads$read_name[j] else character(0L)
+      result$mod_code  <- if (nrow(result) > 0L) mod_code[ci]       else character(0L)
+      code_results[[ci]] <- result
     }
-    sites_list[[j]] <- result
+    sites_list[[j]] <- do.call(rbind, code_results)
   }
 
   sites <- do.call(rbind, sites_list)
 
   if (is.null(sites) || nrow(sites) == 0L) {
     sites <- data.frame(
-      position = integer(0L),
-      mod_prob = numeric(0L),
+      position  = integer(0L),
+      mod_prob  = numeric(0L),
       read_name = character(0L),
+      mod_code  = character(0L),
       stringsAsFactors = FALSE
     )
   }
@@ -196,10 +206,8 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   ]
   rownames(sites) <- NULL
 
-  # --- 9. Add mod_code column to sites ---
-  sites$mod_code <- mod_code
-
-  # --- 10. Return methylation_data object ---
+  # --- 9. Return methylation_data object ---
+  # (mod_code column is already populated per-code in the inner loop above)
   structure(
     list(
       reads = reads,
@@ -274,7 +282,7 @@ print.methylation_data <- function(x, ...) {
   cat(sprintf("Region: %s:%d-%d\n", chrom, start, end))
   cat(sprintf("Reads: %d\n", nrow(x$reads)))
   cat(sprintf("Modification sites: %d\n", nrow(x$sites)))
-  cat(sprintf("Modification code: %s\n", x$mod_code))
+  cat(sprintf("Modification code(s): %s\n", paste(x$mod_code, collapse = ", ")))
 
   if (!is.null(x$group_tag)) {
     n_groups <- length(unique(x$reads$group[!is.na(x$reads$group)]))
