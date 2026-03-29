@@ -47,6 +47,7 @@ plot_methylation <- function(data, sort_by = NULL,
                              colour_strand = FALSE,
                              strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
                              group_colours = NULL,
+                             mod_code_shapes = NULL,
                              smooth_span = 0.3,
                              panel_heights = c(3, 1)) {
   # --- 1. Validate input ---
@@ -68,6 +69,38 @@ plot_methylation <- function(data, sort_by = NULL,
 
   region_start <- GenomicRanges::start(data$region)
   region_end <- GenomicRanges::end(data$region)
+
+  # --- 1b. Resolve mod_code shape mapping ---
+  codes <- unique(data$sites$mod_code)
+  default_shapes <- c(16L, 15L, 17L, 18L)   # circle, square, triangle, diamond
+
+  if (length(codes) > length(default_shapes)) {
+    stop("More than 4 mod codes present; supply mod_code_shapes explicitly.", call. = FALSE)
+  }
+
+  if (is.null(mod_code_shapes)) {
+    mod_code_shapes <- stats::setNames(
+      default_shapes[seq_along(codes)],
+      codes
+    )
+  } else {
+    # Validate that all codes present in data have an entry
+    missing_codes <- setdiff(codes, names(mod_code_shapes))
+    if (length(missing_codes) > 0L) {
+      warning(
+        "mod_code_shapes has no entry for code(s): ",
+        paste(missing_codes, collapse = ", "),
+        ". Using default shapes.", call. = FALSE
+      )
+      extras <- stats::setNames(
+        default_shapes[seq_along(missing_codes)],
+        missing_codes
+      )
+      mod_code_shapes <- c(mod_code_shapes, extras)
+    }
+  }
+
+  multi_code <- length(codes) > 1L
 
   # --- 2. Handle empty data ---
   if (nrow(data$reads) == 0L) {
@@ -156,8 +189,10 @@ plot_methylation <- function(data, sort_by = NULL,
       ggplot2::geom_point(
         data = sites_plot,
         ggplot2::aes(
-          x = .data$position, y = .data$lane,
-          colour = .data$mod_prob
+          x      = .data$position,
+          y      = .data$lane,
+          colour = .data$mod_prob,
+          shape  = if (multi_code) .data$mod_code else NULL
         ),
         size = dot_size
       ) +
@@ -166,6 +201,14 @@ plot_methylation <- function(data, sort_by = NULL,
         limits = c(0, 1),
         name = "Modification\nprobability"
       )
+
+    if (multi_code) {
+      p_top <- p_top +
+        ggplot2::scale_shape_manual(
+          values = mod_code_shapes,
+          name   = "Modification"
+        )
+    }
 
     if (length(separator_lanes) > 0L) {
       p_top <- p_top +
@@ -193,8 +236,10 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::geom_point(
           data = sites_plot,
           ggplot2::aes(
-            x = .data$position, y = .data$lane,
-            colour = .data$mod_prob
+            x      = .data$position,
+            y      = .data$lane,
+            colour = .data$mod_prob,
+            shape  = if (multi_code) .data$mod_code else NULL
           ),
           size = dot_size
         ) +
@@ -217,8 +262,10 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::geom_point(
           data = sites_plot,
           ggplot2::aes(
-            x = .data$position, y = .data$lane,
-            colour = .data$mod_prob
+            x      = .data$position,
+            y      = .data$lane,
+            colour = .data$mod_prob,
+            shape  = if (multi_code) .data$mod_code else NULL
           ),
           size = dot_size
         ) +
@@ -226,6 +273,14 @@ plot_methylation <- function(data, sort_by = NULL,
           low = colour_low, high = colour_high,
           limits = c(0, 1),
           name = "Modification\nprobability"
+        )
+    }
+
+    if (multi_code) {
+      p_top <- p_top +
+        ggplot2::scale_shape_manual(
+          values = mod_code_shapes,
+          name   = "Modification"
         )
     }
   }
@@ -252,54 +307,124 @@ plot_methylation <- function(data, sort_by = NULL,
     ggplot2::labs(x = NULL)
 
   # --- 7. Build bottom panel ---
+  default_linetypes <- c("solid", "dashed", "dotdash", "dotted")
+
   if (is.null(data$group_tag)) {
-    # Ungrouped: smooth all sites together as one line
+    # Ungrouped smooth panel
     sites_smooth <- data$sites
     sites_smooth$group <- "all"
-    smoothed <- smooth_methylation(sites_smooth, group_col = "group",
-                                   span = smooth_span)
 
-    p_bottom <- ggplot2::ggplot(
-      smoothed,
-      ggplot2::aes(x = .data$position, y = .data$mean_prob)
-    ) +
-      ggplot2::geom_line(linewidth = 1, colour = "#C62828") +
-      ggplot2::scale_y_continuous(
-        limits = c(0, 1),
-        name = "Mean modification\nprobability"
+    if (!multi_code) {
+      # Single code: one line, fixed colour
+      smoothed <- smooth_methylation(sites_smooth, group_col = "group",
+                                     span = smooth_span)
+
+      p_bottom <- ggplot2::ggplot(
+        smoothed,
+        ggplot2::aes(x = .data$position, y = .data$mean_prob)
       ) +
-      ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
-      ggplot2::theme_minimal() +
-      ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
-      ggplot2::labs(x = "Genomic position (bp)")
+        ggplot2::geom_line(linewidth = 1, colour = "#C62828") +
+        ggplot2::scale_y_continuous(
+          limits = c(0, 1),
+          name = "Mean modification\nprobability"
+        ) +
+        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::labs(x = "Genomic position (bp)")
+    } else {
+      # Multi-code: one line per code, colour by mod_code
+      smoothed <- smooth_methylation(sites_smooth, group_col = "group",
+                                     mod_code_col = "mod_code", span = smooth_span)
+
+      p_bottom <- ggplot2::ggplot(
+        smoothed,
+        ggplot2::aes(
+          x      = .data$position,
+          y      = .data$mean_prob,
+          colour = .data$mod_code
+        )
+      ) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::scale_y_continuous(
+          limits = c(0, 1),
+          name = "Mean modification\nprobability"
+        ) +
+        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::labs(x = "Genomic position (bp)", colour = "Modification")
+    }
   } else {
-    # Grouped: one smoothed line per group
-    smoothed <- smooth_methylation(
-      data$sites,
-      group_col = "group",
-      span = smooth_span
-    )
-
-    p_bottom <- ggplot2::ggplot(
-      smoothed,
-      ggplot2::aes(
-        x = .data$position, y = .data$mean_prob,
-        colour = .data$group
+    # Grouped smooth panel
+    if (!multi_code) {
+      # Single code: one line per group, colour by group
+      smoothed <- smooth_methylation(
+        data$sites,
+        group_col = "group",
+        span = smooth_span
       )
-    ) +
-      ggplot2::geom_line(linewidth = 1) +
-      ggplot2::scale_y_continuous(
-        limits = c(0, 1),
-        name = "Mean modification\nprobability"
-      ) +
-      ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
-      ggplot2::theme_minimal() +
-      ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
-      ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
 
-    if (!is.null(group_colours)) {
-      p_bottom <- p_bottom +
-        ggplot2::scale_colour_manual(values = group_colours)
+      p_bottom <- ggplot2::ggplot(
+        smoothed,
+        ggplot2::aes(
+          x = .data$position, y = .data$mean_prob,
+          colour = .data$group
+        )
+      ) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::scale_y_continuous(
+          limits = c(0, 1),
+          name = "Mean modification\nprobability"
+        ) +
+        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
+
+      if (!is.null(group_colours)) {
+        p_bottom <- p_bottom +
+          ggplot2::scale_colour_manual(values = group_colours)
+      }
+    } else {
+      # Multi-code + grouped: colour by group, linetype by mod_code
+      smoothed <- smooth_methylation(
+        data$sites,
+        group_col    = "group",
+        mod_code_col = "mod_code",
+        span         = smooth_span
+      )
+
+      p_bottom <- ggplot2::ggplot(
+        smoothed,
+        ggplot2::aes(
+          x        = .data$position,
+          y        = .data$mean_prob,
+          colour   = .data$group,
+          linetype = .data$mod_code
+        )
+      ) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::scale_y_continuous(
+          limits = c(0, 1),
+          name = "Mean modification\nprobability"
+        ) +
+        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::scale_linetype_manual(
+          values = stats::setNames(
+            default_linetypes[seq_along(codes)],
+            codes
+          ),
+          name = "Modification"
+        ) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
+
+      if (!is.null(group_colours)) {
+        p_bottom <- p_bottom +
+          ggplot2::scale_colour_manual(values = group_colours)
+      }
     }
   }
 
