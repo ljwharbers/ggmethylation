@@ -270,16 +270,105 @@ print.methylation_data <- function(x, ...) {
   start <- GenomicRanges::start(x$region)
   end <- GenomicRanges::end(x$region)
 
+  n_plus  <- sum(x$reads$strand == "+", na.rm = TRUE)
+  n_minus <- sum(x$reads$strand == "-", na.rm = TRUE)
+
+  read_lengths <- x$reads$end - x$reads$start + 1L
+  med_len <- if (length(read_lengths) > 0L) as.integer(median(read_lengths)) else NA_integer_
+
   cat("methylation_data object\n")
   cat(sprintf("Region: %s:%d-%d\n", chrom, start, end))
-  cat(sprintf("Reads: %d\n", nrow(x$reads)))
+  cat(sprintf("Reads: %d  (+ strand: %d,  - strand: %d)\n",
+              nrow(x$reads), n_plus, n_minus))
+  if (!is.na(med_len))
+    cat(sprintf("Median read length: %d bp\n", med_len))
   cat(sprintf("Modification sites: %d\n", nrow(x$sites)))
   cat(sprintf("Modification code: %s\n", x$mod_code))
 
   if (!is.null(x$group_tag)) {
     n_groups <- length(unique(x$reads$group[!is.na(x$reads$group)]))
     cat(sprintf("Group tag: %s (%d groups)\n", x$group_tag, n_groups))
+    groups <- sort(unique(x$reads$group[!is.na(x$reads$group)]))
+    for (g in groups) {
+      n_g   <- sum(x$reads$group == g, na.rm = TRUE)
+      mods  <- x$sites$mod_prob[!is.na(x$sites$group) & x$sites$group == g]
+      mean_g <- if (length(mods) > 0L) round(mean(mods, na.rm = TRUE), 2L) else NA_real_
+      cat(sprintf("  %s: %d reads, mean methylation %.2f\n", g, n_g, mean_g))
+    }
   }
 
   invisible(x)
+}
+
+#' Summary of a methylation_data object
+#'
+#' @param object A \code{methylation_data} object.
+#' @param ... Unused.
+#' @return A named list with summary statistics (invisibly).
+#' @export
+summary.methylation_data <- function(object, ...) {
+  chrom <- as.character(GenomicRanges::seqnames(object$region))
+  reg_str <- sprintf("%s:%d-%d", chrom,
+                     GenomicRanges::start(object$region),
+                     GenomicRanges::end(object$region))
+
+  strand_df <- as.data.frame(table(strand = object$reads$strand),
+                              stringsAsFactors = FALSE)
+  names(strand_df)[2] <- "n_reads"
+
+  lens <- object$reads$end - object$reads$start + 1L
+  rl <- if (length(lens) > 0L)
+    list(median = as.integer(median(lens)), min = min(lens), max = max(lens))
+  else
+    list(median = NA_integer_, min = NA_integer_, max = NA_integer_)
+
+  overall_mean <- if (nrow(object$sites) > 0L)
+    round(mean(object$sites$mod_prob, na.rm = TRUE), 4L)
+  else NA_real_
+
+  groups_df <- NULL
+  if (!is.null(object$group_tag)) {
+    g_levels <- sort(unique(object$reads$group[!is.na(object$reads$group)]))
+    groups_df <- do.call(rbind, lapply(g_levels, function(g) {
+      n_g  <- sum(object$reads$group == g, na.rm = TRUE)
+      mods <- object$sites$mod_prob[
+        !is.na(object$sites$group) & object$sites$group == g]
+      data.frame(
+        group           = g,
+        n_reads         = n_g,
+        mean_mod_prob   = if (length(mods) > 0L) round(mean(mods,   na.rm = TRUE), 4L) else NA_real_,
+        median_mod_prob = if (length(mods) > 0L) round(median(mods, na.rm = TRUE), 4L) else NA_real_,
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
+
+  out <- list(
+    region                = reg_str,
+    n_reads               = nrow(object$reads),
+    n_sites               = nrow(object$sites),
+    mod_code              = object$mod_code,
+    group_tag             = object$group_tag,
+    strand                = strand_df,
+    read_length           = rl,
+    groups                = groups_df,
+    overall_mean_mod_prob = overall_mean
+  )
+
+  cat("methylation_data summary\n========================\n")
+  cat(sprintf("Region:            %s\n", reg_str))
+  cat(sprintf("Reads:             %d\n", out$n_reads))
+  for (i in seq_len(nrow(strand_df)))
+    cat(sprintf("  %s strand:        %d\n", strand_df$strand[i], strand_df$n_reads[i]))
+  cat(sprintf("  Read length:     min=%d, median=%d, max=%d bp\n",
+              rl$min, rl$median, rl$max))
+  cat(sprintf("Sites:             %d\n", out$n_sites))
+  cat(sprintf("Modification:      %s\n", paste(out$mod_code, collapse = ", ")))
+  cat(sprintf("Overall mean mod:  %.2f\n", overall_mean))
+  if (!is.null(groups_df)) {
+    cat(sprintf("\nGroup breakdown (%s):\n", object$group_tag))
+    print(groups_df, row.names = FALSE, digits = 4)
+  }
+
+  invisible(out)
 }
