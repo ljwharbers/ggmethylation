@@ -12,6 +12,16 @@
 #'   `"HP"` for haplotype, `"RG"` for read group). NULL disables grouping.
 #' @param max_reads Integer. Maximum number of reads to return (default 200).
 #'   If more reads overlap the region, a random subset is kept.
+#' @param min_mapq Integer. Minimum mapping quality (MAPQ) threshold
+#'   (default \code{0L}, no filtering). Reads with MAPQ below this value,
+#'   or with missing MAPQ, are excluded before MM/ML parsing.
+#' @param strand_filter Character vector. Which strands to include. One or
+#'   both of \code{"+"} and \code{"-"} (default \code{c("+", "-")}, both
+#'   strands). Use \code{"+"} or \code{"-"} alone to restrict to a single
+#'   strand.
+#' @param min_read_length Integer. Minimum read length in reference-space
+#'   base pairs (default \code{0L}, no filtering). Reads shorter than this
+#'   value are excluded before MM/ML parsing.
 #'
 #' @return A `methylation_data` object (S3 list) with elements:
 #'   \describe{
@@ -35,7 +45,10 @@
 #' @export
 read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
                              snv_position = NULL, ref_base = NULL,
-                             alt_base = NULL, max_reads = 200L) {
+                             alt_base = NULL, max_reads = 200L,
+                             min_mapq = 0L,
+                             strand_filter = c("+", "-"),
+                             min_read_length = 0L) {
   # --- 1. Validate inputs ---
   if (!is.null(group_tag) && !is.null(snv_position)) {
     stop("'group_tag' and 'snv_position' are mutually exclusive.", call. = FALSE)
@@ -44,6 +57,9 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     stop("'ref_base' and 'alt_base' must be provided when 'snv_position' is set.",
          call. = FALSE)
   }
+  strand_filter <- match.arg(strand_filter, choices = c("+", "-"), several.ok = TRUE)
+  if (!is.integer(min_mapq))        min_mapq <- as.integer(min_mapq)
+  if (!is.integer(min_read_length)) min_read_length <- as.integer(min_read_length)
   validate_bam_index(bam)
   parsed <- parse_region(region)
 
@@ -53,7 +69,7 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     ranges = IRanges::IRanges(start = parsed$start, end = parsed$end)
   )
 
-  what <- c("qname", "pos", "cigar", "strand", "seq")
+  what <- c("qname", "pos", "cigar", "strand", "seq", "mapq")
 
   tag_names <- c("MM", "ML")
   if (!is.null(group_tag)) tag_names <- c(tag_names, group_tag)
@@ -98,16 +114,59 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     }
   }
 
-  # --- 5. SNV-based grouping ---
   # bam_indices maps filtered-reads rows back to original bam_data positions
   bam_indices <- seq_len(nrow(reads))
+
+  # --- 4b. Apply read-level filters ---
+  n_before <- nrow(reads)
+  filter_mask <- rep(TRUE, n_before)
+
+  # MAPQ filter
+  if (min_mapq > 0L) {
+    mapq_vec <- bam_data$mapq
+    filter_mask <- filter_mask & (!is.na(mapq_vec) & mapq_vec >= min_mapq)
+  }
+
+  # Strand filter
+  if (!identical(sort(strand_filter), c("+", "-"))) {
+    filter_mask <- filter_mask & (reads$strand %in% strand_filter)
+  }
+
+  # Read length filter (ref_widths computed earlier from CIGAR)
+  if (min_read_length > 0L) {
+    filter_mask <- filter_mask & (ref_widths >= min_read_length)
+  }
+
+  if (!all(filter_mask)) {
+    n_removed <- sum(!filter_mask)
+    frac_removed <- n_removed / n_before
+    if (frac_removed > 0.5) {
+      warning(sprintf(
+        "%.0f%% of reads (%d/%d) were removed by filters (min_mapq=%d, strand_filter=c(%s), min_read_length=%d).",
+        frac_removed * 100, n_removed, n_before, min_mapq,
+        paste(sprintf('"%s"', strand_filter), collapse = ", "),
+        min_read_length
+      ), call. = FALSE)
+    }
+    reads       <- reads[filter_mask, , drop = FALSE]
+    bam_indices <- bam_indices[filter_mask]
+    rownames(reads) <- NULL
+  }
+
+  if (nrow(reads) == 0L) {
+    warning("No reads remain after applying filters.", call. = FALSE)
+    return(empty_methylation_data(gr, mod_code, group_tag))
+  }
+
+  # --- 5. SNV-based grouping ---
 
   if (!is.null(snv_position)) {
     n_all <- nrow(reads)
     snv_bases <- character(n_all)
     for (j in seq_len(n_all)) {
-      seq_str <- as.character(bam_data$seq[[j]])
-      q_pos <- ref_to_seq(bam_data$cigar[j], bam_data$pos[j], snv_position)
+      idx_j <- bam_indices[j]
+      seq_str <- as.character(bam_data$seq[[idx_j]])
+      q_pos <- ref_to_seq(bam_data$cigar[idx_j], bam_data$pos[idx_j], snv_position)
       snv_bases[j] <- if (!is.na(q_pos) && q_pos >= 1L && q_pos <= nchar(seq_str)) {
         toupper(substr(seq_str, q_pos, q_pos))
       } else {
@@ -124,7 +183,7 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
               call. = FALSE)
       return(empty_methylation_data(gr, mod_code, "SNV", snv_position))
     }
-    bam_indices <- snv_keep
+    bam_indices <- bam_indices[snv_keep]
     reads <- reads[snv_keep, , drop = FALSE]
     rownames(reads) <- NULL
     group_tag <- "SNV"
