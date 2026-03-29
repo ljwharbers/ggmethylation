@@ -15,6 +15,12 @@
 #' @param colour_high Colour for high modification probability (default
 #'   `"#C62828"`).
 #' @param dot_size Size of modification dots (default 1.5).
+#' @param colour_strand Logical. When `TRUE`, read bars are coloured by strand
+#'   (`"+"` = forward, `"-"` = reverse). Ignored when data is grouped; group
+#'   colour takes precedence. Default `FALSE`.
+#' @param strand_colours Named character vector with `"+"` and `"-"` entries
+#'   giving bar colours for each strand. Only used when `colour_strand = TRUE`
+#'   and data is ungrouped. Default `c("+" = "#4393C3", "-" = "#D6604D")`.
 #' @param group_colours Named character vector of colours per group, or NULL
 #'   to use ggplot2 defaults.
 #' @param smooth_span Loess smoothing span for the bottom panel (default 0.3).
@@ -38,6 +44,8 @@ plot_methylation <- function(data, sort_by = NULL,
                              colour_low = "#BDBDBD",
                              colour_high = "#C62828",
                              dot_size = 1.5,
+                             colour_strand = FALSE,
+                             strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
                              group_colours = NULL,
                              smooth_span = 0.3,
                              panel_heights = c(3, 1)) {
@@ -47,6 +55,15 @@ plot_methylation <- function(data, sort_by = NULL,
       "'data' must be a 'methylation_data' object from read_methylation().",
       call. = FALSE
     )
+  }
+  if (!is.logical(colour_strand) || length(colour_strand) != 1L) {
+    stop("'colour_strand' must be a single logical value.", call. = FALSE)
+  }
+  if (isTRUE(colour_strand) && !all(c("+", "-") %in% names(strand_colours))) {
+    stop("'strand_colours' must be a named vector with '+' and '-' entries.", call. = FALSE)
+  }
+  if (isTRUE(colour_strand) && !is.null(data$group_tag)) {
+    message("'colour_strand = TRUE' is ignored when reads are grouped; group colour takes precedence.")
   }
 
   region_start <- GenomicRanges::start(data$region)
@@ -158,29 +175,59 @@ plot_methylation <- function(data, sort_by = NULL,
         )
     }
   } else {
-    # Ungrouped: fixed bar colour, single colour scale for dots
-    p_top <- ggplot2::ggplot() +
-      ggplot2::geom_segment(
-        data = data$reads,
-        ggplot2::aes(
-          x = .data$start, xend = .data$end,
-          y = .data$lane, yend = .data$lane
-        ),
-        linewidth = 2, colour = "#B0BEC5", lineend = "round"
-      ) +
-      ggplot2::geom_point(
-        data = sites_plot,
-        ggplot2::aes(
-          x = .data$position, y = .data$lane,
-          colour = .data$mod_prob
-        ),
-        size = dot_size
-      ) +
-      ggplot2::scale_colour_gradient(
-        low = colour_low, high = colour_high,
-        limits = c(0, 1),
-        name = "Modification\nprobability"
-      )
+    # Ungrouped path
+    if (isTRUE(colour_strand)) {
+      # Colour bars by strand, then add a second colour scale for dots
+      p_top <- ggplot2::ggplot() +
+        ggplot2::geom_segment(
+          data = data$reads,
+          ggplot2::aes(
+            x = .data$start, xend = .data$end,
+            y = .data$lane, yend = .data$lane,
+            colour = .data$strand
+          ),
+          linewidth = 2, lineend = "round"
+        ) +
+        ggplot2::scale_colour_manual(values = strand_colours, name = "Strand") +
+        ggnewscale::new_scale_colour() +
+        ggplot2::geom_point(
+          data = sites_plot,
+          ggplot2::aes(
+            x = .data$position, y = .data$lane,
+            colour = .data$mod_prob
+          ),
+          size = dot_size
+        ) +
+        ggplot2::scale_colour_gradient(
+          low = colour_low, high = colour_high,
+          limits = c(0, 1),
+          name = "Modification\nprobability"
+        )
+    } else {
+      # Fixed bar colour, single colour scale for dots
+      p_top <- ggplot2::ggplot() +
+        ggplot2::geom_segment(
+          data = data$reads,
+          ggplot2::aes(
+            x = .data$start, xend = .data$end,
+            y = .data$lane, yend = .data$lane
+          ),
+          linewidth = 2, colour = "#B0BEC5", lineend = "round"
+        ) +
+        ggplot2::geom_point(
+          data = sites_plot,
+          ggplot2::aes(
+            x = .data$position, y = .data$lane,
+            colour = .data$mod_prob
+          ),
+          size = dot_size
+        ) +
+        ggplot2::scale_colour_gradient(
+          low = colour_low, high = colour_high,
+          limits = c(0, 1),
+          name = "Modification\nprobability"
+        )
+    }
   }
 
   if (!is.null(data$snv_position)) {
