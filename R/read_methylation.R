@@ -12,6 +12,10 @@
 #'   `"HP"` for haplotype, `"RG"` for read group). NULL disables grouping.
 #' @param max_reads Integer. Maximum number of reads to return (default 200).
 #'   If more reads overlap the region, a random subset is kept.
+#' @param per_group_downsample Logical. When `TRUE` and grouping is active
+#'   (via `group_tag` or `snv_position`), the `max_reads` cap is applied
+#'   independently per group. When `FALSE` (default), the existing global
+#'   cap behaviour is unchanged.
 #'
 #' @return A `methylation_data` object (S3 list) with elements:
 #'   \describe{
@@ -35,7 +39,8 @@
 #' @export
 read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
                              snv_position = NULL, ref_base = NULL,
-                             alt_base = NULL, max_reads = 200L) {
+                             alt_base = NULL, max_reads = 200L,
+                             per_group_downsample = FALSE) {
   # --- 1. Validate inputs ---
   if (!is.null(group_tag) && !is.null(snv_position)) {
     stop("'group_tag' and 'snv_position' are mutually exclusive.", call. = FALSE)
@@ -134,7 +139,20 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   n_reads <- nrow(reads)
   keep_local <- seq_len(n_reads)
 
-  if (n_reads > max_reads) {
+  active_grouping <- per_group_downsample &&
+                     !is.null(group_tag) && "group" %in% names(reads)
+
+  if (active_grouping) {
+    groups <- unique(reads$group[!is.na(reads$group)])
+    keep_local <- unlist(lapply(groups, function(g) {
+      idx <- which(reads$group == g)
+      if (length(idx) > max_reads) idx <- sort(sample(idx, max_reads))
+      idx
+    }), use.names = FALSE)
+    keep_local <- sort(keep_local)
+    reads <- reads[keep_local, , drop = FALSE]
+    rownames(reads) <- NULL
+  } else if (n_reads > max_reads) {
     keep_local <- sort(sample(n_reads, max_reads))
     reads <- reads[keep_local, , drop = FALSE]
     rownames(reads) <- NULL
