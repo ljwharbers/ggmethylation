@@ -24,8 +24,14 @@
 #' @param group_colours Named character vector of colours per group, or NULL
 #'   to use ggplot2 defaults.
 #' @param smooth_span Loess smoothing span for the bottom panel (default 0.3).
-#' @param panel_heights Numeric vector of length 2 giving relative heights of
-#'   the top (reads) and bottom (smooth) panels (default `c(3, 1)`).
+#' @param panel_heights Numeric vector giving relative heights of the panels.
+#'   When `annotations = NULL`, expects length 2 (reads + smooth); when
+#'   annotations are provided, expects length 3 (reads + smooth + gene track).
+#'   Defaults to `c(3, 1)` for two panels or `c(3, 1, 0.6)` for three panels
+#'   when `NULL`.
+#' @param annotations A `gene_annotations` object returned by
+#'   [read_annotations()], or `NULL` (default). When provided, a gene
+#'   annotation track is appended below the smoothed methylation panel.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -49,7 +55,8 @@ plot_methylation <- function(data, sort_by = NULL,
                              group_colours = NULL,
                              mod_code_shapes = NULL,
                              smooth_span = 0.3,
-                             panel_heights = c(3, 1)) {
+                             panel_heights = NULL,
+                             annotations = NULL) {
   # --- 1. Validate input ---
   if (!inherits(data, "methylation_data")) {
     stop(
@@ -436,6 +443,49 @@ plot_methylation <- function(data, sort_by = NULL,
       )
   }
 
+  # --- 8b. Build gene annotation panel (optional) ---
+  p_gene <- NULL
+  if (!is.null(annotations)) {
+    if (!inherits(annotations, "gene_annotations")) {
+      stop("`annotations` must be a `gene_annotations` object from read_annotations().",
+           call. = FALSE)
+    }
+    p_gene <- build_gene_panel(
+      annotations  = annotations,
+      region_start = region_start,
+      region_end   = region_end,
+      bottom_label = TRUE
+    )
+  }
+
   # --- 9. Combine with patchwork ---
-  patchwork::wrap_plots(p_top, p_bottom, ncol = 1, heights = panel_heights)
+  panels   <- list(p_top, p_bottom)
+  n_panels <- 2L
+
+  if (!is.null(p_gene)) {
+    # Move x-axis label off smooth panel, onto gene panel
+    p_bottom <- p_bottom + ggplot2::labs(x = NULL) +
+      ggplot2::theme(
+        axis.text.x  = ggplot2::element_blank(),
+        axis.ticks.x = ggplot2::element_blank()
+      )
+    panels[[2L]] <- p_bottom
+    panels       <- c(panels, list(p_gene))
+    n_panels     <- 3L
+  }
+
+  # Compute heights
+  if (is.null(panel_heights)) {
+    heights <- c(3, 1, if (!is.null(p_gene)) 0.6 else NULL)
+  } else {
+    if (length(panel_heights) != n_panels) {
+      stop(sprintf(
+        "`panel_heights` has length %d but there are %d panels.",
+        length(panel_heights), n_panels
+      ), call. = FALSE)
+    }
+    heights <- panel_heights
+  }
+
+  patchwork::wrap_plots(panels, ncol = 1, heights = heights)
 }

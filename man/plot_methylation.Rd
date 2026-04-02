@@ -15,7 +15,8 @@ plot_methylation(
   group_colours = NULL,
   mod_code_shapes = NULL,
   smooth_span = 0.3,
-  panel_heights = c(3, 1)
+  panel_heights = NULL,
+  annotations = NULL
 )
 }
 \arguments{
@@ -46,8 +47,15 @@ to use ggplot2 defaults.}
 
 \item{smooth_span}{Loess smoothing span for the bottom panel (default 0.3).}
 
-\item{panel_heights}{Numeric vector of length 2 giving relative heights of
-the top (reads) and bottom (smooth) panels (default \code{c(3, 1)}).}
+\item{panel_heights}{Numeric vector giving relative heights of the panels.
+When \code{annotations = NULL}, expects length 2 (reads + smooth); when
+annotations are provided, expects length 3 (reads + smooth + gene track).
+Defaults to \code{c(3, 1)} for two panels or \code{c(3, 1, 0.6)} for three panels
+when \code{NULL}.}
+
+\item{annotations}{A \code{gene_annotations} object returned by
+\code{\link[=read_annotations]{read_annotations()}}, or \code{NULL} (default). When provided, a gene
+annotation track is appended below the smoothed methylation panel.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a
