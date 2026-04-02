@@ -16,7 +16,8 @@ plot_methylation(
   mod_code_shapes = NULL,
   smooth_span = 0.3,
   panel_heights = NULL,
-  annotations = NULL
+  annotations = NULL,
+  variants = NULL
 )
 }
 \arguments{
@@ -56,6 +57,13 @@ when \code{NULL}.}
 \item{annotations}{A \code{gene_annotations} object returned by
 \code{\link[=read_annotations]{read_annotations()}}, or \code{NULL} (default). When provided, a gene
 annotation track is appended below the smoothed methylation panel.}
+
+\item{variants}{A \code{variant_data} object returned by \code{\link[=read_variants]{read_variants()}}, or
+\code{NULL} (default). When provided, per-read base letters are drawn at
+variant positions (coloured by match to ref/alt), and vertical dashed
+lines are added at every variant position across all panels. Requires
+that \code{data} was produced by a current version of \code{\link[=read_methylation]{read_methylation()}} that
+stores sequences and CIGARs in the object.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a

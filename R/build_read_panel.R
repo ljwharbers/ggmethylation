@@ -26,6 +26,11 @@
 #'   shapes.
 #' @param show_x_axis Logical. When `FALSE` (default), x-axis text and ticks
 #'   are hidden. Set to `TRUE` for the bottom-most read panel.
+#' @param variant_bases Data.frame returned by [extract_variant_bases()], or
+#'   `NULL`. When non-NULL, per-read base letters are drawn at variant positions
+#'   and coloured by `variant_class` (ref/alt/del/other).
+#' @param variant_positions Numeric vector of genomic positions at which to draw
+#'   vertical dashed marker lines, or `NULL`.
 #'
 #' @return A [ggplot2::ggplot] object.
 #'
@@ -41,7 +46,9 @@ build_read_panel <- function(data,
                              strand_colours,
                              group_colours,
                              mod_code_shapes,
-                             show_x_axis = FALSE) {
+                             show_x_axis = FALSE,
+                             variant_bases     = NULL,
+                             variant_positions = NULL) {
   codes      <- unique(data$sites$mod_code)
   multi_code <- length(codes) > 1L
 
@@ -176,6 +183,32 @@ build_read_panel <- function(data,
       ggplot2::geom_vline(
         xintercept = data$snv_position,
         linetype = "dashed", colour = "black", linewidth = 0.5
+      )
+  }
+
+  # Variant base letters
+  if (!is.null(variant_bases) && nrow(variant_bases) > 0L) {
+    p <- p +
+      ggnewscale::new_scale_colour() +
+      ggplot2::geom_text(
+        data = variant_bases,
+        ggplot2::aes(x = .data$position, y = .data$lane,
+                     label = .data$base, colour = .data$variant_class),
+        size = 2, fontface = "bold", show.legend = FALSE,
+        inherit.aes = FALSE
+      ) +
+      ggplot2::scale_colour_manual(
+        values = c(ref = "#9E9E9E", alt = "#E53935", other = "#FDD835", del = "#212121"),
+        guide  = "none"
+      )
+  }
+
+  # Vertical lines at variant positions
+  if (!is.null(variant_positions) && length(variant_positions) > 0L) {
+    p <- p +
+      ggplot2::geom_vline(
+        xintercept = variant_positions,
+        linetype = "dashed", colour = "#424242", linewidth = 0.4, alpha = 0.7
       )
   }
 

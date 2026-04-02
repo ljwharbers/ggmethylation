@@ -16,7 +16,9 @@ build_read_panel(
   strand_colours,
   group_colours,
   mod_code_shapes,
-  show_x_axis = FALSE
+  show_x_axis = FALSE,
+  variant_bases = NULL,
+  variant_positions = NULL
 )
 }
 \arguments{
@@ -48,6 +50,13 @@ shapes.}
 
 \item{show_x_axis}{Logical. When \code{FALSE} (default), x-axis text and ticks
 are hidden. Set to \code{TRUE} for the bottom-most read panel.}
+
+\item{variant_bases}{Data.frame returned by \code{\link[=extract_variant_bases]{extract_variant_bases()}}, or
+\code{NULL}. When non-NULL, per-read base letters are drawn at variant positions
+and coloured by \code{variant_class} (ref/alt/del/other).}
+
+\item{variant_positions}{Numeric vector of genomic positions at which to draw
+vertical dashed marker lines, or \code{NULL}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object.

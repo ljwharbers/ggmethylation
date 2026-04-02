@@ -32,6 +32,12 @@
 #' @param annotations A `gene_annotations` object returned by
 #'   [read_annotations()], or `NULL` (default). When provided, a gene
 #'   annotation track is appended below the smoothed methylation panel.
+#' @param variants A `variant_data` object returned by [read_variants()], or
+#'   `NULL` (default). When provided, per-read base letters are drawn at
+#'   variant positions (coloured by match to ref/alt), and vertical dashed
+#'   lines are added at every variant position across all panels. Requires
+#'   that `data` was produced by a current version of [read_methylation()] that
+#'   stores sequences and CIGARs in the object.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -56,7 +62,8 @@ plot_methylation <- function(data, sort_by = NULL,
                              mod_code_shapes = NULL,
                              smooth_span = 0.3,
                              panel_heights = NULL,
-                             annotations = NULL) {
+                             annotations = NULL,
+                             variants = NULL) {
   # --- 1. Validate input ---
   if (inherits(data, "multi_methylation_data")) {
     return(.plot_multi_methylation(
@@ -72,7 +79,7 @@ plot_methylation <- function(data, sort_by = NULL,
       smooth_span     = smooth_span,
       panel_heights   = panel_heights,
       annotations     = annotations,
-      variants        = NULL
+      variants        = variants
     ))
   }
 
@@ -181,20 +188,50 @@ plot_methylation <- function(data, sort_by = NULL,
     data$reads$lane <- pack_reads(data$reads)
   }
 
+  # --- 5b. Prepare variant overlay data ---
+  variant_bases     <- NULL
+  variant_positions <- NULL
+
+  if (!is.null(variants)) {
+    if (!inherits(variants, "variant_data")) {
+      stop("`variants` must be a `variant_data` object returned by read_variants().",
+           call. = FALSE)
+    }
+    if (is.null(data$sequences) || length(data$sequences) == 0L) {
+      warning(
+        "VCF overlay requires sequences stored in methylation_data. ",
+        "Re-run read_methylation() to get a current object with sequences.",
+        call. = FALSE
+      )
+    } else {
+      variant_bases <- extract_variant_bases(
+        reads     = data$reads,
+        sequences = data$sequences,
+        cigars    = data$cigars,
+        variants  = variants$variants
+      )
+    }
+    if (nrow(variants$variants) > 0L) {
+      variant_positions <- variants$variants$position
+    }
+  }
+
   # --- 6. Build top panel ---
   p_top <- build_read_panel(
-    data            = data,
-    separator_lanes = separator_lanes,
-    region_start    = region_start,
-    region_end      = region_end,
-    colour_low      = colour_low,
-    colour_high     = colour_high,
-    dot_size        = dot_size,
-    colour_strand   = colour_strand,
-    strand_colours  = strand_colours,
-    group_colours   = group_colours,
-    mod_code_shapes = mod_code_shapes,
-    show_x_axis     = FALSE
+    data              = data,
+    separator_lanes   = separator_lanes,
+    region_start      = region_start,
+    region_end        = region_end,
+    colour_low        = colour_low,
+    colour_high       = colour_high,
+    dot_size          = dot_size,
+    colour_strand     = colour_strand,
+    strand_colours    = strand_colours,
+    group_colours     = group_colours,
+    mod_code_shapes   = mod_code_shapes,
+    show_x_axis       = FALSE,
+    variant_bases     = variant_bases,
+    variant_positions = variant_positions
   )
 
   # --- 7. Build bottom panel ---
@@ -327,6 +364,15 @@ plot_methylation <- function(data, sort_by = NULL,
       )
   }
 
+  # Add variant position lines to smooth panel
+  if (!is.null(variant_positions) && length(variant_positions) > 0L) {
+    p_bottom <- p_bottom +
+      ggplot2::geom_vline(
+        xintercept = variant_positions,
+        linetype = "dashed", colour = "#424242", linewidth = 0.4, alpha = 0.7
+      )
+  }
+
   # --- 8b. Build gene annotation panel (optional) ---
   p_gene <- NULL
   if (!is.null(annotations)) {
@@ -340,6 +386,14 @@ plot_methylation <- function(data, sort_by = NULL,
       region_end   = region_end,
       bottom_label = TRUE
     )
+    # Add variant position lines to gene panel
+    if (!is.null(variant_positions) && length(variant_positions) > 0L) {
+      p_gene <- p_gene +
+        ggplot2::geom_vline(
+          xintercept = variant_positions,
+          linetype = "dashed", colour = "#424242", linewidth = 0.4, alpha = 0.7
+        )
+    }
   }
 
   # --- 9. Combine with patchwork ---
@@ -480,20 +534,50 @@ plot_methylation <- function(data, sort_by = NULL,
       s$reads$lane <- pack_reads(s$reads)
     }
 
+    # Prepare per-sample variant overlay data
+    s_variant_bases     <- NULL
+    s_variant_positions <- NULL
+
+    if (!is.null(variants)) {
+      if (!inherits(variants, "variant_data")) {
+        stop("`variants` must be a `variant_data` object returned by read_variants().",
+             call. = FALSE)
+      }
+      if (is.null(s$sequences) || length(s$sequences) == 0L) {
+        warning(
+          "VCF overlay requires sequences stored in methylation_data for sample '",
+          nm, "'. Re-run read_methylation() to get a current object with sequences.",
+          call. = FALSE
+        )
+      } else {
+        s_variant_bases <- extract_variant_bases(
+          reads     = s$reads,
+          sequences = s$sequences,
+          cigars    = s$cigars,
+          variants  = variants$variants
+        )
+      }
+      if (nrow(variants$variants) > 0L) {
+        s_variant_positions <- variants$variants$position
+      }
+    }
+
     # Build read panel
     p_reads <- build_read_panel(
-      data            = s,
-      separator_lanes = separator_lanes,
-      region_start    = region_start,
-      region_end      = region_end,
-      colour_low      = colour_low,
-      colour_high     = colour_high,
-      dot_size        = dot_size,
-      colour_strand   = colour_strand,
-      strand_colours  = strand_colours,
-      group_colours   = group_colours,
-      mod_code_shapes = mod_code_shapes,
-      show_x_axis     = FALSE
+      data              = s,
+      separator_lanes   = separator_lanes,
+      region_start      = region_start,
+      region_end        = region_end,
+      colour_low        = colour_low,
+      colour_high       = colour_high,
+      dot_size          = dot_size,
+      colour_strand     = colour_strand,
+      strand_colours    = strand_colours,
+      group_colours     = group_colours,
+      mod_code_shapes   = mod_code_shapes,
+      show_x_axis       = FALSE,
+      variant_bases     = s_variant_bases,
+      variant_positions = s_variant_positions
     )
     p_reads <- p_reads + ggplot2::labs(title = nm)
     sample_panels[[i]] <- p_reads
@@ -543,6 +627,16 @@ plot_methylation <- function(data, sort_by = NULL,
       p_smooth <- p_smooth +
         ggplot2::scale_colour_manual(values = group_colours)
     }
+
+    # Add variant position lines to shared smooth panel
+    if (!is.null(variants) && inherits(variants, "variant_data") &&
+        nrow(variants$variants) > 0L) {
+      p_smooth <- p_smooth +
+        ggplot2::geom_vline(
+          xintercept = variants$variants$position,
+          linetype = "dashed", colour = "#424242", linewidth = 0.4, alpha = 0.7
+        )
+    }
   } else {
     p_smooth <- ggplot2::ggplot() +
       ggplot2::annotate(
@@ -565,6 +659,15 @@ plot_methylation <- function(data, sort_by = NULL,
       region_end   = region_end,
       bottom_label = TRUE
     )
+    # Add variant position lines to gene panel
+    if (!is.null(variants) && inherits(variants, "variant_data") &&
+        nrow(variants$variants) > 0L) {
+      p_gene <- p_gene +
+        ggplot2::geom_vline(
+          xintercept = variants$variants$position,
+          linetype = "dashed", colour = "#424242", linewidth = 0.4, alpha = 0.7
+        )
+    }
   }
 
   # --- 4. Assemble panels ---
