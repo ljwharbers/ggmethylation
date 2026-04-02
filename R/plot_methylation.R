@@ -58,9 +58,27 @@ plot_methylation <- function(data, sort_by = NULL,
                              panel_heights = NULL,
                              annotations = NULL) {
   # --- 1. Validate input ---
-  if (!inherits(data, "methylation_data")) {
+  if (inherits(data, "multi_methylation_data")) {
+    return(.plot_multi_methylation(
+      data            = data,
+      sort_by         = sort_by,
+      colour_low      = colour_low,
+      colour_high     = colour_high,
+      dot_size        = dot_size,
+      colour_strand   = colour_strand,
+      strand_colours  = strand_colours,
+      group_colours   = group_colours,
+      mod_code_shapes = mod_code_shapes,
+      smooth_span     = smooth_span,
+      panel_heights   = panel_heights,
+      annotations     = annotations,
+      variants        = NULL
+    ))
+  }
+
+  if (!inherits(data, "methylation_data") && !inherits(data, "multi_methylation_data")) {
     stop(
-      "'data' must be a 'methylation_data' object from read_methylation().",
+      "`data` must be a `methylation_data` or `multi_methylation_data` object.",
       call. = FALSE
     )
   }
@@ -164,154 +182,20 @@ plot_methylation <- function(data, sort_by = NULL,
   }
 
   # --- 6. Build top panel ---
-  # Merge lane info into sites
-  sites_plot <- merge(
-    data$sites,
-    data$reads[, c("read_name", "lane"), drop = FALSE],
-    by = "read_name"
+  p_top <- build_read_panel(
+    data            = data,
+    separator_lanes = separator_lanes,
+    region_start    = region_start,
+    region_end      = region_end,
+    colour_low      = colour_low,
+    colour_high     = colour_high,
+    dot_size        = dot_size,
+    colour_strand   = colour_strand,
+    strand_colours  = strand_colours,
+    group_colours   = group_colours,
+    mod_code_shapes = mod_code_shapes,
+    show_x_axis     = FALSE
   )
-
-  if (!is.null(data$group_tag)) {
-    # Grouped: colour read bars by group, then add a second colour scale for dots
-    p_top <- ggplot2::ggplot() +
-      ggplot2::geom_segment(
-        data = data$reads,
-        ggplot2::aes(
-          x = .data$start, xend = .data$end,
-          y = .data$lane, yend = .data$lane,
-          colour = .data$group
-        ),
-        linewidth = 2, lineend = "round"
-      )
-
-    if (!is.null(group_colours)) {
-      p_top <- p_top +
-        ggplot2::scale_colour_manual(values = group_colours, name = "Group")
-    } else {
-      p_top <- p_top + ggplot2::scale_colour_discrete(name = "Group")
-    }
-
-    p_top <- p_top +
-      ggnewscale::new_scale_colour() +
-      ggplot2::geom_point(
-        data = sites_plot,
-        ggplot2::aes(
-          x      = .data$position,
-          y      = .data$lane,
-          colour = .data$mod_prob,
-          shape  = if (multi_code) .data$mod_code else NULL
-        ),
-        size = dot_size
-      ) +
-      ggplot2::scale_colour_gradient(
-        low = colour_low, high = colour_high,
-        limits = c(0, 1),
-        name = "Modification\nprobability"
-      )
-
-    if (multi_code) {
-      p_top <- p_top +
-        ggplot2::scale_shape_manual(
-          values = mod_code_shapes,
-          name   = "Modification"
-        )
-    }
-
-    if (length(separator_lanes) > 0L) {
-      p_top <- p_top +
-        ggplot2::geom_hline(
-          yintercept = separator_lanes,
-          linetype = "dashed", colour = "grey40", linewidth = 0.4
-        )
-    }
-  } else {
-    # Ungrouped path
-    if (isTRUE(colour_strand)) {
-      # Colour bars by strand, then add a second colour scale for dots
-      p_top <- ggplot2::ggplot() +
-        ggplot2::geom_segment(
-          data = data$reads,
-          ggplot2::aes(
-            x = .data$start, xend = .data$end,
-            y = .data$lane, yend = .data$lane,
-            colour = .data$strand
-          ),
-          linewidth = 2, lineend = "round"
-        ) +
-        ggplot2::scale_colour_manual(values = strand_colours, name = "Strand") +
-        ggnewscale::new_scale_colour() +
-        ggplot2::geom_point(
-          data = sites_plot,
-          ggplot2::aes(
-            x      = .data$position,
-            y      = .data$lane,
-            colour = .data$mod_prob,
-            shape  = if (multi_code) .data$mod_code else NULL
-          ),
-          size = dot_size
-        ) +
-        ggplot2::scale_colour_gradient(
-          low = colour_low, high = colour_high,
-          limits = c(0, 1),
-          name = "Modification\nprobability"
-        )
-    } else {
-      # Fixed bar colour, single colour scale for dots
-      p_top <- ggplot2::ggplot() +
-        ggplot2::geom_segment(
-          data = data$reads,
-          ggplot2::aes(
-            x = .data$start, xend = .data$end,
-            y = .data$lane, yend = .data$lane
-          ),
-          linewidth = 2, colour = "#B0BEC5", lineend = "round"
-        ) +
-        ggplot2::geom_point(
-          data = sites_plot,
-          ggplot2::aes(
-            x      = .data$position,
-            y      = .data$lane,
-            colour = .data$mod_prob,
-            shape  = if (multi_code) .data$mod_code else NULL
-          ),
-          size = dot_size
-        ) +
-        ggplot2::scale_colour_gradient(
-          low = colour_low, high = colour_high,
-          limits = c(0, 1),
-          name = "Modification\nprobability"
-        )
-    }
-
-    if (multi_code) {
-      p_top <- p_top +
-        ggplot2::scale_shape_manual(
-          values = mod_code_shapes,
-          name   = "Modification"
-        )
-    }
-  }
-
-  if (!is.null(data$snv_position)) {
-    p_top <- p_top +
-      ggplot2::geom_vline(
-        xintercept = data$snv_position,
-        linetype = "dashed", colour = "black", linewidth = 0.5
-      )
-  }
-
-  p_top <- p_top +
-    ggplot2::scale_y_reverse() +
-    ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(
-      axis.text.y = ggplot2::element_blank(),
-      axis.ticks.y = ggplot2::element_blank(),
-      axis.title.y = ggplot2::element_blank(),
-      panel.grid.minor = ggplot2::element_blank(),
-      panel.grid.major.y = ggplot2::element_blank()
-    ) +
-    ggplot2::labs(x = NULL)
 
   # --- 7. Build bottom panel ---
   default_linetypes <- c("solid", "dashed", "dotdash", "dotted")
@@ -488,4 +372,229 @@ plot_methylation <- function(data, sort_by = NULL,
   }
 
   patchwork::wrap_plots(panels, ncol = 1, heights = heights)
+}
+
+# Internal multi-sample renderer
+# Not exported — called by plot_methylation() when data is multi_methylation_data.
+
+.plot_multi_methylation <- function(data, sort_by, colour_low, colour_high,
+                                    dot_size, colour_strand, strand_colours,
+                                    group_colours, mod_code_shapes,
+                                    smooth_span, panel_heights, annotations,
+                                    variants) {
+
+  region_start <- GenomicRanges::start(data$region)
+  region_end   <- GenomicRanges::end(data$region)
+
+  # Resolve mod_code shapes from combined codes across all samples
+  all_codes <- unique(unlist(lapply(data$samples, function(s) {
+    unique(s$sites$mod_code)
+  })))
+  default_shapes <- c(16L, 15L, 17L, 18L)
+
+  if (is.null(mod_code_shapes)) {
+    mod_code_shapes <- stats::setNames(
+      default_shapes[seq_along(all_codes)],
+      all_codes
+    )
+  } else {
+    missing_codes <- setdiff(all_codes, names(mod_code_shapes))
+    if (length(missing_codes) > 0L) {
+      warning(
+        "mod_code_shapes has no entry for code(s): ",
+        paste(missing_codes, collapse = ", "),
+        ". Using default shapes.", call. = FALSE
+      )
+      extras <- stats::setNames(
+        default_shapes[seq_along(missing_codes)],
+        missing_codes
+      )
+      mod_code_shapes <- c(mod_code_shapes, extras)
+    }
+  }
+
+  # --- 1. Build per-sample read panels ---
+  sample_names  <- names(data$samples)
+  n_samples     <- length(sample_names)
+  sample_panels <- vector("list", n_samples)
+
+  # Combined sites list for shared smooth panel (built alongside)
+  combined_sites_list <- vector("list", n_samples)
+
+  for (i in seq_len(n_samples)) {
+    nm <- sample_names[i]
+    s  <- data$samples[[nm]]
+
+    # Skip empty samples gracefully
+    if (nrow(s$reads) == 0L) {
+      sample_panels[[i]] <- ggplot2::ggplot() +
+        ggplot2::annotate(
+          "text", x = 0.5, y = 0.5,
+          label = sprintf("No reads (%s)", nm), size = 4
+        ) +
+        ggplot2::theme_void() +
+        ggplot2::labs(title = nm)
+      combined_sites_list[[i]] <- NULL
+      next
+    }
+
+    # Compute mean_mod_prob per read
+    read_means <- stats::setNames(
+      tapply(s$sites$mod_prob, s$sites$read_name, mean),
+      NULL
+    )
+    s$reads$mean_mod_prob <- as.numeric(read_means[s$reads$read_name])
+    s$reads$mean_mod_prob[is.na(s$reads$mean_mod_prob)] <- 0
+
+    # Sort reads
+    sort_by_s <- sort_by
+    if (is.null(sort_by_s)) {
+      if (is.null(s$group_tag)) {
+        sort_by_s <- "start"
+      } else {
+        sort_by_s <- c("start", "group", "mean_mod_prob")
+      }
+    }
+    sort_args <- lapply(sort_by_s, function(col) s$reads[[col]])
+    ord <- do.call(order, sort_args)
+    s$reads <- s$reads[ord, , drop = FALSE]
+    rownames(s$reads) <- NULL
+
+    # Pack reads into lanes
+    s$reads$lane  <- integer(nrow(s$reads))
+    separator_lanes <- numeric(0)
+
+    if (!is.null(s$group_tag)) {
+      groups_ordered <- sort(unique(s$reads$group[!is.na(s$reads$group)]))
+      lane_offset <- 0L
+      for (grp in groups_ordered) {
+        idx <- which(s$reads$group == grp)
+        s$reads$lane[idx] <- pack_reads(s$reads[idx, ]) + lane_offset
+        lane_offset <- max(s$reads$lane[idx]) + 2L
+        separator_lanes <- c(separator_lanes, lane_offset - 1L)
+      }
+      if (length(separator_lanes) > 0L) {
+        separator_lanes <- separator_lanes[-length(separator_lanes)]
+      }
+    } else {
+      s$reads$lane <- pack_reads(s$reads)
+    }
+
+    # Build read panel
+    p_reads <- build_read_panel(
+      data            = s,
+      separator_lanes = separator_lanes,
+      region_start    = region_start,
+      region_end      = region_end,
+      colour_low      = colour_low,
+      colour_high     = colour_high,
+      dot_size        = dot_size,
+      colour_strand   = colour_strand,
+      strand_colours  = strand_colours,
+      group_colours   = group_colours,
+      mod_code_shapes = mod_code_shapes,
+      show_x_axis     = FALSE
+    )
+    p_reads <- p_reads + ggplot2::labs(title = nm)
+    sample_panels[[i]] <- p_reads
+
+    # Collect sites for shared smooth panel, tagged with sample name
+    sites_tagged <- s$sites
+    n_sites <- nrow(sites_tagged)
+    sites_tagged$sample <- if (n_sites > 0L) rep(nm, n_sites) else character(0L)
+    if (!is.null(s$group_tag) && "group" %in% names(sites_tagged) && n_sites > 0L) {
+      sites_tagged$smooth_key <- paste(nm, sites_tagged$group, sep = ":")
+    } else {
+      sites_tagged$smooth_key <- if (n_sites > 0L) rep(nm, n_sites) else character(0L)
+    }
+    combined_sites_list[[i]] <- if (n_sites > 0L) sites_tagged else NULL
+  }
+
+  # --- 2. Build shared smooth panel ---
+  combined_sites <- do.call(rbind, Filter(Negate(is.null), combined_sites_list))
+  rownames(combined_sites) <- NULL
+
+  if (!is.null(combined_sites) && nrow(combined_sites) > 0L) {
+    smoothed <- smooth_methylation(
+      combined_sites,
+      group_col = "smooth_key",
+      span      = smooth_span
+    )
+
+    p_smooth <- ggplot2::ggplot(
+      smoothed,
+      ggplot2::aes(
+        x      = .data$position,
+        y      = .data$mean_prob,
+        colour = .data$smooth_key
+      )
+    ) +
+      ggplot2::geom_line(linewidth = 1) +
+      ggplot2::scale_y_continuous(
+        limits = c(0, 1),
+        name   = "Mean modification\nprobability"
+      ) +
+      ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+      ggplot2::labs(x = "Genomic position (bp)", colour = "Sample")
+
+    if (!is.null(group_colours)) {
+      p_smooth <- p_smooth +
+        ggplot2::scale_colour_manual(values = group_colours)
+    }
+  } else {
+    p_smooth <- ggplot2::ggplot() +
+      ggplot2::annotate(
+        "text", x = 0.5, y = 0.5,
+        label = "No methylation sites", size = 4
+      ) +
+      ggplot2::theme_void()
+  }
+
+  # --- 3. Build gene annotation panel (optional) ---
+  p_gene <- NULL
+  if (!is.null(annotations)) {
+    if (!inherits(annotations, "gene_annotations")) {
+      stop("`annotations` must be a `gene_annotations` object from read_annotations().",
+           call. = FALSE)
+    }
+    p_gene <- build_gene_panel(
+      annotations  = annotations,
+      region_start = region_start,
+      region_end   = region_end,
+      bottom_label = TRUE
+    )
+  }
+
+  # --- 4. Assemble panels ---
+  all_panels <- c(sample_panels, list(p_smooth))
+  n_panels   <- n_samples + 1L
+
+  if (!is.null(p_gene)) {
+    # Move x-axis label from smooth panel to gene panel
+    p_smooth <- p_smooth + ggplot2::labs(x = NULL) +
+      ggplot2::theme(
+        axis.text.x  = ggplot2::element_blank(),
+        axis.ticks.x = ggplot2::element_blank()
+      )
+    all_panels[[n_panels]] <- p_smooth
+    all_panels <- c(all_panels, list(p_gene))
+    n_panels   <- n_panels + 1L
+  }
+
+  # Compute heights
+  if (is.null(panel_heights)) {
+    heights <- c(rep(3, n_samples), 1, if (!is.null(p_gene)) 0.6 else NULL)
+  } else {
+    if (length(panel_heights) != n_panels) {
+      stop(sprintf(
+        "`panel_heights` has length %d but there are %d panels.",
+        length(panel_heights), n_panels
+      ), call. = FALSE)
+    }
+    heights <- panel_heights
+  }
+
+  patchwork::wrap_plots(all_panels, ncol = 1, heights = heights)
 }
