@@ -284,6 +284,10 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   rownames(sites) <- NULL
 
   # --- 9. Return methylation_data object ---
+  # Retain sequences and CIGARs for kept reads (no additional I/O needed)
+  sequences <- setNames(as.character(bam_data$seq[keep]), reads$read_name)
+  cigars    <- setNames(bam_data$cigar[keep], reads$read_name)
+
   # (mod_code column is already populated per-code in the inner loop above)
   structure(
     list(
@@ -292,7 +296,9 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
       region = gr,
       mod_code = mod_code,
       group_tag = group_tag,
-      snv_position = snv_position
+      snv_position = snv_position,
+      sequences = sequences,
+      cigars = cigars
     ),
     class = "methylation_data"
   )
@@ -336,7 +342,9 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
       region = gr,
       mod_code = mod_code,
       group_tag = group_tag,
-      snv_position = snv_position
+      snv_position = snv_position,
+      sequences = setNames(character(0), character(0)),
+      cigars    = setNames(character(0), character(0))
     ),
     class = "methylation_data"
   )

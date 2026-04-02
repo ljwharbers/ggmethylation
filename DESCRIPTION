@@ -26,7 +26,10 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown
+    rmarkdown,
+    GenomicFeatures,
+    rtracklayer,
+    VariantAnnotation
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 biocViews: Sequencing, DNAMethylation, Visualization
