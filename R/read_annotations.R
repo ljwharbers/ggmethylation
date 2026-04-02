@@ -108,9 +108,10 @@ read_annotations <- function(txdb = NULL, gtf = NULL, region) {
   exons_by_tx  <- exons_by_tx[names(exons_by_tx) %in% as.character(tx_ids)]
   exons_unlisted <- unlist(exons_by_tx)
   exons_raw    <- as.data.frame(exons_unlisted)
-  # group_name carries the tx_id (as character, from list names)
+  # The tx_id is carried in names(exons_unlisted), not a column (column
+  # 'group_name' was removed in newer Bioconductor versions)
   exons_df <- data.frame(
-    tx_id      = as.integer(exons_raw$group_name),
+    tx_id      = as.integer(names(exons_unlisted)),
     exon_start = exons_raw$start,
     exon_end   = exons_raw$end,
     stringsAsFactors = FALSE

@@ -10,11 +10,15 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
+cache_path <- system.file("extdata", "vignette_cache.rds",
+                           package = "ggmethylation")
+has_cache  <- nzchar(cache_path) && file.exists(cache_path)
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 8,
-  fig.height = 5
+  fig.height = 5,
+  eval = has_cache
 )
 ```
 
@@ -68,23 +72,22 @@ region <- "chr21:34500000-34510000"
 meth_basic <- read_methylation(bam, region)
 ```
 
-```{r load-cache, eval = TRUE, echo = FALSE}
-cache      <- readRDS(system.file("extdata", "vignette_cache.rds",
-                                  package = "ggmethylation"))
+```{r load-cache, echo = FALSE}
+cache      <- readRDS(cache_path)
 meth_basic <- cache$meth_basic
 ```
 
 Printing the object gives a concise summary of the region, read count, and
 available grouping:
 
-```{r print-basic, eval = TRUE, echo = TRUE}
+```{r print-basic, echo = TRUE}
 print(meth_basic)
 ```
 
 Pass the object directly to `plot_methylation()` to produce the two-panel
 figure:
 
-```{r plot-basic, eval = TRUE, echo = TRUE}
+```{r plot-basic, echo = TRUE}
 library(ggmethylation)
 plot_methylation(meth_basic)
 ```
@@ -95,15 +98,15 @@ The `methylation_data` object is a named list. The two most useful elements
 are `$reads` (one row per read per CpG site) and `$sites` (genomic-coordinate
 summary).
 
-```{r str-basic, eval = TRUE, echo = TRUE}
+```{r str-basic, echo = TRUE}
 str(meth_basic, max.level = 1)
 ```
 
-```{r head-reads, eval = TRUE, echo = TRUE}
+```{r head-reads, echo = TRUE}
 head(meth_basic$reads)
 ```
 
-```{r head-sites, eval = TRUE, echo = TRUE}
+```{r head-sites, echo = TRUE}
 head(meth_basic$sites)
 ```
 
@@ -117,18 +120,18 @@ haplotype.
 meth_hp <- read_methylation(bam, region, group_tag = "HP")
 ```
 
-```{r load-hp, eval = TRUE, echo = FALSE}
+```{r load-hp, echo = FALSE}
 meth_hp <- cache$meth_hp
 ```
 
-```{r plot-hp, eval = TRUE, echo = TRUE}
+```{r plot-hp, echo = TRUE}
 plot_methylation(meth_hp)
 ```
 
 Group colours can be overridden with a named character vector passed to
 `group_colours`. Names must match the levels returned by the HP tag.
 
-```{r plot-hp-colours, eval = TRUE, echo = TRUE}
+```{r plot-hp-colours, echo = TRUE}
 plot_methylation(
   meth_hp,
   group_colours = c("1" = "steelblue", "2" = "coral")
@@ -152,11 +155,11 @@ meth_snv <- read_methylation(
 )
 ```
 
-```{r load-snv, eval = TRUE, echo = FALSE}
+```{r load-snv, echo = FALSE}
 meth_snv <- cache$meth_snv
 ```
 
-```{r plot-snv, eval = TRUE, echo = TRUE}
+```{r plot-snv, echo = TRUE}
 plot_methylation(meth_snv)
 ```
 
@@ -169,7 +172,7 @@ curves for REF and ALT reads are overlaid for direct comparison.
 `plot_methylation()` exposes several arguments for fine-tuning the figure.
 The examples below use `meth_hp` from the cache.
 
-```{r custom-colours, eval = TRUE, echo = TRUE}
+```{r custom-colours, echo = TRUE}
 # Custom methylation colour gradient
 plot_methylation(
   meth_hp,
@@ -178,7 +181,7 @@ plot_methylation(
 )
 ```
 
-```{r custom-dots, eval = TRUE, echo = TRUE}
+```{r custom-dots, echo = TRUE}
 # Larger dots and a wider smoother
 plot_methylation(
   meth_hp,
@@ -187,7 +190,7 @@ plot_methylation(
 )
 ```
 
-```{r custom-panels, eval = TRUE, echo = TRUE}
+```{r custom-panels, echo = TRUE}
 # Taller summary panel relative to read panel
 plot_methylation(
   meth_hp,
@@ -195,7 +198,7 @@ plot_methylation(
 )
 ```
 
-```{r custom-sort, eval = TRUE, echo = TRUE}
+```{r custom-sort, echo = TRUE}
 # Sort reads by group membership (default) vs. by genomic start
 plot_methylation(meth_hp, sort_by = "position")
 ```
@@ -206,7 +209,7 @@ plot_methylation(meth_hp, sort_by = "position")
 standard ggplot2 theme calls applied via `&` (applies to all panels) or `+`
 (applies to the last panel only).
 
-```{r ggplot2-compose, eval = TRUE, echo = TRUE}
+```{r ggplot2-compose, echo = TRUE}
 library(ggplot2)
 
 p <- plot_methylation(meth_basic)
@@ -225,6 +228,56 @@ ggsave("my_methylation_plot.pdf", p, width = 10, height = 6)
 Patchwork operators (`/`, `|`, `+`) can be used to combine a
 `plot_methylation()` output with other ggplot2 panels in a larger figure
 layout.
+
+## New features
+
+### Gene annotation track
+
+A gene model track can be added below the read panel by loading annotations
+with `read_annotations()` and passing them to `plot_methylation()`.
+
+```{r gene-track, eval=FALSE}
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+md <- read_methylation("sample.bam", "chr21:10000000-10050000")
+annot <- read_annotations(
+  txdb   = TxDb.Hsapiens.UCSC.hg38.knownGene,
+  region = "chr21:10000000-10050000"
+)
+plot_methylation(md, annotations = annot)
+```
+
+`read_annotations()` also accepts a path to a GTF/GFF file via the `gtf`
+argument, which is imported and converted to a `TxDb` internally.
+
+### Multi-sample comparison
+
+`merge_methylation()` combines two or more `methylation_data` objects into a
+`multi_methylation_data` object. Samples must share the same genomic region
+and modification code. Pass named arguments to label each sample.
+
+```{r multi-sample, eval=FALSE}
+md_tumor  <- read_methylation("tumor.bam",  "chr21:10000000-10050000", group_tag = "HP")
+md_normal <- read_methylation("normal.bam", "chr21:10000000-10050000", group_tag = "HP")
+
+merged <- merge_methylation(tumor = md_tumor, normal = md_normal)
+plot_methylation(merged)
+```
+
+`plot_methylation()` detects the `multi_methylation_data` class and produces
+one subplot per sample, making cross-sample methylation comparisons easy.
+
+### VCF variant overlay
+
+Variants from a VCF file can be overlaid on the read panel with
+`read_variants()`. Each read base at a variant position is classified as
+`ref`, `alt`, `del`, or `other` and rendered as a coloured symbol.
+
+```{r vcf-overlay, eval=FALSE}
+md   <- read_methylation("sample.bam", "chr21:10000000-10050000")
+vars <- read_variants("variants.vcf.gz", "chr21:10000000-10050000")
+plot_methylation(md, variants = vars)
+```
 
 ## Session info
 
