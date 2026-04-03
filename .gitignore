@@ -13,3 +13,5 @@
 # Superpowers
 .superpowers/
 .worktrees
+
+test.*

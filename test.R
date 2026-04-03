@@ -1,12 +1,34 @@
+install.packages("/staging/leuven/stg_00096/home/lharbers/repositories/ggmethylation/", repos = NULL, type = "source")
 require(ggmethylation)
+require(ggplot2)
+require(patchwork)
+
+region = 'chr8:129820975-129840975'
+
+annotations = read_annotations("/staging/leuven/stg_00096/references/chm13_v2.0_maskedY.rCRS/annotation/chm13v2.0_RefSeq_Liftoff_v5.1.gtf",
+                               region = region)
 
 bamfile <- '/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/PTCL8_PB/bamfiles/PTCL8_PB_tumor.bam'
-region  <- 'chr8:128862888-128870405'
+bamfile2 <- '/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/AITL4/bamfiles/AITL4_tumor.bam'
+vcf_file = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/AITL4/variants/clairsto/somatic.vcf.gz"
+
+
 
 meth_data <- read_methylation(bamfile, region,
-                              mod_code = 'm',
-                              group_tag = 'HP')
-p <- plot_methylation(meth_data)
+                              mod_code = "m",
+                              group_tag = "HP")
+
+meth_data2 <- read_methylation(bamfile2, region,
+                               mod_code = "m",
+                               group_tag = "HP")
+
+vcf_data = read_variants(vcf_file, region)
+
+merged_data = merge_methylation(.list = list(PTCL8 = meth_data, AITL4 = meth_data2))
+
+p <- plot_methylation(merged_data,
+                      dot_size = 0.8,
+                      variants = vcf_data)
 
 # --- Saving ---
 ggsave("test_plot.png", p, width = 14, height = 6, dpi = 150)
@@ -19,7 +41,7 @@ p & theme_bw()
 # --- Titles / labels ---
 # patchwork::plot_annotation() adds a title/subtitle to the composite
 p + plot_annotation(
-  title    = "chr8:128862888-128870405",
+  title    = "chr8:128830975-130830975",
   subtitle = "CpG methylation — PTCL8 tumour"
 )
 
