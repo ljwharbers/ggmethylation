@@ -16,7 +16,8 @@ read_methylation(
   per_group_downsample = FALSE,
   min_mapq = 0L,
   strand_filter = c("+", "-"),
-  min_read_length = 0L
+  min_read_length = 0L,
+  drop_na_group = FALSE
 )
 }
 \arguments{
@@ -50,6 +51,11 @@ strand.}
 \item{min_read_length}{Integer. Minimum read length in reference-space
 base pairs (default \code{0L}, no filtering). Reads shorter than this
 value are excluded before MM/ML parsing.}
+
+\item{drop_na_group}{Logical. When \code{TRUE} and \code{group_tag} is set, reads
+where the tag is absent (i.e. group is \code{NA}) are removed before
+downsampling. Default \code{FALSE} preserves the existing behaviour of keeping
+unphased reads in the data.}
 }
 \value{
 A \code{methylation_data} object (S3 list) with elements:

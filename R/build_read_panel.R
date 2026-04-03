@@ -73,7 +73,11 @@ build_read_panel <- function(data,
       )
 
     if (!is.null(group_colours)) {
-      p <- p + ggplot2::scale_colour_manual(values = group_colours, name = "Group")
+      p <- p + ggplot2::scale_colour_manual(
+        values   = group_colours,
+        na.value = "grey50",
+        name     = "Group"
+      )
     } else {
       p <- p + ggplot2::scale_colour_discrete(name = "Group")
     }

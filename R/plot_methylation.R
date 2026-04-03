@@ -21,8 +21,10 @@
 #' @param strand_colours Named character vector with `"+"` and `"-"` entries
 #'   giving bar colours for each strand. Only used when `colour_strand = TRUE`
 #'   and data is ungrouped. Default `c("+" = "#4393C3", "-" = "#D6604D")`.
-#' @param group_colours Named character vector of colours per group, or NULL
-#'   to use ggplot2 defaults.
+#' @param group_colours Named character vector of colours per group. Defaults
+#'   to `c("1" = "#4393C3", "2" = "#D6604D")` (blue / red), matching the
+#'   typical HP haplotype tag output. Pass `NULL` to use ggplot2 defaults, or
+#'   supply a fully named vector for other group names.
 #' @param smooth_span Loess smoothing span for the bottom panel (default 0.3).
 #' @param panel_heights Numeric vector giving relative heights of the panels.
 #'   When `annotations = NULL`, expects length 2 (reads + smooth); when
@@ -58,7 +60,7 @@ plot_methylation <- function(data, sort_by = NULL,
                              dot_size = 1.5,
                              colour_strand = FALSE,
                              strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
-                             group_colours = NULL,
+                             group_colours = c("1" = "#4393C3", "2" = "#D6604D"),
                              mod_code_shapes = NULL,
                              smooth_span = 0.3,
                              panel_heights = NULL,
@@ -312,7 +314,7 @@ plot_methylation <- function(data, sort_by = NULL,
 
       if (!is.null(group_colours)) {
         p_bottom <- p_bottom +
-          ggplot2::scale_colour_manual(values = group_colours)
+          ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50")
       }
     } else {
       # Multi-code + grouped: colour by group, linetype by mod_code
@@ -351,7 +353,7 @@ plot_methylation <- function(data, sort_by = NULL,
 
       if (!is.null(group_colours)) {
         p_bottom <- p_bottom +
-          ggplot2::scale_colour_manual(values = group_colours)
+          ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50")
       }
     }
   }
@@ -605,27 +607,59 @@ plot_methylation <- function(data, sort_by = NULL,
       span      = smooth_span
     )
 
-    p_smooth <- ggplot2::ggplot(
-      smoothed,
-      ggplot2::aes(
-        x      = .data$position,
-        y      = .data$mean_prob,
-        colour = .data$smooth_key
-      )
-    ) +
-      ggplot2::geom_line(linewidth = 1) +
-      ggplot2::scale_y_continuous(
-        limits = c(0, 1),
-        name   = "Mean modification\nprobability"
-      ) +
-      ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
-      ggplot2::theme_minimal() +
-      ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
-      ggplot2::labs(x = "Genomic position (bp)", colour = "Sample")
+    # Determine if any sample has grouping by checking for ":" in smooth_key
+    multi_has_groups <- any(grepl(":", smoothed$smooth_key, fixed = TRUE))
 
-    if (!is.null(group_colours)) {
-      p_smooth <- p_smooth +
-        ggplot2::scale_colour_manual(values = group_colours)
+    if (multi_has_groups) {
+      # Split "sampleName:groupValue" into separate columns
+      parts <- strsplit(smoothed$smooth_key, ":", fixed = TRUE)
+      smoothed$smooth_sample <- vapply(parts, `[[`, character(1L), 1L)
+      smoothed$smooth_group  <- vapply(
+        parts, function(x) paste(x[-1L], collapse = ":"), character(1L)
+      )
+      p_smooth <- ggplot2::ggplot(
+        smoothed,
+        ggplot2::aes(
+          x        = .data$position,
+          y        = .data$mean_prob,
+          colour   = .data$smooth_group,
+          linetype = .data$smooth_sample
+        )
+      ) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::scale_y_continuous(
+          limits = c(0, 1),
+          name   = "Mean modification\nprobability"
+        ) +
+        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::labs(x = "Genomic position (bp)", colour = "Group",
+                      linetype = "Sample")
+
+      if (!is.null(group_colours)) {
+        p_smooth <- p_smooth +
+          ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50")
+      }
+    } else {
+      # No grouping: colour lines by sample name
+      p_smooth <- ggplot2::ggplot(
+        smoothed,
+        ggplot2::aes(
+          x      = .data$position,
+          y      = .data$mean_prob,
+          colour = .data$smooth_key
+        )
+      ) +
+        ggplot2::geom_line(linewidth = 1) +
+        ggplot2::scale_y_continuous(
+          limits = c(0, 1),
+          name   = "Mean modification\nprobability"
+        ) +
+        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::labs(x = "Genomic position (bp)", colour = "Sample")
     }
 
     # Add variant position lines to shared smooth panel
