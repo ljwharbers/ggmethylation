@@ -13,7 +13,9 @@ Exactly one of \code{txdb} or \code{gtf} must be provided.}
 \item{gtf}{Character. Path to a GTF or GFF annotation file, or \code{NULL}.
 Exactly one of \code{txdb} or \code{gtf} must be provided. When supplied, the file
 is imported with \code{rtracklayer::import()} and converted to a \code{TxDb} via
-\code{GenomicFeatures::makeTxDbFromGRanges()}.}
+\code{GenomicFeatures::makeTxDbFromGRanges()}. For repeated calls across
+multiple regions, prefer \code{\link[=load_annotations]{load_annotations()}} to build the \code{TxDb} once
+and pass it via \code{txdb}.}
 
 \item{region}{Character. Genomic region string in the format
 \code{"chr:start-end"} (e.g., \code{"chr1:1000000-2000000"}). The same format

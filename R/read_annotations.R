@@ -1,3 +1,72 @@
+#' Load a TxDb annotation source (once, for reuse across regions)
+#'
+#' Imports a GTF/GFF file or validates a pre-built `TxDb` object and returns
+#' the `TxDb`. Use this once and pass the result to [read_annotations()] for
+#' each region you want to plot, avoiding repeated re-parsing of large GTF
+#' files.
+#'
+#' @param txdb A `TxDb` object, or `NULL`. Exactly one of `txdb` or `gtf` must
+#'   be provided.
+#' @param gtf Character. Path to a GTF or GFF annotation file, or `NULL`.
+#'   When supplied, the entire file is imported with `rtracklayer::import()`
+#'   and converted to a `TxDb` via
+#'   `GenomicFeatures::makeTxDbFromGRanges()`. For large genomes this can take
+#'   tens of seconds; calling this function once and reusing the returned
+#'   object is strongly recommended.
+#'
+#' @return A `TxDb` object suitable for repeated calls to [read_annotations()].
+#'
+#' @examples
+#' \dontrun{
+#' # Load once
+#' txdb <- load_annotations(gtf = "Homo_sapiens.GRCh38.gtf")
+#'
+#' # Reuse for multiple regions — fast after the first call
+#' ann1 <- read_annotations(txdb = txdb, region = "chr1:1000000-2000000")
+#' ann2 <- read_annotations(txdb = txdb, region = "chr2:5000000-6000000")
+#' }
+#'
+#' @export
+load_annotations <- function(txdb = NULL, gtf = NULL) {
+  has_txdb <- !is.null(txdb)
+  has_gtf  <- !is.null(gtf)
+
+  if (has_txdb && has_gtf) {
+    stop("Provide exactly one of `txdb` or `gtf`, not both.", call. = FALSE)
+  }
+  if (!has_txdb && !has_gtf) {
+    stop("One of `txdb` or `gtf` must be provided.", call. = FALSE)
+  }
+
+  if (!requireNamespace("GenomicFeatures", quietly = TRUE)) {
+    stop(
+      "The 'GenomicFeatures' package is required but not installed. ",
+      "Install it with: BiocManager::install('GenomicFeatures')",
+      call. = FALSE
+    )
+  }
+
+  if (has_gtf) {
+    if (!requireNamespace("rtracklayer", quietly = TRUE)) {
+      stop(
+        "The 'rtracklayer' package is required to import GTF/GFF files. ",
+        "Install it with: BiocManager::install('rtracklayer')",
+        call. = FALSE
+      )
+    }
+    message("Importing GTF/GFF file — this may take a moment for large files ...")
+    gr_gtf <- rtracklayer::import(gtf)
+    txdb   <- GenomicFeatures::makeTxDbFromGRanges(gr_gtf)
+  }
+
+  # Validate that txdb is a TxDb object
+  if (!inherits(txdb, "TxDb")) {
+    stop("`txdb` must be a TxDb object.", call. = FALSE)
+  }
+
+  txdb
+}
+
 #' Load gene annotations for a genomic region
 #'
 #' Extracts transcript and exon models overlapping a given genomic region from
@@ -9,7 +78,9 @@
 #' @param gtf Character. Path to a GTF or GFF annotation file, or `NULL`.
 #'   Exactly one of `txdb` or `gtf` must be provided. When supplied, the file
 #'   is imported with `rtracklayer::import()` and converted to a `TxDb` via
-#'   `GenomicFeatures::makeTxDbFromGRanges()`.
+#'   `GenomicFeatures::makeTxDbFromGRanges()`. For repeated calls across
+#'   multiple regions, prefer [load_annotations()] to build the `TxDb` once
+#'   and pass it via `txdb`.
 #' @param region Character. Genomic region string in the format
 #'   `"chr:start-end"` (e.g., `"chr1:1000000-2000000"`). The same format
 #'   accepted by [read_methylation()].

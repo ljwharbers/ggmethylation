@@ -3,9 +3,9 @@ require(ggmethylation)
 require(ggplot2)
 require(patchwork)
 
-region = 'chr8:129820975-129840975'
+region = 'chr8:127730434-127750951'
 
-annotations = read_annotations("/staging/leuven/stg_00096/references/chm13_v2.0_maskedY.rCRS/annotation/chm13v2.0_RefSeq_Liftoff_v5.1.gtf",
+annotations = read_annotations(gtf = "/staging/leuven/stg_00096/references/chm13_v2.0_maskedY.rCRS/annotation/chm13v2.0_RefSeq_Liftoff_v5.1.gtf",
                                region = region)
 
 bamfile <- '/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/PTCL8_PB/bamfiles/PTCL8_PB_tumor.bam'
@@ -28,7 +28,8 @@ merged_data = merge_methylation(.list = list(PTCL8 = meth_data, AITL4 = meth_dat
 
 p <- plot_methylation(merged_data,
                       dot_size = 0.8,
-                      variants = vcf_data)
+                      variants = vcf_data,
+                      annotations = annotations)
 
 # --- Saving ---
 ggsave("test_plot.png", p, width = 14, height = 6, dpi = 150)

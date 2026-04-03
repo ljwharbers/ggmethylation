@@ -103,7 +103,7 @@ build_gene_panel <- function(annotations, region_start, region_end,
       ),
       fill = "black", colour = NA
     ) +
-    # Gene name labels at left margin
+    # Gene name labels at left margin (clip = "off" lets them extend outside panel)
     ggplot2::geom_text(
       data = transcripts_df,
       ggplot2::aes(
@@ -111,6 +111,7 @@ build_gene_panel <- function(annotations, region_start, region_end,
       ),
       hjust = 1.1, size = 2.5, colour = "black"
     ) +
+    ggplot2::coord_cartesian(clip = "off") +
     ggplot2::scale_x_continuous(
       limits = c(region_start, region_end), expand = c(0, 0)
     ) +

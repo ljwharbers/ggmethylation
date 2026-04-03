@@ -26,6 +26,10 @@
 #' @param min_read_length Integer. Minimum read length in reference-space
 #'   base pairs (default \code{0L}, no filtering). Reads shorter than this
 #'   value are excluded before MM/ML parsing.
+#' @param drop_na_group Logical. When `TRUE` and `group_tag` is set, reads
+#'   where the tag is absent (i.e. group is `NA`) are removed before
+#'   downsampling. Default `FALSE` preserves the existing behaviour of keeping
+#'   unphased reads in the data.
 #'
 #' @return A `methylation_data` object (S3 list) with elements:
 #'   \describe{
@@ -53,7 +57,8 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
                              per_group_downsample = FALSE,
                              min_mapq = 0L,
                              strand_filter = c("+", "-"),
-                             min_read_length = 0L) {
+                             min_read_length = 0L,
+                             drop_na_group = FALSE) {
   # --- 1. Validate inputs ---
   mod_code <- as.character(mod_code)          # coerce in case of factor
   if (length(mod_code) == 0L || any(!nzchar(mod_code))) {
@@ -128,6 +133,16 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
 
   # bam_indices maps filtered-reads rows back to original bam_data positions
   bam_indices <- seq_len(nrow(reads))
+
+  # Drop reads with NA group if requested
+  if (isTRUE(drop_na_group) && !is.null(group_tag) && "group" %in% names(reads)) {
+    na_mask <- is.na(reads$group)
+    if (any(na_mask)) {
+      reads       <- reads[!na_mask, , drop = FALSE]
+      bam_indices <- bam_indices[!na_mask]
+      rownames(reads) <- NULL
+    }
+  }
 
   # --- 4b. Apply read-level filters ---
   n_before <- nrow(reads)
