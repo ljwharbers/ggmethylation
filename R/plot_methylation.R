@@ -40,6 +40,9 @@
 #'   lines are added at every variant position across all panels. Requires
 #'   that `data` was produced by a current version of [read_methylation()] that
 #'   stores sequences and CIGARs in the object.
+#' @param show_cigar Logical. When `TRUE`, structural variants from CIGAR
+#'   strings (insertions, deletions, clips) are displayed on reads. Default
+#'   `FALSE`.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -65,7 +68,8 @@ plot_methylation <- function(data, sort_by = NULL,
                              smooth_span = 0.3,
                              panel_heights = NULL,
                              annotations = NULL,
-                             variants = NULL) {
+                             variants = NULL,
+                             show_cigar = FALSE) {
   # --- 1. Validate input ---
   if (inherits(data, "multi_methylation_data")) {
     return(.plot_multi_methylation(
@@ -81,7 +85,8 @@ plot_methylation <- function(data, sort_by = NULL,
       smooth_span     = smooth_span,
       panel_heights   = panel_heights,
       annotations     = annotations,
-      variants        = variants
+      variants        = variants,
+      show_cigar      = show_cigar
     ))
   }
 
@@ -233,7 +238,9 @@ plot_methylation <- function(data, sort_by = NULL,
     mod_code_shapes   = mod_code_shapes,
     show_x_axis       = FALSE,
     variant_bases     = variant_bases,
-    variant_positions = variant_positions
+    variant_positions = variant_positions,
+    show_cigar        = show_cigar,
+    cigar_features    = if (isTRUE(show_cigar)) data$cigar_features else NULL
   )
 
   # --- 7. Build bottom panel ---
@@ -437,7 +444,7 @@ plot_methylation <- function(data, sort_by = NULL,
                                     dot_size, colour_strand, strand_colours,
                                     group_colours, mod_code_shapes,
                                     smooth_span, panel_heights, annotations,
-                                    variants) {
+                                    variants, show_cigar = FALSE) {
 
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
@@ -579,7 +586,9 @@ plot_methylation <- function(data, sort_by = NULL,
       mod_code_shapes   = mod_code_shapes,
       show_x_axis       = FALSE,
       variant_bases     = s_variant_bases,
-      variant_positions = s_variant_positions
+      variant_positions = s_variant_positions,
+      show_cigar        = show_cigar,
+      cigar_features    = if (isTRUE(show_cigar)) s$cigar_features else NULL
     )
     p_reads <- p_reads + ggplot2::labs(title = nm)
     sample_panels[[i]] <- p_reads
