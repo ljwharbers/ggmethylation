@@ -31,6 +31,10 @@
 #'   and coloured by `variant_class` (ref/alt/del/other).
 #' @param variant_positions Numeric vector of genomic positions at which to draw
 #'   vertical dashed marker lines, or `NULL`.
+#' @param show_cigar Logical. When `TRUE`, structural variants from CIGAR
+#'   strings are overlaid on reads. Default `FALSE`.
+#' @param cigar_features Data.frame of CIGAR features (from
+#'   `methylation_data$cigar_features`), or `NULL`.
 #'
 #' @return A [ggplot2::ggplot] object.
 #'
@@ -48,7 +52,9 @@ build_read_panel <- function(data,
                              mod_code_shapes,
                              show_x_axis = FALSE,
                              variant_bases     = NULL,
-                             variant_positions = NULL) {
+                             variant_positions = NULL,
+                             show_cigar        = FALSE,
+                             cigar_features    = NULL) {
   codes      <- unique(data$sites$mod_code)
   multi_code <- length(codes) > 1L
 
@@ -188,6 +194,66 @@ build_read_panel <- function(data,
         xintercept = data$snv_position,
         linetype = "dashed", colour = "black", linewidth = 0.5
       )
+  }
+
+  # CIGAR structural variant overlays
+  if (isTRUE(show_cigar) && !is.null(cigar_features) && nrow(cigar_features) > 0L) {
+    # Merge lane info
+    cf <- merge(
+      cigar_features,
+      data$reads[, c("read_name", "lane", "start", "end"), drop = FALSE],
+      by = "read_name"
+    )
+
+    # Deletions: draw black line segments
+    del_df <- cf[cf$type == "D", , drop = FALSE]
+    if (nrow(del_df) > 0L) {
+      p <- p + ggplot2::geom_segment(
+        data = del_df,
+        ggplot2::aes(
+          x = .data$ref_start, xend = .data$ref_end,
+          y = .data$lane, yend = .data$lane
+        ),
+        linewidth = 0.3, colour = "black", linetype = "solid",
+        inherit.aes = FALSE
+      )
+    }
+
+    # Insertions: draw purple "I" markers
+    ins_df <- cf[cf$type == "I", , drop = FALSE]
+    if (nrow(ins_df) > 0L) {
+      p <- p + ggplot2::geom_text(
+        data = ins_df,
+        ggplot2::aes(x = .data$ref_start, y = .data$lane, label = "I"),
+        colour = "#7B1FA2", size = 2, fontface = "bold",
+        inherit.aes = FALSE
+      )
+    }
+
+    # Soft/hard clips: draw orange triangle markers
+    clip_df <- cf[cf$type %in% c("S", "H"), , drop = FALSE]
+    if (nrow(clip_df) > 0L) {
+      # Soft/hard clips lack ref coords; position at read boundaries.
+      # A leading clip (small query_start) displays at read start;
+      # a trailing clip (large query_start) displays at read end.
+      clip_df$display_x <- ifelse(
+        !is.na(clip_df$query_start) & clip_df$query_start <= 1L,
+        clip_df$start,   # leading clip -> read start
+        clip_df$end      # trailing clip -> read end
+      )
+      # For H clips without query coords, use a heuristic:
+      # if ref_start is NA and query_start is NA, check position in CIGAR
+      # (already handled: H clips have NA query_start, so they fall to end)
+      # Override for leading H clips by checking if start is available
+      clip_df$display_x[is.na(clip_df$display_x)] <- clip_df$start[is.na(clip_df$display_x)]
+
+      p <- p + ggplot2::geom_point(
+        data = clip_df,
+        ggplot2::aes(x = .data$display_x, y = .data$lane),
+        shape = 25, size = 1.5, fill = "#FF8F00", colour = "#FF8F00",
+        inherit.aes = FALSE
+      )
+    }
   }
 
   # Variant base letters
