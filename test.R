@@ -107,16 +107,23 @@ plot_methylation(meth_hp, panel_heights = c(4, 1))
 
 
 # =============================================================================
-# 7. Gene annotations — from TxDb and from GTF (with session cache)
+# 7. Gene annotations — from GTF with session cache, IGV-style rendering
 # =============================================================================
 
-# From GTF — parsed once, cached for the session
+# From GTF — parsed once, cached for the session.
+# Gene names are resolved from the GTF gene_name attribute (e.g. "MYC"),
+# and transcripts are collapsed to one canonical isoform per gene (longest CDS).
 annot <- read_annotations(gtf = GTF, region = REGION)
 
 print(annot)
 
-# Second call reuses cache (no re-parsing message)
+# Second call reuses the TxDb cache (no re-parsing message)
 annot2 <- read_annotations(gtf = GTF, region = "chr8:127700000-127800000")
+
+# Opt out of transcript collapsing to show all isoforms
+annot_all_isoforms <- read_annotations(gtf = GTF, region = REGION,
+                                       collapse_transcripts = FALSE)
+print(annot_all_isoforms)
 
 # Clear cache to free memory or force re-parse
 clear_annotation_cache()
@@ -126,11 +133,31 @@ clear_annotation_cache()
 # annot_txdb <- read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
 #                                region = REGION)
 
+# IGV-style gene track: thin intron lines, medium UTR boxes, full CDS boxes
 plot_methylation(meth_hp, annotations = annot)
+
+# Combined with all isoforms visible
+plot_methylation(meth_hp, annotations = annot_all_isoforms)
 
 
 # =============================================================================
-# 8. Variant overlay (VCF)
+# 8. CIGAR structural variant visualisation
+# =============================================================================
+
+# show_cigar = TRUE overlays per-read structural features derived from the
+# CIGAR string:
+#   - Purple bold "I" at insertion positions
+#   - Thin black line across deletion spans
+#   - Orange triangle markers at soft/hard-clipped read ends
+
+plot_methylation(meth, show_cigar = TRUE)
+
+# Works with grouping and annotations too
+plot_methylation(meth_hp, annotations = annot, show_cigar = TRUE)
+
+
+# =============================================================================
+# 9. Variant overlay (VCF)
 # =============================================================================
 
 vars <- read_variants(VCF_AITL4, REGION)
@@ -150,7 +177,7 @@ plot_methylation(meth_aitl4,
 
 
 # =============================================================================
-# 9. Multi-sample comparison
+# 10. Multi-sample comparison
 # =============================================================================
 
 merged <- merge_methylation(PTCL8 = meth_hp,
@@ -168,7 +195,7 @@ plot_methylation(merged, annotations = annot, variants = vars)
 
 
 # =============================================================================
-# 10. Write methylation data to disk
+# 11. Write methylation data to disk
 # =============================================================================
 
 write_methylation(meth, prefix = "/tmp/ptcl8_meth", format = "tsv")
@@ -181,7 +208,7 @@ meth |>
 
 
 # =============================================================================
-# 11. Manipulating patchwork output
+# 12. Manipulating patchwork output
 # =============================================================================
 
 p <- plot_methylation(meth_hp, annotations = annot)
