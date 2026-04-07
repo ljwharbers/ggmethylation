@@ -12,8 +12,6 @@ bamfile <- '/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/PTCL8_PB/bamfi
 bamfile2 <- '/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/AITL4/bamfiles/AITL4_tumor.bam'
 vcf_file = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/AITL4/variants/clairsto/somatic.vcf.gz"
 
-
-
 meth_data <- read_methylation(bamfile, region,
                               mod_code = "m",
                               group_tag = "HP")
