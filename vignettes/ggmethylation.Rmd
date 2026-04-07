@@ -248,7 +248,10 @@ plot_methylation(md, annotations = annot)
 ```
 
 `read_annotations()` also accepts a path to a GTF/GFF file via the `gtf`
-argument, which is imported and converted to a `TxDb` internally.
+argument. The file is parsed once and the resulting `TxDb` is cached for the
+rest of the R session, so calling `read_annotations()` for multiple regions
+with the same GTF is efficient. Use `clear_annotation_cache()` to free the
+cached object or force re-parsing if the file changes.
 
 ### Multi-sample comparison
 

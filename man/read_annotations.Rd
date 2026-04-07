@@ -11,11 +11,11 @@ read_annotations(txdb = NULL, gtf = NULL, region)
 Exactly one of \code{txdb} or \code{gtf} must be provided.}
 
 \item{gtf}{Character. Path to a GTF or GFF annotation file, or \code{NULL}.
-Exactly one of \code{txdb} or \code{gtf} must be provided. When supplied, the file
-is imported with \code{rtracklayer::import()} and converted to a \code{TxDb} via
-\code{GenomicFeatures::makeTxDbFromGRanges()}. For repeated calls across
-multiple regions, prefer \code{\link[=load_annotations]{load_annotations()}} to build the \code{TxDb} once
-and pass it via \code{txdb}.}
+Exactly one of \code{txdb} or \code{gtf} must be provided. On the first call the
+file is imported with \code{rtracklayer::import()} and converted to a \code{TxDb}
+via \code{GenomicFeatures::makeTxDbFromGRanges()}; subsequent calls with the
+same path reuse the cached \code{TxDb}. Use \code{\link[=clear_annotation_cache]{clear_annotation_cache()}} to free
+the cached object or force re-parsing.}
 
 \item{region}{Character. Genomic region string in the format
 \code{"chr:start-end"} (e.g., \code{"chr1:1000000-2000000"}). The same format
@@ -37,14 +37,21 @@ Extracts transcript and exon models overlapping a given genomic region from
 either a pre-built \code{TxDb} object or a GTF/GFF file. The result is used as
 the \code{annotations} argument to \code{\link[=plot_methylation]{plot_methylation()}} to add a gene track.
 }
+\details{
+When a GTF/GFF path is supplied the file is parsed once and the resulting
+\code{TxDb} is cached internally for the rest of the R session. Subsequent calls
+with the same file path reuse the cache, so it is safe and efficient to call
+\code{read_annotations()} for multiple regions without manually pre-loading.
+}
 \examples{
 \dontrun{
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
 ann <- read_annotations(txdb = txdb, region = "chr1:1000000-2000000")
 
-# From a GTF file
-ann <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "1:1000000-2000000")
+# From a GTF file — parsed once, cached for subsequent calls
+ann1 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr1:1000000-2000000")
+ann2 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr2:5000000-6000000")
 }
 
 }

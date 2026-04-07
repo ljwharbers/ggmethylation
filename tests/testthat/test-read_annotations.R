@@ -80,3 +80,15 @@ test_that("print.gene_annotations works for empty annotations", {
   expect_no_error(print(ann))
   expect_invisible(print(ann))
 })
+
+# --- Test 6: clear_annotation_cache() empties the cache ---
+
+test_that("clear_annotation_cache() returns NULL invisibly and leaves cache empty", {
+  # Seed the cache with a dummy entry
+  assign("dummy_key", txdb, envir = ggmethylation:::.annotation_cache)
+
+  result <- clear_annotation_cache()
+
+  expect_null(result)
+  expect_equal(length(ls(ggmethylation:::.annotation_cache)), 0L)
+})

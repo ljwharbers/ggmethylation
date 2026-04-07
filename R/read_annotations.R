@@ -1,43 +1,9 @@
-#' Load a TxDb annotation source (once, for reuse across regions)
-#'
-#' Imports a GTF/GFF file or validates a pre-built `TxDb` object and returns
-#' the `TxDb`. Use this once and pass the result to [read_annotations()] for
-#' each region you want to plot, avoiding repeated re-parsing of large GTF
-#' files.
-#'
-#' @param txdb A `TxDb` object, or `NULL`. Exactly one of `txdb` or `gtf` must
-#'   be provided.
-#' @param gtf Character. Path to a GTF or GFF annotation file, or `NULL`.
-#'   When supplied, the entire file is imported with `rtracklayer::import()`
-#'   and converted to a `TxDb` via
-#'   `GenomicFeatures::makeTxDbFromGRanges()`. For large genomes this can take
-#'   tens of seconds; calling this function once and reusing the returned
-#'   object is strongly recommended.
-#'
-#' @return A `TxDb` object suitable for repeated calls to [read_annotations()].
-#'
-#' @examples
-#' \dontrun{
-#' # Load once
-#' txdb <- load_annotations(gtf = "Homo_sapiens.GRCh38.gtf")
-#'
-#' # Reuse for multiple regions — fast after the first call
-#' ann1 <- read_annotations(txdb = txdb, region = "chr1:1000000-2000000")
-#' ann2 <- read_annotations(txdb = txdb, region = "chr2:5000000-6000000")
-#' }
-#'
-#' @export
-load_annotations <- function(txdb = NULL, gtf = NULL) {
-  has_txdb <- !is.null(txdb)
-  has_gtf  <- !is.null(gtf)
+# Package-level cache for TxDb objects built from GTF/GFF files.
+# Keyed by normalised file path; avoids re-parsing large files within a session.
+.annotation_cache <- new.env(parent = emptyenv())
 
-  if (has_txdb && has_gtf) {
-    stop("Provide exactly one of `txdb` or `gtf`, not both.", call. = FALSE)
-  }
-  if (!has_txdb && !has_gtf) {
-    stop("One of `txdb` or `gtf` must be provided.", call. = FALSE)
-  }
-
+# Internal helper: return TxDb for `gtf`, building and caching it on first use.
+.get_or_build_txdb <- function(gtf) {
   if (!requireNamespace("GenomicFeatures", quietly = TRUE)) {
     stop(
       "The 'GenomicFeatures' package is required but not installed. ",
@@ -45,26 +11,42 @@ load_annotations <- function(txdb = NULL, gtf = NULL) {
       call. = FALSE
     )
   }
-
-  if (has_gtf) {
-    if (!requireNamespace("rtracklayer", quietly = TRUE)) {
-      stop(
-        "The 'rtracklayer' package is required to import GTF/GFF files. ",
-        "Install it with: BiocManager::install('rtracklayer')",
-        call. = FALSE
-      )
-    }
-    message("Importing GTF/GFF file — this may take a moment for large files ...")
-    gr_gtf <- rtracklayer::import(gtf)
-    txdb   <- GenomicFeatures::makeTxDbFromGRanges(gr_gtf)
+  if (!requireNamespace("rtracklayer", quietly = TRUE)) {
+    stop(
+      "The 'rtracklayer' package is required to import GTF/GFF files. ",
+      "Install it with: BiocManager::install('rtracklayer')",
+      call. = FALSE
+    )
   }
 
-  # Validate that txdb is a TxDb object
-  if (!inherits(txdb, "TxDb")) {
-    stop("`txdb` must be a TxDb object.", call. = FALSE)
+  key <- normalizePath(gtf, mustWork = TRUE)
+
+  if (exists(key, envir = .annotation_cache, inherits = FALSE)) {
+    message("Using cached TxDb for: ", key)
+    return(.annotation_cache[[key]])
   }
 
+  message("Importing GTF/GFF file — this may take a moment for large files ...")
+  gr_gtf <- rtracklayer::import(gtf)
+  txdb   <- GenomicFeatures::makeTxDbFromGRanges(gr_gtf)
+  assign(key, txdb, envir = .annotation_cache)
   txdb
+}
+
+#' Clear the internal TxDb annotation cache
+#'
+#' Removes all `TxDb` objects cached from GTF/GFF imports. Call this to free
+#' memory or to force re-parsing of a GTF file that has changed on disk.
+#'
+#' @return `NULL`, invisibly.
+#'
+#' @examples
+#' clear_annotation_cache()
+#'
+#' @export
+clear_annotation_cache <- function() {
+  rm(list = ls(.annotation_cache), envir = .annotation_cache)
+  invisible(NULL)
 }
 
 #' Load gene annotations for a genomic region
@@ -73,14 +55,19 @@ load_annotations <- function(txdb = NULL, gtf = NULL) {
 #' either a pre-built `TxDb` object or a GTF/GFF file. The result is used as
 #' the `annotations` argument to [plot_methylation()] to add a gene track.
 #'
+#' When a GTF/GFF path is supplied the file is parsed once and the resulting
+#' `TxDb` is cached internally for the rest of the R session. Subsequent calls
+#' with the same file path reuse the cache, so it is safe and efficient to call
+#' `read_annotations()` for multiple regions without manually pre-loading.
+#'
 #' @param txdb A `TxDb` object (from the `GenomicFeatures` package), or `NULL`.
 #'   Exactly one of `txdb` or `gtf` must be provided.
 #' @param gtf Character. Path to a GTF or GFF annotation file, or `NULL`.
-#'   Exactly one of `txdb` or `gtf` must be provided. When supplied, the file
-#'   is imported with `rtracklayer::import()` and converted to a `TxDb` via
-#'   `GenomicFeatures::makeTxDbFromGRanges()`. For repeated calls across
-#'   multiple regions, prefer [load_annotations()] to build the `TxDb` once
-#'   and pass it via `txdb`.
+#'   Exactly one of `txdb` or `gtf` must be provided. On the first call the
+#'   file is imported with `rtracklayer::import()` and converted to a `TxDb`
+#'   via `GenomicFeatures::makeTxDbFromGRanges()`; subsequent calls with the
+#'   same path reuse the cached `TxDb`. Use [clear_annotation_cache()] to free
+#'   the cached object or force re-parsing.
 #' @param region Character. Genomic region string in the format
 #'   `"chr:start-end"` (e.g., `"chr1:1000000-2000000"`). The same format
 #'   accepted by [read_methylation()].
@@ -101,8 +88,9 @@ load_annotations <- function(txdb = NULL, gtf = NULL) {
 #' txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
 #' ann <- read_annotations(txdb = txdb, region = "chr1:1000000-2000000")
 #'
-#' # From a GTF file
-#' ann <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "1:1000000-2000000")
+#' # From a GTF file — parsed once, cached for subsequent calls
+#' ann1 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr1:1000000-2000000")
+#' ann2 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr2:5000000-6000000")
 #' }
 #'
 #' @export
@@ -127,17 +115,9 @@ read_annotations <- function(txdb = NULL, gtf = NULL, region) {
     )
   }
 
-  # --- 3. Build TxDb from GTF if needed ---
+  # --- 3. Build TxDb from GTF if needed (cached) ---
   if (has_gtf) {
-    if (!requireNamespace("rtracklayer", quietly = TRUE)) {
-      stop(
-        "The 'rtracklayer' package is required to import GTF/GFF files. ",
-        "Install it with: BiocManager::install('rtracklayer')",
-        call. = FALSE
-      )
-    }
-    gr_gtf <- rtracklayer::import(gtf)
-    txdb   <- GenomicFeatures::makeTxDbFromGRanges(gr_gtf)
+    txdb <- .get_or_build_txdb(gtf)
   }
 
   # --- 4. Parse region ---
