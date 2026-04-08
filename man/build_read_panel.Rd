@@ -18,7 +18,10 @@ build_read_panel(
   mod_code_shapes,
   show_x_axis = FALSE,
   variant_bases = NULL,
-  variant_positions = NULL
+  variant_positions = NULL,
+  show_cigar = FALSE,
+  cigar_features = NULL,
+  min_indel_size = 50L
 )
 }
 \arguments{
@@ -57,6 +60,16 @@ and coloured by \code{variant_class} (ref/alt/del/other).}
 
 \item{variant_positions}{Numeric vector of genomic positions at which to draw
 vertical dashed marker lines, or \code{NULL}.}
+
+\item{show_cigar}{Logical. When \code{TRUE}, structural variants from CIGAR
+strings are overlaid on reads. Default \code{FALSE}.}
+
+\item{cigar_features}{Data.frame of CIGAR features (from
+\code{methylation_data$cigar_features}), or \code{NULL}.}
+
+\item{min_indel_size}{Integer. Minimum size (in bp) for insertions and
+deletions to be displayed. Features smaller than this threshold are
+suppressed. Clips (S/H) are always shown. Default \code{50}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object.

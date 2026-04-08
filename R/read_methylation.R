@@ -303,6 +303,49 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   sequences <- setNames(as.character(bam_data$seq[keep]), reads$read_name)
   cigars    <- setNames(bam_data$cigar[keep], reads$read_name)
 
+  # --- 10. Decompose CIGARs into structural features ---
+  cigar_list <- vector("list", length(keep))
+  for (j in seq_along(keep)) {
+    idx <- keep[j]
+    dc  <- decompose_cigar(bam_data$cigar[idx], bam_data$pos[idx])
+    # Keep only structurally interesting operations
+    dc <- dc[dc$type %in% c("I", "D", "S", "H", "N"), , drop = FALSE]
+    if (nrow(dc) > 0L) {
+      dc$read_name <- reads$read_name[j]
+      cigar_list[[j]] <- dc
+    }
+  }
+  cigar_features <- do.call(rbind, cigar_list)
+  if (is.null(cigar_features) || nrow(cigar_features) == 0L) {
+    cigar_features <- data.frame(
+      type        = character(0L),
+      ref_start   = integer(0L),
+      ref_end     = integer(0L),
+      query_start = integer(0L),
+      query_end   = integer(0L),
+      length      = integer(0L),
+      read_name   = character(0L),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    rownames(cigar_features) <- NULL
+    # Clip to region bounds: keep features that overlap the query region
+    # For features with ref coords, filter by overlap
+    has_ref <- !is.na(cigar_features$ref_start)
+    in_region <- rep(TRUE, nrow(cigar_features))
+    # Features with ref_start: must not be entirely outside region
+    in_region[has_ref & !is.na(cigar_features$ref_end)] <-
+      cigar_features$ref_start[has_ref & !is.na(cigar_features$ref_end)] <= parsed$end &
+      cigar_features$ref_end[has_ref & !is.na(cigar_features$ref_end)] >= parsed$start
+    # Features with ref_start but NA ref_end (insertions): check point
+    in_region[has_ref & is.na(cigar_features$ref_end)] <-
+      cigar_features$ref_start[has_ref & is.na(cigar_features$ref_end)] >= parsed$start &
+      cigar_features$ref_start[has_ref & is.na(cigar_features$ref_end)] <= parsed$end
+    # Features without ref coords (S, H): keep them (positioned at read ends later)
+    cigar_features <- cigar_features[in_region, , drop = FALSE]
+    rownames(cigar_features) <- NULL
+  }
+
   # (mod_code column is already populated per-code in the inner loop above)
   structure(
     list(
@@ -313,7 +356,8 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
       group_tag = group_tag,
       snv_position = snv_position,
       sequences = sequences,
-      cigars = cigars
+      cigars = cigars,
+      cigar_features = cigar_features
     ),
     class = "methylation_data"
   )
@@ -350,6 +394,17 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
     sites$group <- character(0L)
   }
 
+  cigar_features <- data.frame(
+    type        = character(0L),
+    ref_start   = integer(0L),
+    ref_end     = integer(0L),
+    query_start = integer(0L),
+    query_end   = integer(0L),
+    length      = integer(0L),
+    read_name   = character(0L),
+    stringsAsFactors = FALSE
+  )
+
   structure(
     list(
       reads = reads,
@@ -359,7 +414,8 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
       group_tag = group_tag,
       snv_position = snv_position,
       sequences = setNames(character(0), character(0)),
-      cigars    = setNames(character(0), character(0))
+      cigars    = setNames(character(0), character(0)),
+      cigar_features = cigar_features
     ),
     class = "methylation_data"
   )

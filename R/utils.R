@@ -142,3 +142,81 @@ complement_base <- function(base) {
   }
   as.character(result)
 }
+
+#' Decompose a CIGAR string into individual operations
+#'
+#' Walks the CIGAR string and returns a data.frame describing each operation
+#' with reference and query coordinate ranges.
+#'
+#' @param cigar Character. A CIGAR string (e.g., `"5S10M2I3D5M"`).
+#' @param pos Integer. The 1-based reference position of the first aligned
+#'   base (the BAM POS field).
+#'
+#' @return A data.frame with columns:
+#'   \describe{
+#'     \item{type}{Character. CIGAR operation: `"M"`, `"I"`, `"D"`, `"S"`,
+#'       `"H"`, `"N"`, `"="`, or `"X"`.}
+#'     \item{ref_start}{Integer. Reference start position (`NA` for I/S/H).}
+#'     \item{ref_end}{Integer. Reference end position (`NA` for I/S/H).}
+#'     \item{query_start}{Integer. Query start position (`NA` for D/N/H).}
+#'     \item{query_end}{Integer. Query end position (`NA` for D/N/H).}
+#'     \item{length}{Integer. Operation length.}
+#'   }
+#'
+#' @keywords internal
+decompose_cigar <- function(cigar, pos) {
+  ops  <- regmatches(cigar, gregexpr("[A-Z=]", cigar))[[1]]
+  lens <- as.integer(regmatches(cigar, gregexpr("\\d+", cigar))[[1]])
+
+  n <- length(ops)
+  type        <- character(n)
+  ref_start   <- rep(NA_integer_, n)
+  ref_end     <- rep(NA_integer_, n)
+  query_start <- rep(NA_integer_, n)
+  query_end   <- rep(NA_integer_, n)
+  op_length   <- integer(n)
+
+  ref_offset   <- as.integer(pos)
+  query_offset <- 1L
+
+  for (i in seq_len(n)) {
+    op  <- ops[i]
+    len <- lens[i]
+    type[i]      <- op
+    op_length[i] <- len
+
+    if (op %in% c("M", "=", "X")) {
+      ref_start[i]   <- ref_offset
+      ref_end[i]     <- ref_offset + len - 1L
+      query_start[i] <- query_offset
+      query_end[i]   <- query_offset + len - 1L
+      ref_offset     <- ref_offset + len
+      query_offset   <- query_offset + len
+    } else if (op == "I") {
+      ref_start[i]   <- ref_offset  # insertion point
+      query_start[i] <- query_offset
+      query_end[i]   <- query_offset + len - 1L
+      query_offset   <- query_offset + len
+    } else if (op %in% c("D", "N")) {
+      ref_start[i] <- ref_offset
+      ref_end[i]   <- ref_offset + len - 1L
+      ref_offset   <- ref_offset + len
+    } else if (op == "S") {
+      query_start[i] <- query_offset
+      query_end[i]   <- query_offset + len - 1L
+      query_offset   <- query_offset + len
+    } else if (op == "H") {
+      # Hard clip: consumes neither reference nor query
+    }
+  }
+
+  data.frame(
+    type        = type,
+    ref_start   = ref_start,
+    ref_end     = ref_end,
+    query_start = query_start,
+    query_end   = query_end,
+    length      = op_length,
+    stringsAsFactors = FALSE
+  )
+}

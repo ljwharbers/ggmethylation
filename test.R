@@ -14,13 +14,12 @@ library(patchwork)
 
 # -- Shared paths -------------------------------------------------------------
 
-BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/PTCL8_PB/bamfiles/PTCL8_PB_tumor.bam"
-BAM_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/AITL4/bamfiles/AITL4_tumor.bam"
-VCF_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/AITL4/variants/clairsto/somatic.vcf.gz"
-GTF        <- "/staging/leuven/stg_00096/references/chm13_v2.0_maskedY.rCRS/annotation/chm13v2.0_RefSeq_Liftoff_v5.1.gtf"
+BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/PTCL8_PB/bamfiles/PTCL8_PB_tumor.bam"
+BAM_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/AITL4/bamfiles/AITL4_tumor.bam"
+VCF_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/AITL4/variants/clairsto/somatic.vcf.gz"
 
-REGION     <- "chr8:127730434-127750951"
-
+REGION     <- "chr8:127733434-127744951"
+REGION     <- "chr8:127598491-127599663"
 
 # =============================================================================
 # 1. Basic single-sample, ungrouped
@@ -107,30 +106,66 @@ plot_methylation(meth_hp, panel_heights = c(4, 1))
 
 
 # =============================================================================
-# 7. Gene annotations — from TxDb and from GTF (with session cache)
+# 7. Gene annotations — from UCSC ncbiRefSeq (canonical gene symbols)
 # =============================================================================
 
-# From GTF — parsed once, cached for the session
-annot <- read_annotations(gtf = GTF, region = REGION)
+# Use genome = "hg38" to automatically download and cache the UCSC ncbiRefSeq
+# GTF (hs1.ncbiRefSeq.gtf.gz). Gene names are canonical symbols (e.g. "MYC").
+# The GTF is cached locally; subsequent calls skip the download.
+#
+# To change the cache location (e.g. to scratch on HPC):
+#   options(ggmethylation.cache_dir = "$VSC_SCRATCH/ggmethylation_cache")
+annot <- read_annotations(genome = "hg38", region = REGION)
 
 print(annot)
 
-# Second call reuses cache (no re-parsing message)
-annot2 <- read_annotations(gtf = GTF, region = "chr8:127700000-127800000")
+# Second call reuses both the downloaded GTF and the TxDb cache
+annot2 <- read_annotations(genome = "hg38", region = "chr8:127700000-127800000")
 
-# Clear cache to free memory or force re-parse
+# Opt out of transcript collapsing to show all isoforms
+annot_all_isoforms <- read_annotations(genome = "hg38", region = REGION,
+                                       collapse_transcripts = FALSE)
+print(annot_all_isoforms)
+
+# Clear TxDb cache to free memory or force re-parse (does not delete downloaded GTF)
 clear_annotation_cache()
+
+# hg38 genome is also supported
+# annot_hg38 <- read_annotations(genome = "hg38", region = REGION)
+
+# From a local GTF file (e.g. custom annotation)
+# annot_gtf <- read_annotations(gtf = "/path/to/custom.gtf", region = REGION)
 
 # From a pre-built TxDb (e.g., Bioconductor annotation package)
 # library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 # annot_txdb <- read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
 #                                region = REGION)
 
+# IGV-style gene track: thin intron lines, medium UTR boxes, full CDS boxes
 plot_methylation(meth_hp, annotations = annot)
+
+# Combined with all isoforms visible
+plot_methylation(meth_hp, annotations = annot_all_isoforms)
 
 
 # =============================================================================
-# 8. Variant overlay (VCF)
+# 8. CIGAR structural variant visualisation
+# =============================================================================
+
+# show_cigar = TRUE overlays per-read structural features derived from the
+# CIGAR string:
+#   - Purple bold "I" at insertion positions
+#   - Thin black line across deletion spans
+#   - Orange triangle markers at soft/hard-clipped read ends
+
+plot_methylation(meth, show_cigar = TRUE)
+
+# Works with grouping and annotations too
+plot_methylation(meth_hp, annotations = annot, show_cigar = TRUE)
+
+
+# =============================================================================
+# 9. Variant overlay (VCF)
 # =============================================================================
 
 vars <- read_variants(VCF_AITL4, REGION)
@@ -150,7 +185,7 @@ plot_methylation(meth_aitl4,
 
 
 # =============================================================================
-# 9. Multi-sample comparison
+# 10. Multi-sample comparison
 # =============================================================================
 
 merged <- merge_methylation(PTCL8 = meth_hp,
@@ -168,7 +203,7 @@ plot_methylation(merged, annotations = annot, variants = vars)
 
 
 # =============================================================================
-# 10. Write methylation data to disk
+# 11. Write methylation data to disk
 # =============================================================================
 
 write_methylation(meth, prefix = "/tmp/ptcl8_meth", format = "tsv")
@@ -181,7 +216,7 @@ meth |>
 
 
 # =============================================================================
-# 11. Manipulating patchwork output
+# 12. Manipulating patchwork output
 # =============================================================================
 
 p <- plot_methylation(meth_hp, annotations = annot)
