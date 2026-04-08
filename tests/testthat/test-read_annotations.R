@@ -31,10 +31,30 @@ test_that("read_annotations returns 1 transcript and 1 exon for overlapping regi
   ann <- read_annotations(txdb = txdb, region = "chr1:900-2100")
 
   expect_s3_class(ann, "gene_annotations")
-  expect_named(ann, c("transcripts", "exons", "region"))
+  expect_named(ann, c("transcripts", "exons", "cds", "utr5", "utr3", "region"))
   expect_equal(nrow(ann$transcripts), 1L)
   expect_equal(nrow(ann$exons), 1L)
   expect_equal(ann$transcripts$tx_name, "tx1")
+})
+
+# --- Test: $cds, $utr5, $utr3 fields exist in returned object ---
+
+test_that("read_annotations includes cds, utr5, utr3 fields in returned object", {
+  ann <- read_annotations(txdb = txdb, region = "chr1:900-2100")
+
+  expect_true("cds"  %in% names(ann))
+  expect_true("utr5" %in% names(ann))
+  expect_true("utr3" %in% names(ann))
+
+  # For this minimal TxDb there is no CDS/UTR data; fields should be data.frames
+  expect_s3_class(ann$cds,  "data.frame")
+  expect_s3_class(ann$utr5, "data.frame")
+  expect_s3_class(ann$utr3, "data.frame")
+
+  # Verify expected column names
+  expect_named(ann$cds,  c("tx_id", "cds_start", "cds_end"))
+  expect_named(ann$utr5, c("tx_id", "utr_start", "utr_end"))
+  expect_named(ann$utr3, c("tx_id", "utr_start", "utr_end"))
 })
 
 # --- Test 2: non-overlapping region returns 0 transcripts gracefully ---
@@ -45,6 +65,10 @@ test_that("read_annotations returns 0 transcripts for non-overlapping region", {
   expect_s3_class(ann, "gene_annotations")
   expect_equal(nrow(ann$transcripts), 0L)
   expect_equal(nrow(ann$exons), 0L)
+  # Empty result should still contain cds/utr fields
+  expect_true("cds"  %in% names(ann))
+  expect_true("utr5" %in% names(ann))
+  expect_true("utr3" %in% names(ann))
 })
 
 # --- Test 3: error when both txdb and gtf are provided ---

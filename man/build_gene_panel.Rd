@@ -21,8 +21,13 @@ build_gene_panel(annotations, region_start, region_end, bottom_label = TRUE)
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object.
 }
 \description{
-Renders transcript models (intron lines, exon boxes, strand arrows, gene
-labels) for a \code{gene_annotations} object into a single ggplot2 panel
+Renders transcript models (intron lines, exon/CDS/UTR boxes, strand arrows,
+gene labels) for a \code{gene_annotations} object into a single ggplot2 panel
 suitable for assembly with patchwork.
+}
+\details{
+When the annotations object contains CDS data (\verb{$cds}), an IGV-style
+three-tier rendering is used: thin intron line, medium-height UTR boxes,
+and full-height CDS boxes. Without CDS data a uniform exon box is drawn.
 }
 \keyword{internal}
