@@ -2,6 +2,58 @@
 # Keyed by normalised file path; avoids re-parsing large files within a session.
 .annotation_cache <- new.env(parent = emptyenv())
 
+# Map of supported genome shorthands to UCSC ncbiRefSeq GTF URLs.
+.genome_gtf_urls <- list(
+  hg38  = "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/genes/hg38.ncbiRefSeq.gtf.gz",
+  chm13 = "https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/genes/hs1.ncbiRefSeq.gtf.gz"
+)
+
+# Internal helper: resolve local path for a genome GTF, downloading and caching if needed.
+# Returns the path to the (possibly gzipped) GTF file.
+.fetch_genome_gtf <- function(genome) {
+  url <- .genome_gtf_urls[[genome]]
+  if (is.null(url)) {
+    stop(
+      "Unsupported genome '", genome, "'. ",
+      "Supported values: ", paste(names(.genome_gtf_urls), collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  # Determine cache directory: respect user option, fall back to R user dir
+  cache_dir <- getOption(
+    "ggmethylation.cache_dir",
+    default = tools::R_user_dir("ggmethylation", "cache")
+  )
+  if (!dir.exists(cache_dir)) {
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+
+  dest <- file.path(cache_dir, basename(url))
+
+  if (!file.exists(dest)) {
+    message(
+      "Downloading ncbiRefSeq GTF for '", genome, "' from UCSC ...\n",
+      "  -> ", dest, "\n",
+      "  (Set options(ggmethylation.cache_dir = '/your/path') to change location.)"
+    )
+    tryCatch(
+      utils::download.file(url, destfile = dest, mode = "wb", quiet = FALSE),
+      error = function(e) {
+        stop(
+          "Failed to download GTF for genome '", genome, "':\n  ", conditionMessage(e),
+          "\nCheck your internet connection or supply a local `gtf` path instead.",
+          call. = FALSE
+        )
+      }
+    )
+  } else {
+    message("Using cached GTF for '", genome, "': ", dest)
+  }
+
+  dest
+}
+
 # Internal helper: return list(txdb, granges) for `gtf`, building and caching on first use.
 .get_or_build_txdb <- function(gtf) {
   if (!requireNamespace("GenomicFeatures", quietly = TRUE)) {
@@ -164,22 +216,30 @@ clear_annotation_cache <- function() {
 #' Load gene annotations for a genomic region
 #'
 #' Extracts transcript and exon models overlapping a given genomic region from
-#' either a pre-built `TxDb` object or a GTF/GFF file. The result is used as
-#' the `annotations` argument to [plot_methylation()] to add a gene track.
+#' a UCSC genome shorthand, a local GTF/GFF file, or a pre-built `TxDb` object.
+#' The result is used as the `annotations` argument to [plot_methylation()] to
+#' add a gene track with canonical gene symbols.
 #'
-#' When a GTF/GFF path is supplied the file is parsed once and the resulting
-#' `TxDb` is cached internally for the rest of the R session. Subsequent calls
-#' with the same file path reuse the cache, so it is safe and efficient to call
-#' `read_annotations()` for multiple regions without manually pre-loading.
+#' The recommended approach is to use the `genome` shorthand (`"hg38"` or
+#' `"chm13"`), which automatically downloads the UCSC ncbiRefSeq GTF on first
+#' use and caches it locally for subsequent calls. GTF files can be large
+#' (~50–150 MB compressed); the cache location defaults to
+#' `tools::R_user_dir("ggmethylation", "cache")` and can be overridden by
+#' setting `options(ggmethylation.cache_dir = "/your/scratch/path")`.
 #'
+#' When a GTF/GFF path is supplied via `gtf`, the file is parsed once and the
+#' resulting `TxDb` is cached internally for the R session. Subsequent calls
+#' with the same file path reuse the cache. Use [clear_annotation_cache()] to
+#' free cached objects or force re-parsing.
+#'
+#' @param genome Character. Genome assembly shorthand. Currently supported:
+#'   `"hg38"` (GRCh38/hg38) and `"chm13"` (CHM13v2/hs1). Downloads the
+#'   corresponding UCSC ncbiRefSeq GTF automatically, caching it locally.
+#'   Exactly one of `genome`, `gtf`, or `txdb` must be provided.
 #' @param txdb A `TxDb` object (from the `GenomicFeatures` package), or `NULL`.
-#'   Exactly one of `txdb` or `gtf` must be provided.
-#' @param gtf Character. Path to a GTF or GFF annotation file, or `NULL`.
-#'   Exactly one of `txdb` or `gtf` must be provided. On the first call the
-#'   file is imported with `rtracklayer::import()` and converted to a `TxDb`
-#'   via `GenomicFeatures::makeTxDbFromGRanges()`; subsequent calls with the
-#'   same path reuse the cached `TxDb`. Use [clear_annotation_cache()] to free
-#'   the cached object or force re-parsing.
+#'   Exactly one of `genome`, `gtf`, or `txdb` must be provided.
+#' @param gtf Character. Path to a local GTF or GFF annotation file, or `NULL`.
+#'   Exactly one of `genome`, `gtf`, or `txdb` must be provided.
 #' @param region Character. Genomic region string in the format
 #'   `"chr:start-end"` (e.g., `"chr1:1000000-2000000"`). The same format
 #'   accepted by [read_methylation()].
@@ -205,27 +265,44 @@ clear_annotation_cache <- function() {
 #'
 #' @examples
 #' \dontrun{
-#' library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-#' txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
-#' ann <- read_annotations(txdb = txdb, region = "chr1:1000000-2000000")
+#' # Recommended: auto-download UCSC ncbiRefSeq GTF (canonical gene symbols)
+#' ann <- read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
+#' ann <- read_annotations(genome = "chm13", region = "chr8:127730000-127760000")
 #'
-#' # From a GTF file — parsed once, cached for subsequent calls
+#' # Change cache directory (e.g. to scratch on HPC)
+#' options(ggmethylation.cache_dir = "/scratch/myproject/gtf_cache")
+#' ann <- read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
+#'
+#' # From a local GTF file — parsed once, cached for subsequent calls
 #' ann1 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr1:1000000-2000000")
 #' ann2 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr2:5000000-6000000")
+#'
+#' # From a pre-built TxDb package
+#' library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+#' ann <- read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
+#'                         region = "chr1:1000000-2000000")
 #' }
 #'
 #' @export
-read_annotations <- function(txdb = NULL, gtf = NULL, region,
+read_annotations <- function(genome = NULL, txdb = NULL, gtf = NULL, region,
                              collapse_transcripts = TRUE) {
   # --- 1. Validate exactly one source ---
-  has_txdb <- !is.null(txdb)
-  has_gtf  <- !is.null(gtf)
+  has_genome <- !is.null(genome)
+  has_txdb   <- !is.null(txdb)
+  has_gtf    <- !is.null(gtf)
 
-  if (has_txdb && has_gtf) {
-    stop("Provide exactly one of `txdb` or `gtf`, not both.", call. = FALSE)
+  n_sources <- has_genome + has_txdb + has_gtf
+  if (n_sources > 1L) {
+    stop("Provide exactly one of `genome`, `txdb`, or `gtf`.", call. = FALSE)
   }
-  if (!has_txdb && !has_gtf) {
-    stop("One of `txdb` or `gtf` must be provided.", call. = FALSE)
+  if (n_sources == 0L) {
+    stop("One of `genome`, `txdb`, or `gtf` must be provided.", call. = FALSE)
+  }
+
+  # Resolve genome shorthand to a local (cached) GTF path
+  if (has_genome) {
+    gtf     <- .fetch_genome_gtf(genome)
+    has_gtf <- TRUE
   }
 
   # --- 2. Check GenomicFeatures availability ---

@@ -4,22 +4,33 @@
 \alias{read_annotations}
 \title{Load gene annotations for a genomic region}
 \usage{
-read_annotations(txdb = NULL, gtf = NULL, region)
+read_annotations(
+  genome = NULL,
+  txdb = NULL,
+  gtf = NULL,
+  region,
+  collapse_transcripts = TRUE
+)
 }
 \arguments{
-\item{txdb}{A \code{TxDb} object (from the \code{GenomicFeatures} package), or \code{NULL}.
-Exactly one of \code{txdb} or \code{gtf} must be provided.}
+\item{genome}{Character. Genome assembly shorthand. Currently supported:
+\code{"hg38"} (GRCh38/hg38) and \code{"chm13"} (CHM13v2/hs1). Downloads the
+corresponding UCSC ncbiRefSeq GTF automatically, caching it locally.
+Exactly one of \code{genome}, \code{gtf}, or \code{txdb} must be provided.}
 
-\item{gtf}{Character. Path to a GTF or GFF annotation file, or \code{NULL}.
-Exactly one of \code{txdb} or \code{gtf} must be provided. On the first call the
-file is imported with \code{rtracklayer::import()} and converted to a \code{TxDb}
-via \code{GenomicFeatures::makeTxDbFromGRanges()}; subsequent calls with the
-same path reuse the cached \code{TxDb}. Use \code{\link[=clear_annotation_cache]{clear_annotation_cache()}} to free
-the cached object or force re-parsing.}
+\item{txdb}{A \code{TxDb} object (from the \code{GenomicFeatures} package), or \code{NULL}.
+Exactly one of \code{genome}, \code{gtf}, or \code{txdb} must be provided.}
+
+\item{gtf}{Character. Path to a local GTF or GFF annotation file, or \code{NULL}.
+Exactly one of \code{genome}, \code{gtf}, or \code{txdb} must be provided.}
 
 \item{region}{Character. Genomic region string in the format
 \code{"chr:start-end"} (e.g., \code{"chr1:1000000-2000000"}). The same format
 accepted by \code{\link[=read_methylation]{read_methylation()}}.}
+
+\item{collapse_transcripts}{Logical. When \code{TRUE} (default), only one
+canonical transcript per gene is retained (longest CDS, or longest span
+if no CDS data are available).}
 }
 \value{
 A \code{gene_annotations} S3 object (a list) with elements:
@@ -29,29 +40,52 @@ the region. Columns: \code{tx_id}, \code{tx_name}, \code{gene_name}, \code{stran
 \code{tx_start}, \code{tx_end}.}
 \item{exons}{Data frame with one row per exon. Columns: \code{tx_id},
 \code{exon_start}, \code{exon_end}.}
+\item{cds}{Data frame with CDS intervals. Columns: \code{tx_id},
+\code{cds_start}, \code{cds_end}.}
+\item{utr5}{Data frame with 5' UTR intervals. Columns: \code{tx_id},
+\code{utr_start}, \code{utr_end}.}
+\item{utr3}{Data frame with 3' UTR intervals. Columns: \code{tx_id},
+\code{utr_start}, \code{utr_end}.}
 \item{region}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object for the queried region.}
 }
 }
 \description{
 Extracts transcript and exon models overlapping a given genomic region from
-either a pre-built \code{TxDb} object or a GTF/GFF file. The result is used as
-the \code{annotations} argument to \code{\link[=plot_methylation]{plot_methylation()}} to add a gene track.
+a UCSC genome shorthand, a local GTF/GFF file, or a pre-built \code{TxDb} object.
+The result is used as the \code{annotations} argument to \code{\link[=plot_methylation]{plot_methylation()}} to
+add a gene track with canonical gene symbols.
 }
 \details{
-When a GTF/GFF path is supplied the file is parsed once and the resulting
-\code{TxDb} is cached internally for the rest of the R session. Subsequent calls
-with the same file path reuse the cache, so it is safe and efficient to call
-\code{read_annotations()} for multiple regions without manually pre-loading.
+The recommended approach is to use the \code{genome} shorthand (\code{"hg38"} or
+\code{"chm13"}), which automatically downloads the UCSC ncbiRefSeq GTF on first
+use and caches it locally for subsequent calls. GTF files can be large
+(~50–150 MB compressed); the cache location defaults to
+\code{tools::R_user_dir("ggmethylation", "cache")} and can be overridden by
+setting \code{options(ggmethylation.cache_dir = "/your/scratch/path")}.
+
+When a GTF/GFF path is supplied via \code{gtf}, the file is parsed once and the
+resulting \code{TxDb} is cached internally for the R session. Subsequent calls
+with the same file path reuse the cache. Use \code{\link[=clear_annotation_cache]{clear_annotation_cache()}} to
+free cached objects or force re-parsing.
 }
 \examples{
 \dontrun{
-library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
-ann <- read_annotations(txdb = txdb, region = "chr1:1000000-2000000")
+# Recommended: auto-download UCSC ncbiRefSeq GTF (canonical gene symbols)
+ann <- read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
+ann <- read_annotations(genome = "chm13", region = "chr8:127730000-127760000")
 
-# From a GTF file — parsed once, cached for subsequent calls
+# Change cache directory (e.g. to scratch on HPC)
+options(ggmethylation.cache_dir = "/scratch/myproject/gtf_cache")
+ann <- read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
+
+# From a local GTF file — parsed once, cached for subsequent calls
 ann1 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr1:1000000-2000000")
 ann2 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr2:5000000-6000000")
+
+# From a pre-built TxDb package
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+ann <- read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
+                        region = "chr1:1000000-2000000")
 }
 
 }

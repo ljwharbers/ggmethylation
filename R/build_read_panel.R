@@ -1,5 +1,61 @@
 # Internal function — not exported
 
+# Split reads into non-deletion sub-segments for IGV-style gap display.
+# Returns a data.frame with the same columns as `reads` but potentially more
+# rows: each row is a contiguous non-deleted stretch of a read.
+.split_reads_on_deletions <- function(reads, del_df) {
+  if (is.null(del_df) || nrow(del_df) == 0L) return(reads)
+
+  result_list <- vector("list", nrow(reads))
+
+  for (i in seq_len(nrow(reads))) {
+    rn      <- reads$read_name[i]
+    r_start <- reads$start[i]
+    r_end   <- reads$end[i]
+
+    rdels <- del_df[del_df$read_name == rn, , drop = FALSE]
+
+    if (nrow(rdels) == 0L) {
+      result_list[[i]] <- reads[i, , drop = FALSE]
+      next
+    }
+
+    rdels <- rdels[order(rdels$ref_start), , drop = FALSE]
+
+    segments <- list()
+    cur_start <- r_start
+
+    for (d in seq_len(nrow(rdels))) {
+      d_start <- max(rdels$ref_start[d], r_start)
+      d_end   <- min(rdels$ref_end[d],   r_end)
+
+      if (d_start > cur_start) {
+        seg        <- reads[i, , drop = FALSE]
+        seg$start  <- cur_start
+        seg$end    <- d_start - 1L
+        segments   <- c(segments, list(seg))
+      }
+      cur_start <- d_end + 1L
+    }
+
+    if (cur_start <= r_end) {
+      seg        <- reads[i, , drop = FALSE]
+      seg$start  <- cur_start
+      seg$end    <- r_end
+      segments   <- c(segments, list(seg))
+    }
+
+    result_list[[i]] <- if (length(segments) > 0L)
+      do.call(rbind, segments)
+    else
+      reads[i, , drop = FALSE]
+  }
+
+  out <- do.call(rbind, result_list)
+  rownames(out) <- NULL
+  out
+}
+
 #' Build a ggplot2 read-level methylation panel
 #'
 #' Constructs the top read panel (horizontal read bars + modification
@@ -35,6 +91,9 @@
 #'   strings are overlaid on reads. Default `FALSE`.
 #' @param cigar_features Data.frame of CIGAR features (from
 #'   `methylation_data$cigar_features`), or `NULL`.
+#' @param min_indel_size Integer. Minimum size (in bp) for insertions and
+#'   deletions to be displayed. Features smaller than this threshold are
+#'   suppressed. Clips (S/H) are always shown. Default `50`.
 #'
 #' @return A [ggplot2::ggplot] object.
 #'
@@ -54,7 +113,8 @@ build_read_panel <- function(data,
                              variant_bases     = NULL,
                              variant_positions = NULL,
                              show_cigar        = FALSE,
-                             cigar_features    = NULL) {
+                             cigar_features    = NULL,
+                             min_indel_size    = 50L) {
   codes      <- unique(data$sites$mod_code)
   multi_code <- length(codes) > 1L
 
@@ -65,11 +125,24 @@ build_read_panel <- function(data,
     by = "read_name"
   )
 
+  # When show_cigar is TRUE, split reads on large deletions so the thick read
+  # bar has IGV-style gaps instead of running through deletion regions.
+  reads_plot <- data$reads
+  if (isTRUE(show_cigar) && !is.null(cigar_features) && nrow(cigar_features) > 0L) {
+    large_dels <- cigar_features[
+      cigar_features$type == "D" & cigar_features$length >= min_indel_size,
+      , drop = FALSE
+    ]
+    if (nrow(large_dels) > 0L) {
+      reads_plot <- .split_reads_on_deletions(data$reads, large_dels)
+    }
+  }
+
   if (!is.null(data$group_tag)) {
     # Grouped: colour read bars by group, then second colour scale for dots
     p <- ggplot2::ggplot() +
       ggplot2::geom_segment(
-        data = data$reads,
+        data = reads_plot,
         ggplot2::aes(
           x = .data$start, xend = .data$end,
           y = .data$lane, yend = .data$lane,
@@ -126,7 +199,7 @@ build_read_panel <- function(data,
     if (isTRUE(colour_strand)) {
       p <- ggplot2::ggplot() +
         ggplot2::geom_segment(
-          data = data$reads,
+          data = reads_plot,
           ggplot2::aes(
             x = .data$start, xend = .data$end,
             y = .data$lane, yend = .data$lane,
@@ -154,7 +227,7 @@ build_read_panel <- function(data,
     } else {
       p <- ggplot2::ggplot() +
         ggplot2::geom_segment(
-          data = data$reads,
+          data = reads_plot,
           ggplot2::aes(
             x = .data$start, xend = .data$end,
             y = .data$lane, yend = .data$lane
@@ -204,6 +277,9 @@ build_read_panel <- function(data,
       data$reads[, c("read_name", "lane", "start", "end"), drop = FALSE],
       by = "read_name"
     )
+
+    # Filter small indels (clips are always kept)
+    cf <- cf[!(cf$type %in% c("I", "D") & cf$length < min_indel_size), , drop = FALSE]
 
     # Deletions: draw black line segments
     del_df <- cf[cf$type == "D", , drop = FALSE]

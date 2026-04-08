@@ -14,13 +14,12 @@ library(patchwork)
 
 # -- Shared paths -------------------------------------------------------------
 
-BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/PTCL8_PB/bamfiles/PTCL8_PB_tumor.bam"
-BAM_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/AITL4/bamfiles/AITL4_tumor.bam"
-VCF_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/AITL4/variants/clairsto/somatic.vcf.gz"
-GTF        <- "/staging/leuven/stg_00096/references/chm13_v2.0_maskedY.rCRS/annotation/chm13v2.0_RefSeq_Liftoff_v5.1.gtf"
+BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/PTCL8_PB/bamfiles/PTCL8_PB_tumor.bam"
+BAM_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/AITL4/bamfiles/AITL4_tumor.bam"
+VCF_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/AITL4/variants/clairsto/somatic.vcf.gz"
 
-REGION     <- "chr8:127730434-127750951"
-
+REGION     <- "chr8:127733434-127744951"
+REGION     <- "chr8:127598491-127599663"
 
 # =============================================================================
 # 1. Basic single-sample, ungrouped
@@ -107,26 +106,35 @@ plot_methylation(meth_hp, panel_heights = c(4, 1))
 
 
 # =============================================================================
-# 7. Gene annotations — from GTF with session cache, IGV-style rendering
+# 7. Gene annotations — from UCSC ncbiRefSeq (canonical gene symbols)
 # =============================================================================
 
-# From GTF — parsed once, cached for the session.
-# Gene names are resolved from the GTF gene_name attribute (e.g. "MYC"),
-# and transcripts are collapsed to one canonical isoform per gene (longest CDS).
-annot <- read_annotations(gtf = GTF, region = REGION)
+# Use genome = "hg38" to automatically download and cache the UCSC ncbiRefSeq
+# GTF (hs1.ncbiRefSeq.gtf.gz). Gene names are canonical symbols (e.g. "MYC").
+# The GTF is cached locally; subsequent calls skip the download.
+#
+# To change the cache location (e.g. to scratch on HPC):
+#   options(ggmethylation.cache_dir = "$VSC_SCRATCH/ggmethylation_cache")
+annot <- read_annotations(genome = "hg38", region = REGION)
 
 print(annot)
 
-# Second call reuses the TxDb cache (no re-parsing message)
-annot2 <- read_annotations(gtf = GTF, region = "chr8:127700000-127800000")
+# Second call reuses both the downloaded GTF and the TxDb cache
+annot2 <- read_annotations(genome = "hg38", region = "chr8:127700000-127800000")
 
 # Opt out of transcript collapsing to show all isoforms
-annot_all_isoforms <- read_annotations(gtf = GTF, region = REGION,
+annot_all_isoforms <- read_annotations(genome = "hg38", region = REGION,
                                        collapse_transcripts = FALSE)
 print(annot_all_isoforms)
 
-# Clear cache to free memory or force re-parse
+# Clear TxDb cache to free memory or force re-parse (does not delete downloaded GTF)
 clear_annotation_cache()
+
+# hg38 genome is also supported
+# annot_hg38 <- read_annotations(genome = "hg38", region = REGION)
+
+# From a local GTF file (e.g. custom annotation)
+# annot_gtf <- read_annotations(gtf = "/path/to/custom.gtf", region = REGION)
 
 # From a pre-built TxDb (e.g., Bioconductor annotation package)
 # library(TxDb.Hsapiens.UCSC.hg38.knownGene)

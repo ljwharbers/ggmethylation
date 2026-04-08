@@ -58,10 +58,17 @@ smooth_methylation <- function(sites, group_col = "group",
       # Too few unique positions for loess; return raw means
       df <- agg
     } else {
-      fit <- stats::loess(mean_prob ~ position, data = agg, span = span)
-      grid <- seq(min(agg$position), max(agg$position), length.out = 200L)
-      pred <- stats::predict(fit, newdata = data.frame(position = grid))
-      df <- data.frame(position = grid, mean_prob = pred)
+      df <- tryCatch(
+        suppressWarnings({
+          fit  <- stats::loess(mean_prob ~ position, data = agg, span = span)
+          grid <- seq(min(agg$position, na.rm = TRUE),
+                      max(agg$position, na.rm = TRUE),
+                      length.out = 200L)
+          pred <- stats::predict(fit, newdata = data.frame(position = grid))
+          data.frame(position = grid, mean_prob = pred)
+        }),
+        error = function(e) agg
+      )
     }
 
     df[[effective_group_col]] <- grp

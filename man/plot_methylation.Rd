@@ -17,7 +17,9 @@ plot_methylation(
   smooth_span = 0.3,
   panel_heights = NULL,
   annotations = NULL,
-  variants = NULL
+  variants = NULL,
+  show_cigar = FALSE,
+  min_indel_size = 50L
 )
 }
 \arguments{
@@ -66,6 +68,15 @@ variant positions (coloured by match to ref/alt), and vertical dashed
 lines are added at every variant position across all panels. Requires
 that \code{data} was produced by a current version of \code{\link[=read_methylation]{read_methylation()}} that
 stores sequences and CIGARs in the object.}
+
+\item{show_cigar}{Logical. When \code{TRUE}, structural variants from CIGAR
+strings (insertions, deletions, clips) are displayed on reads. Default
+\code{FALSE}.}
+
+\item{min_indel_size}{Integer. Minimum size (in bp) for insertions and
+deletions to be displayed when \code{show_cigar = TRUE}. Indels smaller than
+this threshold are hidden to reduce visual clutter from common small
+indels. Clips (S/H) are unaffected. Default \code{50}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a

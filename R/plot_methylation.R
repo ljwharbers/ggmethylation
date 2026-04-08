@@ -1,3 +1,152 @@
+# Internal helpers for interrupting the smooth line at consensus deletion regions
+
+# For each group, returns genomic intervals [del_start, del_end] where at least
+# `threshold` fraction of reads in that group carry a deletion.
+# cigar_features: pre-filtered to type == "D" and min_indel_size by caller
+# reads: data.frame with read_name and the group column
+.consensus_deletion_ranges <- function(cigar_features, reads, group_col,
+                                       threshold = 0.75) {
+  empty <- data.frame(
+    del_start = integer(0L),
+    del_end   = integer(0L),
+    stringsAsFactors = FALSE
+  )
+  empty[[group_col]] <- character(0L)
+
+  dels <- cigar_features[cigar_features$type == "D", , drop = FALSE]
+  if (nrow(dels) == 0L) return(empty)
+
+  # Attach group membership to each deletion row
+  dels <- merge(
+    dels,
+    reads[, c("read_name", group_col), drop = FALSE],
+    by = "read_name", all.x = FALSE
+  )
+  if (nrow(dels) == 0L) return(empty)
+
+  groups <- unique(dels[[group_col]])
+  result_list <- vector("list", length(groups))
+
+  for (k in seq_along(groups)) {
+    grp  <- groups[k]
+    sub  <- dels[dels[[group_col]] == grp, , drop = FALSE]
+    n_reads <- sum(reads[[group_col]] == grp, na.rm = TRUE)
+    if (n_reads == 0L) next
+
+    sub <- sub[order(sub$ref_start), , drop = FALSE]
+
+    # Sweep-merge overlapping deletion intervals, accumulating read names
+    merged_starts <- integer(0L)
+    merged_ends   <- integer(0L)
+    merged_reads  <- list()
+
+    cur_start <- sub$ref_start[1L]
+    cur_end   <- sub$ref_end[1L]
+    cur_rds   <- sub$read_name[1L]
+
+    for (i in seq_len(nrow(sub))[-1L]) {
+      if (sub$ref_start[i] <= cur_end + 1L) {
+        cur_end <- max(cur_end, sub$ref_end[i])
+        cur_rds <- c(cur_rds, sub$read_name[i])
+      } else {
+        merged_starts <- c(merged_starts, cur_start)
+        merged_ends   <- c(merged_ends,   cur_end)
+        merged_reads  <- c(merged_reads,  list(unique(cur_rds)))
+        cur_start <- sub$ref_start[i]
+        cur_end   <- sub$ref_end[i]
+        cur_rds   <- sub$read_name[i]
+      }
+    }
+    merged_starts <- c(merged_starts, cur_start)
+    merged_ends   <- c(merged_ends,   cur_end)
+    merged_reads  <- c(merged_reads,  list(unique(cur_rds)))
+
+    keep <- vapply(
+      merged_reads,
+      function(rds) length(rds) / n_reads >= threshold,
+      logical(1L)
+    )
+
+    if (!any(keep)) next
+
+    df <- data.frame(
+      del_start = merged_starts[keep],
+      del_end   = merged_ends[keep],
+      stringsAsFactors = FALSE
+    )
+    df[[group_col]] <- grp
+    result_list[[k]] <- df
+  }
+
+  out <- do.call(rbind, Filter(Negate(is.null), result_list))
+  if (is.null(out)) return(empty)
+  rownames(out) <- NULL
+  out
+}
+
+# Insert NA breaks into a smoothed data frame at each consensus deletion interval.
+# Sentinel NA rows are added at del_start - 0.5 and del_end + 0.5 to guarantee
+# a visible gap even when no grid point falls inside the deletion.
+.insert_deletion_breaks <- function(smoothed, deletion_ranges, group_col) {
+  if (nrow(deletion_ranges) == 0L) return(smoothed)
+
+  id_cols <- setdiff(names(smoothed), c("position", "mean_prob"))
+  sentinel_list <- vector("list", nrow(deletion_ranges))
+
+  for (i in seq_len(nrow(deletion_ranges))) {
+    grp_val   <- deletion_ranges[[group_col]][i]
+    del_start <- deletion_ranges$del_start[i]
+    del_end   <- deletion_ranges$del_end[i]
+
+    # Mask grid points within the deletion
+    in_grp <- smoothed[[group_col]] == grp_val
+    in_del <- smoothed$position >= del_start & smoothed$position <= del_end
+    smoothed$mean_prob[in_grp & in_del] <- NA_real_
+
+    # Build sentinel rows — one pair per unique line-identity combo in this group
+    grp_rows  <- smoothed[in_grp, id_cols, drop = FALSE]
+    templates <- unique(grp_rows)
+
+    if (nrow(templates) == 0L) next
+
+    sentinels <- vector("list", nrow(templates) * 2L)
+    for (j in seq_len(nrow(templates))) {
+      s1 <- templates[j, , drop = FALSE]
+      s1$position  <- del_start - 0.5
+      s1$mean_prob <- NA_real_
+      s2 <- templates[j, , drop = FALSE]
+      s2$position  <- del_end + 0.5
+      s2$mean_prob <- NA_real_
+      sentinels[[2L * j - 1L]] <- s1
+      sentinels[[2L * j]]      <- s2
+    }
+    sentinel_list[[i]] <- do.call(rbind, sentinels)
+  }
+
+  all_sentinels <- do.call(rbind, Filter(Negate(is.null), sentinel_list))
+  if (!is.null(all_sentinels) && nrow(all_sentinels) > 0L) {
+    smoothed <- rbind(smoothed, all_sentinels[, names(smoothed), drop = FALSE])
+  }
+
+  smoothed <- smoothed[order(smoothed[[group_col]], smoothed$position), , drop = FALSE]
+  rownames(smoothed) <- NULL
+  smoothed
+}
+
+# Convenience wrapper: apply deletion breaks when show_cigar is TRUE.
+.apply_deletion_breaks <- function(smoothed, cigar_features, reads, group_col,
+                                   min_indel_size, show_cigar) {
+  if (!isTRUE(show_cigar)) return(smoothed)
+  if (is.null(cigar_features) || nrow(cigar_features) == 0L) return(smoothed)
+  dels <- cigar_features[
+    cigar_features$type == "D" & cigar_features$length >= min_indel_size,
+    , drop = FALSE
+  ]
+  if (nrow(dels) == 0L) return(smoothed)
+  ranges <- .consensus_deletion_ranges(dels, reads, group_col)
+  .insert_deletion_breaks(smoothed, ranges, group_col)
+}
+
 #' Plot read-level methylation data
 #'
 #' Creates a ggplot2 visualisation of read-level base modification data. When
@@ -43,6 +192,10 @@
 #' @param show_cigar Logical. When `TRUE`, structural variants from CIGAR
 #'   strings (insertions, deletions, clips) are displayed on reads. Default
 #'   `FALSE`.
+#' @param min_indel_size Integer. Minimum size (in bp) for insertions and
+#'   deletions to be displayed when `show_cigar = TRUE`. Indels smaller than
+#'   this threshold are hidden to reduce visual clutter from common small
+#'   indels. Clips (S/H) are unaffected. Default `50`.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -69,7 +222,8 @@ plot_methylation <- function(data, sort_by = NULL,
                              panel_heights = NULL,
                              annotations = NULL,
                              variants = NULL,
-                             show_cigar = FALSE) {
+                             show_cigar = FALSE,
+                             min_indel_size = 50L) {
   # --- 1. Validate input ---
   if (inherits(data, "multi_methylation_data")) {
     return(.plot_multi_methylation(
@@ -86,7 +240,8 @@ plot_methylation <- function(data, sort_by = NULL,
       panel_heights   = panel_heights,
       annotations     = annotations,
       variants        = variants,
-      show_cigar      = show_cigar
+      show_cigar      = show_cigar,
+      min_indel_size  = min_indel_size
     ))
   }
 
@@ -240,7 +395,8 @@ plot_methylation <- function(data, sort_by = NULL,
     variant_bases     = variant_bases,
     variant_positions = variant_positions,
     show_cigar        = show_cigar,
-    cigar_features    = if (isTRUE(show_cigar)) data$cigar_features else NULL
+    cigar_features    = if (isTRUE(show_cigar)) data$cigar_features else NULL,
+    min_indel_size    = min_indel_size
   )
 
   # --- 7. Build bottom panel ---
@@ -251,10 +407,16 @@ plot_methylation <- function(data, sort_by = NULL,
     sites_smooth <- data$sites
     sites_smooth$group <- "all"
 
+    reads_grouped <- data$reads
+    reads_grouped$group <- "all"
+
     if (!multi_code) {
       # Single code: one line, fixed colour
       smoothed <- smooth_methylation(sites_smooth, group_col = "group",
                                      span = smooth_span)
+      smoothed <- .apply_deletion_breaks(smoothed, data$cigar_features,
+                                         reads_grouped, "group",
+                                         min_indel_size, show_cigar)
 
       p_bottom <- ggplot2::ggplot(
         smoothed,
@@ -273,6 +435,9 @@ plot_methylation <- function(data, sort_by = NULL,
       # Multi-code: one line per code, colour by mod_code
       smoothed <- smooth_methylation(sites_smooth, group_col = "group",
                                      mod_code_col = "mod_code", span = smooth_span)
+      smoothed <- .apply_deletion_breaks(smoothed, data$cigar_features,
+                                         reads_grouped, "group",
+                                         min_indel_size, show_cigar)
 
       p_bottom <- ggplot2::ggplot(
         smoothed,
@@ -301,6 +466,9 @@ plot_methylation <- function(data, sort_by = NULL,
         group_col = "group",
         span = smooth_span
       )
+      smoothed <- .apply_deletion_breaks(smoothed, data$cigar_features,
+                                         data$reads, "group",
+                                         min_indel_size, show_cigar)
 
       p_bottom <- ggplot2::ggplot(
         smoothed,
@@ -331,6 +499,9 @@ plot_methylation <- function(data, sort_by = NULL,
         mod_code_col = "mod_code",
         span         = smooth_span
       )
+      smoothed <- .apply_deletion_breaks(smoothed, data$cigar_features,
+                                         data$reads, "group",
+                                         min_indel_size, show_cigar)
 
       p_bottom <- ggplot2::ggplot(
         smoothed,
@@ -444,7 +615,8 @@ plot_methylation <- function(data, sort_by = NULL,
                                     dot_size, colour_strand, strand_colours,
                                     group_colours, mod_code_shapes,
                                     smooth_span, panel_heights, annotations,
-                                    variants, show_cigar = FALSE) {
+                                    variants, show_cigar = FALSE,
+                                    min_indel_size = 50L) {
 
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
@@ -588,7 +760,8 @@ plot_methylation <- function(data, sort_by = NULL,
       variant_bases     = s_variant_bases,
       variant_positions = s_variant_positions,
       show_cigar        = show_cigar,
-      cigar_features    = if (isTRUE(show_cigar)) s$cigar_features else NULL
+      cigar_features    = if (isTRUE(show_cigar)) s$cigar_features else NULL,
+      min_indel_size    = min_indel_size
     )
     p_reads <- p_reads + ggplot2::labs(title = nm)
     sample_panels[[i]] <- p_reads
@@ -615,6 +788,39 @@ plot_methylation <- function(data, sort_by = NULL,
       group_col = "smooth_key",
       span      = smooth_span
     )
+
+    if (isTRUE(show_cigar)) {
+      # Collect deletions and reads from all samples tagged with their smooth_key
+      all_dels_list  <- vector("list", n_samples)
+      all_reads_list <- vector("list", n_samples)
+      for (i in seq_len(n_samples)) {
+        nm <- sample_names[i]
+        s  <- data$samples[[nm]]
+        if (!is.null(s$cigar_features) && nrow(s$cigar_features) > 0L) {
+          s_dels <- s$cigar_features[
+            s$cigar_features$type == "D" &
+              s$cigar_features$length >= min_indel_size, , drop = FALSE
+          ]
+          if (nrow(s_dels) > 0L) all_dels_list[[i]] <- s_dels
+        }
+        if (nrow(s$reads) > 0L) {
+          s_reads <- s$reads
+          if (!is.null(s$group_tag) && "group" %in% names(s_reads)) {
+            s_reads$smooth_key <- paste(nm, s_reads$group, sep = ":")
+          } else {
+            s_reads$smooth_key <- rep(nm, nrow(s_reads))
+          }
+          all_reads_list[[i]] <- s_reads
+        }
+      }
+      all_dels  <- do.call(rbind, Filter(Negate(is.null), all_dels_list))
+      all_reads <- do.call(rbind, Filter(Negate(is.null), all_reads_list))
+      if (!is.null(all_dels) && nrow(all_dels) > 0L &&
+          !is.null(all_reads) && nrow(all_reads) > 0L) {
+        ranges  <- .consensus_deletion_ranges(all_dels, all_reads, "smooth_key")
+        smoothed <- .insert_deletion_breaks(smoothed, ranges, "smooth_key")
+      }
+    }
 
     # Determine if any sample has grouping by checking for ":" in smooth_key
     multi_has_groups <- any(grepl(":", smoothed$smooth_key, fixed = TRUE))
