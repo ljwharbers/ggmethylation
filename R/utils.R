@@ -164,6 +164,56 @@ complement_base <- function(base) {
 #'   }
 #'
 #' @keywords internal
+#' Parse an SA (Supplementary Alignment) BAM auxiliary tag
+#'
+#' Splits a semicolon-delimited SA tag string into a data.frame, one row per
+#' supplementary alignment entry.  The SA tag format is:
+#' `"rname,pos,strand,CIGAR,mapQ,NM;"` (trailing semicolon).
+#'
+#' @param sa_string Character. The SA tag value (e.g.
+#'   `"chr5,45000,+,50M,60,0;"`), or `NULL`/`NA`.
+#'
+#' @return A data.frame with columns `rname` (character), `pos` (integer),
+#'   `strand` (character), `cigar` (character), `mapq` (integer), `nm`
+#'   (integer).  Returns a zero-row data.frame for NULL/NA/empty input.
+#'
+#' @keywords internal
+parse_sa_tag <- function(sa_string) {
+  empty <- data.frame(
+    rname  = character(0L),
+    pos    = integer(0L),
+    strand = character(0L),
+    cigar  = character(0L),
+    mapq   = integer(0L),
+    nm     = integer(0L),
+    stringsAsFactors = FALSE
+  )
+  if (is.null(sa_string) || length(sa_string) == 0L ||
+        is.na(sa_string) || !nzchar(sa_string)) {
+    return(empty)
+  }
+  entries <- strsplit(sa_string, ";", fixed = TRUE)[[1L]]
+  entries <- entries[nzchar(entries)]
+  if (length(entries) == 0L) return(empty)
+
+  rows <- lapply(entries, function(e) {
+    fields <- strsplit(e, ",", fixed = TRUE)[[1L]]
+    if (length(fields) < 6L) return(NULL)
+    data.frame(
+      rname  = fields[1L],
+      pos    = as.integer(fields[2L]),
+      strand = fields[3L],
+      cigar  = fields[4L],
+      mapq   = as.integer(fields[5L]),
+      nm     = as.integer(fields[6L]),
+      stringsAsFactors = FALSE
+    )
+  })
+  rows <- Filter(Negate(is.null), rows)
+  if (length(rows) == 0L) return(empty)
+  do.call(rbind, rows)
+}
+
 decompose_cigar <- function(cigar, pos) {
   ops  <- regmatches(cigar, gregexpr("[A-Z=]", cigar))[[1]]
   lens <- as.integer(regmatches(cigar, gregexpr("\\d+", cigar))[[1]])

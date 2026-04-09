@@ -19,7 +19,7 @@ BAM_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/AITL4/bamf
 VCF_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/AITL4/variants/clairsto/somatic.vcf.gz"
 
 REGION     <- "chr8:127733434-127744951"
-REGION     <- "chr8:127598491-127599663"
+#REGION     <- "chr8:127598491-127599663"
 
 # =============================================================================
 # 1. Basic single-sample, ungrouped
@@ -59,7 +59,7 @@ meth_snv <- read_methylation(BAM_PTCL8, REGION,
 
 plot_methylation(meth_snv)
 
-
+plot_methylation(meth_hp, show_cigar = TRUE)
 # =============================================================================
 # 4. Read filters — MAPQ, strand, length, downsampling
 # =============================================================================

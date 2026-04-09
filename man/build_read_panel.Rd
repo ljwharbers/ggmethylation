@@ -21,7 +21,8 @@ build_read_panel(
   variant_positions = NULL,
   show_cigar = FALSE,
   cigar_features = NULL,
-  min_indel_size = 50L
+  min_indel_size = 50L,
+  show_supplementary = FALSE
 )
 }
 \arguments{
@@ -69,7 +70,7 @@ strings are overlaid on reads. Default \code{FALSE}.}
 
 \item{min_indel_size}{Integer. Minimum size (in bp) for insertions and
 deletions to be displayed. Features smaller than this threshold are
-suppressed. Clips (S/H) are always shown. Default \code{50}.}
+suppressed. Default \code{50}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object.

@@ -86,9 +86,9 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     ranges = IRanges::IRanges(start = parsed$start, end = parsed$end)
   )
 
-  what <- c("qname", "pos", "cigar", "strand", "seq", "mapq")
+  what <- c("qname", "flag", "pos", "cigar", "strand", "seq", "mapq")
 
-  tag_names <- c("MM", "ML")
+  tag_names <- c("MM", "ML", "SA")
   if (!is.null(group_tag)) tag_names <- c(tag_names, group_tag)
 
   param <- Rsamtools::ScanBamParam(
@@ -115,6 +115,37 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     strand = as.character(bam_data$strand),
     stringsAsFactors = FALSE
   )
+
+  # Add supplementary alignment columns from BAM flag and SA tag
+  reads$is_supplementary <- bitwAnd(bam_data$flag, 0x800L) > 0L
+
+  sa_tags <- bam_data$tag[["SA"]]
+  if (!is.null(sa_tags)) {
+    sa_parsed <- lapply(sa_tags, parse_sa_tag)
+    reads$sa_chrom <- vapply(sa_parsed, function(x) {
+      if (nrow(x) == 0L) NA_character_ else x$rname[1L]
+    }, character(1L))
+    reads$sa_pos <- vapply(sa_parsed, function(x) {
+      if (nrow(x) == 0L) NA_integer_ else x$pos[1L]
+    }, integer(1L))
+  } else {
+    reads$sa_chrom <- NA_character_
+    reads$sa_pos   <- NA_integer_
+  }
+
+  # Disambiguate read names when primary + supplementary both fall in the
+  # viewed region (same qname appears >1 time).  Primary alignments keep
+  # their original name; supplementary copies get "_supp1", "_supp2", ...
+  qname_tab  <- table(reads$read_name)
+  dup_qnames <- names(qname_tab[qname_tab > 1L])
+  if (length(dup_qnames) > 0L) {
+    for (qn in dup_qnames) {
+      supp_idx <- which(reads$read_name == qn & reads$is_supplementary)
+      for (k in seq_along(supp_idx)) {
+        reads$read_name[supp_idx[k]] <- paste0(qn, "_supp", k)
+      }
+    }
+  }
 
   # Add group column
   if (!is.null(group_tag)) {
@@ -374,10 +405,13 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
 #' @keywords internal
 empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL) {
   reads <- data.frame(
-    read_name = character(0L),
-    start = integer(0L),
-    end = integer(0L),
-    strand = character(0L),
+    read_name       = character(0L),
+    start           = integer(0L),
+    end             = integer(0L),
+    strand          = character(0L),
+    is_supplementary = logical(0L),
+    sa_chrom        = character(0L),
+    sa_pos          = integer(0L),
     stringsAsFactors = FALSE
   )
 

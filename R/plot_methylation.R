@@ -195,7 +195,12 @@
 #' @param min_indel_size Integer. Minimum size (in bp) for insertions and
 #'   deletions to be displayed when `show_cigar = TRUE`. Indels smaller than
 #'   this threshold are hidden to reduce visual clutter from common small
-#'   indels. Clips (S/H) are unaffected. Default `50`.
+#'   indels. Default `50`.
+#' @param show_supplementary Logical. When `TRUE`, a coloured halo is drawn
+#'   around read bars indicating the chromosome of the supplementary alignment
+#'   partner (from the SA BAM tag). The original bar colouring (group, strand,
+#'   or default grey) is preserved inside the halo. Reads with no supplementary
+#'   alignment have no halo. Default `FALSE`.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -223,25 +228,27 @@ plot_methylation <- function(data, sort_by = NULL,
                              annotations = NULL,
                              variants = NULL,
                              show_cigar = FALSE,
-                             min_indel_size = 50L) {
+                             min_indel_size = 50L,
+                             show_supplementary = FALSE) {
   # --- 1. Validate input ---
   if (inherits(data, "multi_methylation_data")) {
     return(.plot_multi_methylation(
-      data            = data,
-      sort_by         = sort_by,
-      colour_low      = colour_low,
-      colour_high     = colour_high,
-      dot_size        = dot_size,
-      colour_strand   = colour_strand,
-      strand_colours  = strand_colours,
-      group_colours   = group_colours,
-      mod_code_shapes = mod_code_shapes,
-      smooth_span     = smooth_span,
-      panel_heights   = panel_heights,
-      annotations     = annotations,
-      variants        = variants,
-      show_cigar      = show_cigar,
-      min_indel_size  = min_indel_size
+      data               = data,
+      sort_by            = sort_by,
+      colour_low         = colour_low,
+      colour_high        = colour_high,
+      dot_size           = dot_size,
+      colour_strand      = colour_strand,
+      strand_colours     = strand_colours,
+      group_colours      = group_colours,
+      mod_code_shapes    = mod_code_shapes,
+      smooth_span        = smooth_span,
+      panel_heights      = panel_heights,
+      annotations        = annotations,
+      variants           = variants,
+      show_cigar         = show_cigar,
+      min_indel_size     = min_indel_size,
+      show_supplementary = show_supplementary
     ))
   }
 
@@ -380,23 +387,24 @@ plot_methylation <- function(data, sort_by = NULL,
 
   # --- 6. Build top panel ---
   p_top <- build_read_panel(
-    data              = data,
-    separator_lanes   = separator_lanes,
-    region_start      = region_start,
-    region_end        = region_end,
-    colour_low        = colour_low,
-    colour_high       = colour_high,
-    dot_size          = dot_size,
-    colour_strand     = colour_strand,
-    strand_colours    = strand_colours,
-    group_colours     = group_colours,
-    mod_code_shapes   = mod_code_shapes,
-    show_x_axis       = FALSE,
-    variant_bases     = variant_bases,
-    variant_positions = variant_positions,
-    show_cigar        = show_cigar,
-    cigar_features    = if (isTRUE(show_cigar)) data$cigar_features else NULL,
-    min_indel_size    = min_indel_size
+    data               = data,
+    separator_lanes    = separator_lanes,
+    region_start       = region_start,
+    region_end         = region_end,
+    colour_low         = colour_low,
+    colour_high        = colour_high,
+    dot_size           = dot_size,
+    colour_strand      = colour_strand,
+    strand_colours     = strand_colours,
+    group_colours      = group_colours,
+    mod_code_shapes    = mod_code_shapes,
+    show_x_axis        = FALSE,
+    variant_bases      = variant_bases,
+    variant_positions  = variant_positions,
+    show_cigar         = show_cigar,
+    cigar_features     = if (isTRUE(show_cigar)) data$cigar_features else NULL,
+    min_indel_size     = min_indel_size,
+    show_supplementary = show_supplementary
   )
 
   # --- 7. Build bottom panel ---
@@ -616,7 +624,8 @@ plot_methylation <- function(data, sort_by = NULL,
                                     group_colours, mod_code_shapes,
                                     smooth_span, panel_heights, annotations,
                                     variants, show_cigar = FALSE,
-                                    min_indel_size = 50L) {
+                                    min_indel_size = 50L,
+                                    show_supplementary = FALSE) {
 
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
@@ -745,23 +754,24 @@ plot_methylation <- function(data, sort_by = NULL,
 
     # Build read panel
     p_reads <- build_read_panel(
-      data              = s,
-      separator_lanes   = separator_lanes,
-      region_start      = region_start,
-      region_end        = region_end,
-      colour_low        = colour_low,
-      colour_high       = colour_high,
-      dot_size          = dot_size,
-      colour_strand     = colour_strand,
-      strand_colours    = strand_colours,
-      group_colours     = group_colours,
-      mod_code_shapes   = mod_code_shapes,
-      show_x_axis       = FALSE,
-      variant_bases     = s_variant_bases,
-      variant_positions = s_variant_positions,
-      show_cigar        = show_cigar,
-      cigar_features    = if (isTRUE(show_cigar)) s$cigar_features else NULL,
-      min_indel_size    = min_indel_size
+      data               = s,
+      separator_lanes    = separator_lanes,
+      region_start       = region_start,
+      region_end         = region_end,
+      colour_low         = colour_low,
+      colour_high        = colour_high,
+      dot_size           = dot_size,
+      colour_strand      = colour_strand,
+      strand_colours     = strand_colours,
+      group_colours      = group_colours,
+      mod_code_shapes    = mod_code_shapes,
+      show_x_axis        = FALSE,
+      variant_bases      = s_variant_bases,
+      variant_positions  = s_variant_positions,
+      show_cigar         = show_cigar,
+      cigar_features     = if (isTRUE(show_cigar)) s$cigar_features else NULL,
+      min_indel_size     = min_indel_size,
+      show_supplementary = show_supplementary
     )
     p_reads <- p_reads + ggplot2::labs(title = nm)
     sample_panels[[i]] <- p_reads

@@ -69,6 +69,51 @@ test_that("ref_to_seq soft clip shifts effective query positions", {
   expect_equal(ggmethylation:::ref_to_seq("4S6M", 100L, 99L), NA_integer_)
 })
 
+# --- parse_sa_tag ---
+
+test_that("parse_sa_tag returns empty data.frame for NULL input", {
+  result <- ggmethylation:::parse_sa_tag(NULL)
+  expect_equal(nrow(result), 0L)
+  expect_equal(names(result), c("rname", "pos", "strand", "cigar", "mapq", "nm"))
+})
+
+test_that("parse_sa_tag returns empty data.frame for NA input", {
+  result <- ggmethylation:::parse_sa_tag(NA_character_)
+  expect_equal(nrow(result), 0L)
+})
+
+test_that("parse_sa_tag returns empty data.frame for empty string", {
+  result <- ggmethylation:::parse_sa_tag("")
+  expect_equal(nrow(result), 0L)
+})
+
+test_that("parse_sa_tag parses a single SA entry", {
+  result <- ggmethylation:::parse_sa_tag("chr5,45000,+,50M,60,0;")
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$rname,  "chr5")
+  expect_equal(result$pos,    45000L)
+  expect_equal(result$strand, "+")
+  expect_equal(result$cigar,  "50M")
+  expect_equal(result$mapq,   60L)
+  expect_equal(result$nm,     0L)
+})
+
+test_that("parse_sa_tag parses multiple SA entries", {
+  result <- ggmethylation:::parse_sa_tag("chr5,45000,+,50M,60,0;chr8,12000,-,30M,0,1;")
+  expect_equal(nrow(result), 2L)
+  expect_equal(result$rname,  c("chr5", "chr8"))
+  expect_equal(result$pos,    c(45000L, 12000L))
+  expect_equal(result$strand, c("+", "-"))
+  expect_equal(result$mapq,   c(60L, 0L))
+})
+
+test_that("parse_sa_tag silently skips malformed entries", {
+  # Only second entry is valid
+  result <- ggmethylation:::parse_sa_tag("bad;chr8,12000,-,30M,0,1;")
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$rname, "chr8")
+})
+
 # --- complement_base ---
 
 test_that("complement_base returns correct complements", {

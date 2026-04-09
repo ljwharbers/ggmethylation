@@ -14,20 +14,23 @@ library(patchwork)
 
 # -- Shared paths -------------------------------------------------------------
 
-BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/PTCL8_PB/bamfiles/PTCL8_PB_tumor.bam"
-REGION     <- "chr8:127598491-127604951"
+BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/bamfiles/BL1_tumor.bam"
+REGION     <- "chr8:127598491-127604951" #hg38
+REGION     <- "chr8:128861685-128872405" #CHM13
 
-# =============================================================================
-# 1. Basic single-sample, ungrouped
-# =============================================================================
 
-# =============================================================================
-# 2. Grouped by haplotype tag (HP)
-# =============================================================================
+annotation = read_annotations(genome = "chm13", region = REGION)
 
-meth_hp <- read_methylation(BAM_PTCL8, REGION,
-                             mod_code    = "m",
-                             group_tag   = "HP",
-                             drop_na_group = TRUE)
 
-plot_methylation(meth_hp, show_cigar = TRUE)
+meth_hp <- read_methylation(BAM_PTCL8,
+                            REGION,
+                            mod_code    = "m",
+                            group_tag   = "HP",
+                            drop_na_group = TRUE)
+
+plot_methylation(meth_hp,
+                 annotations = annotation,
+                 show_cigar = TRUE,
+                 show_supplementary = TRUE,
+                 group_colours = c("1" = "#3120c9", "2" = "#c47612"),
+                 panel_heights = c(1, 0.5, 0.04))

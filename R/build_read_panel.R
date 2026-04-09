@@ -93,7 +93,7 @@
 #'   `methylation_data$cigar_features`), or `NULL`.
 #' @param min_indel_size Integer. Minimum size (in bp) for insertions and
 #'   deletions to be displayed. Features smaller than this threshold are
-#'   suppressed. Clips (S/H) are always shown. Default `50`.
+#'   suppressed. Default `50`.
 #'
 #' @return A [ggplot2::ggplot] object.
 #'
@@ -109,12 +109,13 @@ build_read_panel <- function(data,
                              strand_colours,
                              group_colours,
                              mod_code_shapes,
-                             show_x_axis = FALSE,
-                             variant_bases     = NULL,
-                             variant_positions = NULL,
-                             show_cigar        = FALSE,
-                             cigar_features    = NULL,
-                             min_indel_size    = 50L) {
+                             show_x_axis        = FALSE,
+                             variant_bases      = NULL,
+                             variant_positions  = NULL,
+                             show_cigar         = FALSE,
+                             cigar_features     = NULL,
+                             min_indel_size     = 50L,
+                             show_supplementary = FALSE) {
   codes      <- unique(data$sites$mod_code)
   multi_code <- length(codes) > 1L
 
@@ -138,9 +139,36 @@ build_read_panel <- function(data,
     }
   }
 
+  # --- Optional SA halo layer ---
+  bar_lw <- 2
+  p <- ggplot2::ggplot()
+
+  if (isTRUE(show_supplementary) && "sa_chrom" %in% names(reads_plot)) {
+    sa_reads <- reads_plot[!is.na(reads_plot$sa_chrom), , drop = FALSE]
+    if (nrow(sa_reads) > 0L) {
+      p <- p +
+        ggplot2::geom_segment(
+          data = sa_reads,
+          ggplot2::aes(
+            x = .data$start, xend = .data$end,
+            y = .data$lane, yend = .data$lane,
+            colour = .data$sa_chrom
+          ),
+          linewidth = 3, lineend = "round"
+        ) +
+        ggplot2::scale_colour_hue(
+          name     = "SA partner",
+          na.value = "#B0BEC5"
+        ) +
+        ggnewscale::new_scale_colour()
+      bar_lw <- 1.5
+    }
+  }
+
+  # --- Read bar colouring ---
   if (!is.null(data$group_tag)) {
     # Grouped: colour read bars by group, then second colour scale for dots
-    p <- ggplot2::ggplot() +
+    p <- p +
       ggplot2::geom_segment(
         data = reads_plot,
         ggplot2::aes(
@@ -148,7 +176,7 @@ build_read_panel <- function(data,
           y = .data$lane, yend = .data$lane,
           colour = .data$group
         ),
-        linewidth = 2, lineend = "round"
+        linewidth = bar_lw, lineend = "round"
       )
 
     if (!is.null(group_colours)) {
@@ -197,7 +225,7 @@ build_read_panel <- function(data,
   } else {
     # Ungrouped path
     if (isTRUE(colour_strand)) {
-      p <- ggplot2::ggplot() +
+      p <- p +
         ggplot2::geom_segment(
           data = reads_plot,
           ggplot2::aes(
@@ -205,7 +233,7 @@ build_read_panel <- function(data,
             y = .data$lane, yend = .data$lane,
             colour = .data$strand
           ),
-          linewidth = 2, lineend = "round"
+          linewidth = bar_lw, lineend = "round"
         ) +
         ggplot2::scale_colour_manual(values = strand_colours, name = "Strand") +
         ggnewscale::new_scale_colour() +
@@ -225,14 +253,14 @@ build_read_panel <- function(data,
           name = "Modification\nprobability"
         )
     } else {
-      p <- ggplot2::ggplot() +
+      p <- p +
         ggplot2::geom_segment(
           data = reads_plot,
           ggplot2::aes(
             x = .data$start, xend = .data$end,
             y = .data$lane, yend = .data$lane
           ),
-          linewidth = 2, colour = "#B0BEC5", lineend = "round"
+          linewidth = bar_lw, colour = "#B0BEC5", lineend = "round"
         ) +
         ggplot2::geom_point(
           data = sites_plot,
@@ -278,7 +306,7 @@ build_read_panel <- function(data,
       by = "read_name"
     )
 
-    # Filter small indels (clips are always kept)
+    # Filter small indels
     cf <- cf[!(cf$type %in% c("I", "D") & cf$length < min_indel_size), , drop = FALSE]
 
     # Deletions: draw black line segments
@@ -306,30 +334,6 @@ build_read_panel <- function(data,
       )
     }
 
-    # Soft/hard clips: draw orange triangle markers
-    clip_df <- cf[cf$type %in% c("S", "H"), , drop = FALSE]
-    if (nrow(clip_df) > 0L) {
-      # Soft/hard clips lack ref coords; position at read boundaries.
-      # A leading clip (small query_start) displays at read start;
-      # a trailing clip (large query_start) displays at read end.
-      clip_df$display_x <- ifelse(
-        !is.na(clip_df$query_start) & clip_df$query_start <= 1L,
-        clip_df$start,   # leading clip -> read start
-        clip_df$end      # trailing clip -> read end
-      )
-      # For H clips without query coords, use a heuristic:
-      # if ref_start is NA and query_start is NA, check position in CIGAR
-      # (already handled: H clips have NA query_start, so they fall to end)
-      # Override for leading H clips by checking if start is available
-      clip_df$display_x[is.na(clip_df$display_x)] <- clip_df$start[is.na(clip_df$display_x)]
-
-      p <- p + ggplot2::geom_point(
-        data = clip_df,
-        ggplot2::aes(x = .data$display_x, y = .data$lane),
-        shape = 25, size = 1.5, fill = "#FF8F00", colour = "#FF8F00",
-        inherit.aes = FALSE
-      )
-    }
   }
 
   # Variant base letters

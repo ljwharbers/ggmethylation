@@ -19,7 +19,8 @@ plot_methylation(
   annotations = NULL,
   variants = NULL,
   show_cigar = FALSE,
-  min_indel_size = 50L
+  min_indel_size = 50L,
+  show_supplementary = FALSE
 )
 }
 \arguments{
@@ -76,7 +77,13 @@ strings (insertions, deletions, clips) are displayed on reads. Default
 \item{min_indel_size}{Integer. Minimum size (in bp) for insertions and
 deletions to be displayed when \code{show_cigar = TRUE}. Indels smaller than
 this threshold are hidden to reduce visual clutter from common small
-indels. Clips (S/H) are unaffected. Default \code{50}.}
+indels. Default \code{50}.}
+
+\item{show_supplementary}{Logical. When \code{TRUE}, a coloured halo is drawn
+around read bars indicating the chromosome of the supplementary alignment
+partner (from the SA BAM tag). The original bar colouring (group, strand,
+or default grey) is preserved inside the halo. Reads with no supplementary
+alignment have no halo. Default \code{FALSE}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a
