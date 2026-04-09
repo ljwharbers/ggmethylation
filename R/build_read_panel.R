@@ -94,11 +94,11 @@
     is_last  <- if ("is_last_segment" %in% names(r)) r$is_last_segment else TRUE
 
     read_len <- e - s
-    too_short <- read_len < 2 * aw
+    aw <- min(aw, read_len)
 
     # Determine whether this segment gets an arrowhead
-    draw_right_arrow <- (st == "+") && is_last && !too_short
-    draw_left_arrow  <- (st == "-") && is_first && !too_short
+    draw_right_arrow <- (st == "+") && is_last
+    draw_left_arrow  <- (st == "-") && is_first
 
     if (draw_right_arrow) {
       # Arrow pointing right: 5 vertices
@@ -131,17 +131,18 @@
   out
 }
 
-# Build colored overlay polygons at breakpoint ends of supplementary reads.
+# Build colored indicator polygons at breakpoint ends of supplementary reads.
 #
-# For each read with a non-NA sa_chrom, an overlay polygon is placed at the
-# clipped end of the read to indicate the SA partner chromosome.
+# For each read with a non-NA sa_chrom, a small indicator is placed at the
+# clipped end: a triangle (matching the arrowhead) when the clip side
+# coincides with the arrowhead direction, or a small rectangle tab otherwise.
 #
 # @param reads data.frame with SA-annotated reads (sa_chrom, clip_side columns).
 # @param arrow_w Numeric.
 # @param half_height Numeric.
 # @param region_start Integer.
 # @param region_end Integer.
-# @return data.frame with x, y, polygon_id, sa_chrom, label_x columns,
+# @return data.frame with x, y, polygon_id, sa_chrom, lane columns,
 #   or a 0-row data.frame if no SA reads.
 .make_sa_overlay_polygons <- function(reads, arrow_w, half_height,
                                       region_start, region_end) {
@@ -149,14 +150,12 @@
   if (nrow(sa_reads) == 0L) {
     return(data.frame(
       x = numeric(0), y = numeric(0), polygon_id = character(0),
-      sa_chrom = character(0), label_x = numeric(0),
-      lane = numeric(0),
+      sa_chrom = character(0), lane = numeric(0),
       stringsAsFactors = FALSE
     ))
   }
 
-  region_span <- region_end - region_start
-  poly_list <- vector("list", 2L * nrow(sa_reads))  # upper bound: 2 overlays per read for clip_side=="both"
+  poly_list <- vector("list", 2L * nrow(sa_reads))
   pid_counter <- 0L
 
   for (i in seq_len(nrow(sa_reads))) {
@@ -165,18 +164,15 @@
     e  <- r$end
     ln <- r$lane
     hh <- half_height
-    aw <- arrow_w
     st <- r$strand
     cs <- r$clip_side
 
     read_len <- e - s
-    sa_extent <- max(aw * 4, 0.03 * region_span)
-    sa_extent <- min(sa_extent, 0.5 * read_len)
+    aw <- min(arrow_w, read_len)
 
     # Determine which sides to overlay
     sides <- character(0)
     if (is.na(cs)) {
-      # Fallback: put overlay at arrowhead end
       if (st == "+") sides <- "right" else sides <- "left"
     } else if (cs == "both") {
       sides <- c("left", "right")
@@ -184,45 +180,38 @@
       sides <- cs
     }
 
+    # Arrowhead side depends on strand
+    arrow_side <- if (st == "+") "right" else "left"
+
     for (side in sides) {
       pid_counter <- pid_counter + 1L
       pid <- paste0("sa_", pid_counter)
 
-      if (side == "right") {
-        ov_start <- e - sa_extent
-        ov_end   <- e
-        # Include arrowhead if + strand and this is last segment
-        is_last <- if ("is_last_segment" %in% names(r)) r$is_last_segment else TRUE
-        if (st == "+" && is_last) {
-          xs <- c(ov_start, ov_end, ov_end + aw, ov_end, ov_start)
-          ys <- c(ln - hh, ln - hh, ln, ln + hh, ln + hh)
+      if (side == arrow_side) {
+        # Triangle matching the arrowhead shape
+        if (side == "right") {
+          xs <- c(e, e + aw, e)
+          ys <- c(ln - hh, ln, ln + hh)
         } else {
-          xs <- c(ov_start, ov_end, ov_end, ov_start)
-          ys <- c(ln - hh, ln - hh, ln + hh, ln + hh)
+          xs <- c(s - aw, s, s)
+          ys <- c(ln, ln - hh, ln + hh)
         }
-        lx <- (ov_start + ov_end) / 2
       } else {
-        # side == "left"
-        ov_start <- s
-        ov_end   <- s + sa_extent
-        is_first <- if ("is_first_segment" %in% names(r)) r$is_first_segment else TRUE
-        if (st == "-" && is_first) {
-          xs <- c(ov_start - aw, ov_start, ov_end, ov_end, ov_start)
-          ys <- c(ln, ln - hh, ln - hh, ln + hh, ln + hh)
+        # Small rectangle tab on the non-arrowhead side
+        if (side == "left") {
+          xs <- c(s, s + aw, s + aw, s)
+          ys <- c(ln - hh, ln - hh, ln + hh, ln + hh)
         } else {
-          xs <- c(ov_start, ov_end, ov_end, ov_start)
+          xs <- c(e - aw, e, e, e - aw)
           ys <- c(ln - hh, ln - hh, ln + hh, ln + hh)
         }
-        lx <- (ov_start + ov_end) / 2
       }
 
-      n_verts <- length(xs)
       poly_list[[pid_counter]] <- data.frame(
         x          = xs,
         y          = ys,
         polygon_id = pid,
         sa_chrom   = r$sa_chrom,
-        label_x    = lx,
         lane       = ln,
         stringsAsFactors = FALSE
       )
@@ -297,12 +286,20 @@ build_read_panel <- function(data,
   codes      <- unique(data$sites$mod_code)
   multi_code <- length(codes) > 1L
 
-  # Merge lane info into sites
+  # Merge lane info and read extent into sites
   sites_plot <- merge(
     data$sites,
-    data$reads[, c("read_name", "lane"), drop = FALSE],
+    data$reads[, c("read_name", "lane", "start", "end"), drop = FALSE],
     by = "read_name"
   )
+  # Remove dots outside the visible read bar (clipped positions)
+  sites_plot <- sites_plot[
+    sites_plot$position >= sites_plot$start &
+      sites_plot$position <= sites_plot$end,
+    , drop = FALSE
+  ]
+  sites_plot$start <- NULL
+  sites_plot$end   <- NULL
 
   # When show_cigar is TRUE, split reads on large deletions so the thick read
   # bar has IGV-style gaps instead of running through deletion regions.
@@ -341,6 +338,30 @@ build_read_panel <- function(data,
   # --- Arrow geometry parameters ---
   arrow_w     <- (region_end - region_start) * 0.003
   half_height <- 0.35
+
+  # --- Suppress modification dots within SA indicator regions ---
+  if (isTRUE(show_supplementary) &&
+      "sa_chrom"  %in% names(data$reads) &&
+      "clip_side" %in% names(data$reads)) {
+    sa_reads <- data$reads[!is.na(data$reads$sa_chrom), , drop = FALSE]
+    if (nrow(sa_reads) > 0L) {
+      keep <- rep(TRUE, nrow(sites_plot))
+      for (i in seq_len(nrow(sa_reads))) {
+        r        <- sa_reads[i, ]
+        rn       <- r$read_name
+        s        <- r$start
+        e        <- r$end
+        cs       <- r$clip_side
+        if (is.na(cs)) next
+        read_len <- e - s
+        sa_ext   <- min(arrow_w, read_len)
+        idx      <- sites_plot$read_name == rn
+        if (cs %in% c("left",  "both")) keep <- keep & !(idx & sites_plot$position <= s + sa_ext)
+        if (cs %in% c("right", "both")) keep <- keep & !(idx & sites_plot$position >= e - sa_ext)
+      }
+      sites_plot <- sites_plot[keep, , drop = FALSE]
+    }
+  }
 
   # --- Build read polygons ---
   read_polys <- .make_read_polygons(reads_plot, arrow_w, half_height)
@@ -393,18 +414,6 @@ build_read_panel <- function(data,
           ) +
           ggplot2::scale_fill_hue(name = "SA partner")
 
-        # Labels
-        sa_label_df <- unique(sa_polys[, c("polygon_id", "label_x", "lane", "sa_chrom"),
-                                       drop = FALSE])
-        p <- p +
-          ggplot2::geom_text(
-            data = sa_label_df,
-            ggplot2::aes(
-              x = .data$label_x, y = .data$lane, label = .data$sa_chrom
-            ),
-            size = 1.5, fontface = "bold", colour = "white",
-            hjust = 0.5, vjust = 0.5, inherit.aes = FALSE
-          )
       }
     }
 
@@ -477,18 +486,6 @@ build_read_panel <- function(data,
               inherit.aes = FALSE
             ) +
             ggplot2::scale_fill_hue(name = "SA partner")
-
-          sa_label_df <- unique(sa_polys[, c("polygon_id", "label_x", "lane", "sa_chrom"),
-                                         drop = FALSE])
-          p <- p +
-            ggplot2::geom_text(
-              data = sa_label_df,
-              ggplot2::aes(
-                x = .data$label_x, y = .data$lane, label = .data$sa_chrom
-              ),
-              size = 1.5, fontface = "bold", colour = "white",
-              hjust = 0.5, vjust = 0.5, inherit.aes = FALSE
-            )
         }
       }
 
@@ -541,18 +538,6 @@ build_read_panel <- function(data,
               inherit.aes = FALSE
             ) +
             ggplot2::scale_fill_hue(name = "SA partner")
-
-          sa_label_df <- unique(sa_polys[, c("polygon_id", "label_x", "lane", "sa_chrom"),
-                                         drop = FALSE])
-          p <- p +
-            ggplot2::geom_text(
-              data = sa_label_df,
-              ggplot2::aes(
-                x = .data$label_x, y = .data$lane, label = .data$sa_chrom
-              ),
-              size = 1.5, fontface = "bold", colour = "white",
-              hjust = 0.5, vjust = 0.5, inherit.aes = FALSE
-            )
         }
       }
 
