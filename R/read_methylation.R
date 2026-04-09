@@ -106,7 +106,7 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   }
 
   # --- 4. Build reads data.frame ---
-  ref_widths <- GenomicAlignments::cigarWidthAlongReferenceSpace(bam_data$cigar)
+  ref_widths <- cigar_ref_width(bam_data$cigar)
 
   reads <- data.frame(
     read_name = bam_data$qname,
@@ -132,6 +132,8 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     reads$sa_chrom <- NA_character_
     reads$sa_pos   <- NA_integer_
   }
+
+  reads$clip_side <- detect_clip_side(bam_data$cigar)
 
   # Disambiguate read names when primary + supplementary both fall in the
   # viewed region (same qname appears >1 time).  Primary alignments keep
@@ -340,7 +342,7 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     idx <- keep[j]
     dc  <- decompose_cigar(bam_data$cigar[idx], bam_data$pos[idx])
     # Keep only structurally interesting operations
-    dc <- dc[dc$type %in% c("I", "D", "S", "H", "N"), , drop = FALSE]
+    dc <- dc[dc$type %in% c("I", "D", "N"), , drop = FALSE]
     if (nrow(dc) > 0L) {
       dc$read_name <- reads$read_name[j]
       cigar_list[[j]] <- dc
@@ -412,6 +414,7 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
     is_supplementary = logical(0L),
     sa_chrom        = character(0L),
     sa_pos          = integer(0L),
+    clip_side       = character(0L),
     stringsAsFactors = FALSE
   )
 

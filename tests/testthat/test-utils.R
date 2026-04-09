@@ -126,3 +126,67 @@ test_that("complement_base returns correct complements", {
 test_that("complement_base errors on unknown base", {
   expect_error(ggmethylation:::complement_base("N"), "Unknown base")
 })
+
+# --- cigar_ref_width ---
+
+test_that("cigar_ref_width computes pure M width", {
+  expect_equal(ggmethylation:::cigar_ref_width("10M"), 10L)
+})
+
+test_that("cigar_ref_width ignores soft clips", {
+  expect_equal(ggmethylation:::cigar_ref_width("5S10M3S"), 10L)
+})
+
+test_that("cigar_ref_width ignores hard clips", {
+  expect_equal(ggmethylation:::cigar_ref_width("5H10M5H"), 10L)
+})
+
+test_that("cigar_ref_width includes deletions", {
+  expect_equal(ggmethylation:::cigar_ref_width("5M3D5M"), 13L)
+})
+
+test_that("cigar_ref_width excludes insertions", {
+  expect_equal(ggmethylation:::cigar_ref_width("5M2I5M"), 10L)
+})
+
+test_that("cigar_ref_width returns 0 for star", {
+  expect_equal(ggmethylation:::cigar_ref_width("*"), 0L)
+})
+
+test_that("cigar_ref_width returns 0 for NA", {
+  expect_equal(ggmethylation:::cigar_ref_width(NA_character_), 0L)
+})
+
+test_that("cigar_ref_width handles complex CIGAR", {
+  expect_equal(ggmethylation:::cigar_ref_width("100S500M200D800M100S"), 1500L)
+})
+
+# --- detect_clip_side ---
+
+test_that("detect_clip_side returns NA for no clips", {
+  expect_equal(ggmethylation:::detect_clip_side("10M"), NA_character_)
+})
+
+test_that("detect_clip_side detects left soft clip", {
+  expect_equal(ggmethylation:::detect_clip_side("5S10M"), "left")
+})
+
+test_that("detect_clip_side detects right soft clip", {
+  expect_equal(ggmethylation:::detect_clip_side("10M3S"), "right")
+})
+
+test_that("detect_clip_side detects both soft clips", {
+  expect_equal(ggmethylation:::detect_clip_side("5S10M3S"), "both")
+})
+
+test_that("detect_clip_side detects hard clips", {
+  expect_equal(ggmethylation:::detect_clip_side("5H10M"), "left")
+})
+
+test_that("detect_clip_side returns NA for star", {
+  expect_equal(ggmethylation:::detect_clip_side("*"), NA_character_)
+})
+
+test_that("detect_clip_side returns NA for NA input", {
+  expect_equal(ggmethylation:::detect_clip_side(NA_character_), NA_character_)
+})
