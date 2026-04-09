@@ -270,3 +270,47 @@ decompose_cigar <- function(cigar, pos) {
     stringsAsFactors = FALSE
   )
 }
+
+#' Compute reference-space width from a CIGAR string
+#'
+#' Vectorised over a character vector of CIGAR strings.  For each CIGAR,
+#' sums the lengths of operations that consume reference bases
+#' (M, =, X, D, N).
+#'
+#' @param cigar Character vector of CIGAR strings.
+#'
+#' @return Integer vector of reference-space widths.
+#'
+#' @keywords internal
+cigar_ref_width <- function(cigar) {
+  vapply(cigar, function(cig) {
+    if (is.na(cig) || cig == "*") return(0L)
+    ops  <- regmatches(cig, gregexpr("[A-Z=]", cig))[[1]]
+    lens <- as.integer(regmatches(cig, gregexpr("\\d+", cig))[[1]])
+    sum(lens[ops %in% c("M", "=", "X", "D", "N")])
+  }, integer(1L), USE.NAMES = FALSE)
+}
+
+#' Detect which side(s) of a read are soft/hard clipped
+#'
+#' Vectorised over a character vector of CIGAR strings.  Checks whether
+#' the first and/or last CIGAR operation is S or H.
+#'
+#' @param cigar Character vector of CIGAR strings.
+#'
+#' @return Character vector with values `"left"`, `"right"`, `"both"`,
+#'   or `NA_character_`.
+#'
+#' @keywords internal
+detect_clip_side <- function(cigar) {
+  vapply(cigar, function(cig) {
+    if (is.na(cig) || cig == "*") return(NA_character_)
+    ops <- regmatches(cig, gregexpr("[A-Z=]", cig))[[1]]
+    left  <- ops[1] %in% c("S", "H")
+    right <- ops[length(ops)] %in% c("S", "H")
+    if (left && right) "both"
+    else if (left)      "left"
+    else if (right)     "right"
+    else                NA_character_
+  }, character(1L), USE.NAMES = FALSE)
+}
