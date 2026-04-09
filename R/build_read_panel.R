@@ -156,8 +156,7 @@
   }
 
   region_span <- region_end - region_start
-  poly_list <- vector("list", nrow(sa_reads))
-  label_list <- vector("list", nrow(sa_reads))
+  poly_list <- vector("list", 2L * nrow(sa_reads))  # upper bound: 2 overlays per read for clip_side=="both"
   pid_counter <- 0L
 
   for (i in seq_len(nrow(sa_reads))) {
