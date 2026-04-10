@@ -27,7 +27,7 @@ meth_hp <- read_methylation(BAM_PTCL8,
                             REGION,
                             mod_code    = "m",
                             group_tag   = "HP",
-                            drop_na_group = TRUE)
+                            drop_na_group = FALSE)
 
 plt = plot_methylation(meth_hp,
                  annotations = annotation,

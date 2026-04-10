@@ -1,5 +1,22 @@
 # Internal helpers for interrupting the smooth line at consensus deletion regions
 
+.ordered_plot_groups <- function(groups) {
+  ordered <- sort(unique(groups[!is.na(groups)]))
+  if (any(is.na(groups))) {
+    c(ordered, NA_character_)
+  } else {
+    ordered
+  }
+}
+
+.match_plot_group <- function(values, group) {
+  if (is.na(group)) {
+    is.na(values)
+  } else {
+    !is.na(values) & values == group
+  }
+}
+
 # For each group, returns genomic intervals [del_start, del_end] where at least
 # `threshold` fraction of reads in that group carry a deletion.
 # cigar_features: pre-filtered to type == "D" and min_indel_size by caller
@@ -25,12 +42,14 @@
   if (nrow(dels) == 0L) return(empty)
 
   groups <- unique(dels[[group_col]])
+  groups <- groups[!is.na(groups)]
   result_list <- vector("list", length(groups))
 
   for (k in seq_along(groups)) {
     grp  <- groups[k]
-    sub  <- dels[dels[[group_col]] == grp, , drop = FALSE]
-    n_reads <- sum(reads[[group_col]] == grp, na.rm = TRUE)
+    grp_mask <- .match_plot_group(dels[[group_col]], grp)
+    sub  <- dels[grp_mask, , drop = FALSE]
+    n_reads <- sum(.match_plot_group(reads[[group_col]], grp))
     if (n_reads == 0L) next
 
     sub <- sub[order(sub$ref_start), , drop = FALSE]
@@ -343,10 +362,10 @@ plot_methylation <- function(data, sort_by = NULL,
   separator_lanes <- numeric(0)
 
   if (!is.null(data$group_tag)) {
-    groups_ordered <- sort(unique(data$reads$group[!is.na(data$reads$group)]))
+    groups_ordered <- .ordered_plot_groups(data$reads$group)
     lane_offset <- 0L
     for (grp in groups_ordered) {
-      idx <- which(data$reads$group == grp)
+      idx <- which(.match_plot_group(data$reads$group, grp))
       data$reads$lane[idx] <- pack_reads(data$reads[idx, ]) + lane_offset
       lane_offset <- max(data$reads$lane[idx]) + 2L
       separator_lanes <- c(separator_lanes, lane_offset - 1L)
@@ -709,10 +728,10 @@ plot_methylation <- function(data, sort_by = NULL,
     separator_lanes <- numeric(0)
 
     if (!is.null(s$group_tag)) {
-      groups_ordered <- sort(unique(s$reads$group[!is.na(s$reads$group)]))
+      groups_ordered <- .ordered_plot_groups(s$reads$group)
       lane_offset <- 0L
       for (grp in groups_ordered) {
-        idx <- which(s$reads$group == grp)
+        idx <- which(.match_plot_group(s$reads$group, grp))
         s$reads$lane[idx] <- pack_reads(s$reads[idx, ]) + lane_offset
         lane_offset <- max(s$reads$lane[idx]) + 2L
         separator_lanes <- c(separator_lanes, lane_offset - 1L)

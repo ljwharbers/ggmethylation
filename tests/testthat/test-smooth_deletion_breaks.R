@@ -93,6 +93,23 @@ test_that(".consensus_deletion_ranges handles multiple groups correctly", {
   expect_equal(result$group, "1")
 })
 
+test_that(".consensus_deletion_ranges ignores NA-group deletions", {
+  cf <- make_cigar_features(
+    c("r1", "r2", "r3"),
+    c(500, 520, 700),
+    c(600, 620, 800)
+  )
+  reads <- make_reads(
+    c("r1", "r2", "r3"),
+    c("1", NA, "2")
+  )
+
+  result <- ggmethylation:::.consensus_deletion_ranges(cf, reads, "group")
+
+  expect_false(any(is.na(result$group)))
+  expect_setequal(result$group, c("1", "2"))
+})
+
 test_that(".consensus_deletion_ranges merges overlapping deletions", {
   # Two overlapping deletions from different reads should merge
   cf <- make_cigar_features(
