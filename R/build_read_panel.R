@@ -226,7 +226,7 @@
 #' Build a ggplot2 read-level methylation panel
 #'
 #' Constructs the top read panel (horizontal read bars + modification
-#' probability dots) for a single `methylation_data` object that has already
+#' probability lines) for a single `methylation_data` object that has already
 #' been sorted and lane-packed. This function encapsulates the grouped,
 #' strand-coloured, and plain rendering branches so that both
 #' `plot_methylation()` (single-sample) and `.plot_multi_methylation()`
@@ -241,7 +241,7 @@
 #' @param region_end Integer. Right boundary of the x-axis.
 #' @param colour_low Colour for low modification probability.
 #' @param colour_high Colour for high modification probability.
-#' @param dot_size Size of modification dots.
+#' @param dot_size Linewidth of modification site markers.
 #' @param colour_strand Logical. Colour read bars by strand when ungrouped.
 #' @param strand_colours Named character vector with `"+"` and `"-"` entries.
 #' @param group_colours Named character vector of colours per group, or NULL.
@@ -422,29 +422,22 @@ build_read_panel <- function(data,
     }
 
     p <- p +
-      ggplot2::geom_point(
+      ggplot2::geom_segment(
         data = sites_plot,
         ggplot2::aes(
           x      = .data$position,
-          y      = .data$lane,
-          colour = .data$mod_prob,
-          shape  = if (multi_code) .data$mod_code else NULL
+          xend   = .data$position,
+          y      = .data$lane - half_height,
+          yend   = .data$lane + half_height,
+          colour = .data$mod_prob
         ),
-        size = dot_size
+        linewidth = dot_size
       ) +
       ggplot2::scale_colour_gradient(
         low = colour_low, high = colour_high,
         limits = c(0, 1),
         name = "Modification\nprobability"
       )
-
-    if (multi_code) {
-      p <- p +
-        ggplot2::scale_shape_manual(
-          values = mod_code_shapes,
-          name   = "Modification"
-        )
-    }
 
     if (length(separator_lanes) > 0L) {
       p <- p +
@@ -494,15 +487,16 @@ build_read_panel <- function(data,
       }
 
       p <- p +
-        ggplot2::geom_point(
+        ggplot2::geom_segment(
           data = sites_plot,
           ggplot2::aes(
             x      = .data$position,
-            y      = .data$lane,
-            colour = .data$mod_prob,
-            shape  = if (multi_code) .data$mod_code else NULL
+            xend   = .data$position,
+            y      = .data$lane - half_height,
+            yend   = .data$lane + half_height,
+            colour = .data$mod_prob
           ),
-          size = dot_size
+          linewidth = dot_size
         ) +
         ggplot2::scale_colour_gradient(
           low = colour_low, high = colour_high,
@@ -546,28 +540,21 @@ build_read_panel <- function(data,
       }
 
       p <- p +
-        ggplot2::geom_point(
+        ggplot2::geom_segment(
           data = sites_plot,
           ggplot2::aes(
             x      = .data$position,
-            y      = .data$lane,
-            colour = .data$mod_prob,
-            shape  = if (multi_code) .data$mod_code else NULL
+            xend   = .data$position,
+            y      = .data$lane - half_height,
+            yend   = .data$lane + half_height,
+            colour = .data$mod_prob
           ),
-          size = dot_size
+          linewidth = dot_size
         ) +
         ggplot2::scale_colour_gradient(
           low = colour_low, high = colour_high,
           limits = c(0, 1),
           name = "Modification\nprobability"
-        )
-    }
-
-    if (multi_code) {
-      p <- p +
-        ggplot2::scale_shape_manual(
-          values = mod_code_shapes,
-          name   = "Modification"
         )
     }
   }

@@ -182,7 +182,7 @@
 #'   `"#BDBDBD"`).
 #' @param colour_high Colour for high modification probability (default
 #'   `"#C62828"`).
-#' @param dot_size Size of modification dots (default 1.5).
+#' @param dot_size Linewidth of modification site lines (default 0.5).
 #' @param colour_strand Logical. When `TRUE`, read bars are coloured by strand
 #'   (`"+"` = forward, `"-"` = reverse). Ignored when data is grouped; group
 #'   colour takes precedence. Default `FALSE`.
@@ -237,7 +237,7 @@
 plot_methylation <- function(data, sort_by = NULL,
                              colour_low = "#BDBDBD",
                              colour_high = "#C62828",
-                             dot_size = 1.5,
+                             dot_size = 0.5,
                              colour_strand = FALSE,
                              strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
                              group_colours = c("1" = "#4393C3", "2" = "#D6604D"),

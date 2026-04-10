@@ -9,7 +9,7 @@ plot_methylation(
   sort_by = NULL,
   colour_low = "#BDBDBD",
   colour_high = "#C62828",
-  dot_size = 1.5,
+  dot_size = 0.5,
   colour_strand = FALSE,
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
   group_colours = c(`1` = "#4393C3", `2` = "#D6604D"),
@@ -36,7 +36,7 @@ when ungrouped or \code{c("group", "start", "mean_mod_prob")} when grouped.}
 \item{colour_high}{Colour for high modification probability (default
 \code{"#C62828"}).}
 
-\item{dot_size}{Size of modification dots (default 1.5).}
+\item{dot_size}{Linewidth of modification site lines (default 0.5).}
 
 \item{colour_strand}{Logical. When \code{TRUE}, read bars are coloured by strand
 (\code{"+"} = forward, \code{"-"} = reverse). Ignored when data is grouped; group

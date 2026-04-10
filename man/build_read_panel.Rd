@@ -41,7 +41,7 @@ dashed separator lines should be drawn (between groups). Pass
 
 \item{colour_high}{Colour for high modification probability.}
 
-\item{dot_size}{Size of modification dots.}
+\item{dot_size}{Linewidth of modification site markers.}
 
 \item{colour_strand}{Logical. Colour read bars by strand when ungrouped.}
 
@@ -77,7 +77,7 @@ A \link[ggplot2:ggplot]{ggplot2::ggplot} object.
 }
 \description{
 Constructs the top read panel (horizontal read bars + modification
-probability dots) for a single \code{methylation_data} object that has already
+probability lines) for a single \code{methylation_data} object that has already
 been sorted and lane-packed. This function encapsulates the grouped,
 strand-coloured, and plain rendering branches so that both
 \code{plot_methylation()} (single-sample) and \code{.plot_multi_methylation()}
