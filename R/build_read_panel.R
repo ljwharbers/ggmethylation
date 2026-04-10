@@ -197,12 +197,12 @@
           ys <- c(ln, ln - hh, ln + hh)
         }
       } else {
-        # Small rectangle tab on the non-arrowhead side
+        # Small rectangle tab on the non-arrowhead side, extending outward
         if (side == "left") {
-          xs <- c(s, s + aw, s + aw, s)
+          xs <- c(s - aw, s, s, s - aw)
           ys <- c(ln - hh, ln - hh, ln + hh, ln + hh)
         } else {
-          xs <- c(e - aw, e, e, e - aw)
+          xs <- c(e, e + aw, e + aw, e)
           ys <- c(ln - hh, ln - hh, ln + hh, ln + hh)
         }
       }
@@ -241,7 +241,7 @@
 #' @param region_end Integer. Right boundary of the x-axis.
 #' @param colour_low Colour for low modification probability.
 #' @param colour_high Colour for high modification probability.
-#' @param dot_size Linewidth of modification site markers.
+#' @param line_width Linewidth of modification site markers.
 #' @param colour_strand Logical. Colour read bars by strand when ungrouped.
 #' @param strand_colours Named character vector with `"+"` and `"-"` entries.
 #' @param group_colours Named character vector of colours per group, or NULL.
@@ -271,7 +271,7 @@ build_read_panel <- function(data,
                              region_end,
                              colour_low,
                              colour_high,
-                             dot_size,
+                             line_width,
                              colour_strand,
                              strand_colours,
                              group_colours,
@@ -400,7 +400,7 @@ build_read_panel <- function(data,
     # --- SA overlay (grouped) ---
     if (isTRUE(show_supplementary) && "sa_chrom" %in% names(reads_plot)) {
       sa_polys <- .make_sa_overlay_polygons(
-        reads_plot, arrow_w, half_height, region_start, region_end
+        reads_plot, arrow_w * 1.5, half_height, region_start, region_end
       )
       if (nrow(sa_polys) > 0L) {
         p <- p +
@@ -431,7 +431,7 @@ build_read_panel <- function(data,
           yend   = .data$lane + half_height,
           colour = .data$mod_prob
         ),
-        linewidth = dot_size
+        linewidth = line_width
       ) +
       ggplot2::scale_colour_gradient(
         low = colour_low, high = colour_high,
@@ -496,7 +496,7 @@ build_read_panel <- function(data,
             yend   = .data$lane + half_height,
             colour = .data$mod_prob
           ),
-          linewidth = dot_size
+          linewidth = line_width
         ) +
         ggplot2::scale_colour_gradient(
           low = colour_low, high = colour_high,
@@ -549,7 +549,7 @@ build_read_panel <- function(data,
             yend   = .data$lane + half_height,
             colour = .data$mod_prob
           ),
-          linewidth = dot_size
+          linewidth = line_width
         ) +
         ggplot2::scale_colour_gradient(
           low = colour_low, high = colour_high,
@@ -642,7 +642,10 @@ build_read_panel <- function(data,
       axis.ticks.y       = ggplot2::element_blank(),
       axis.title.y       = ggplot2::element_blank(),
       panel.grid.minor   = ggplot2::element_blank(),
-      panel.grid.major.y = ggplot2::element_blank()
+      panel.grid.major.y = ggplot2::element_blank(),
+      legend.text        = ggplot2::element_text(size = ggplot2::rel(0.75)),
+      legend.title       = ggplot2::element_text(size = ggplot2::rel(0.75)),
+      legend.key.size    = ggplot2::unit(0.4, "cm")
     ) +
     ggplot2::labs(x = NULL)
 

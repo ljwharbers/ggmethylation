@@ -182,7 +182,7 @@
 #'   `"#BDBDBD"`).
 #' @param colour_high Colour for high modification probability (default
 #'   `"#C62828"`).
-#' @param dot_size Linewidth of modification site lines (default 0.5).
+#' @param line_width Linewidth of modification site lines (default 0.2).
 #' @param colour_strand Logical. When `TRUE`, read bars are coloured by strand
 #'   (`"+"` = forward, `"-"` = reverse). Ignored when data is grouped; group
 #'   colour takes precedence. Default `FALSE`.
@@ -190,9 +190,9 @@
 #'   giving bar colours for each strand. Only used when `colour_strand = TRUE`
 #'   and data is ungrouped. Default `c("+" = "#4393C3", "-" = "#D6604D")`.
 #' @param group_colours Named character vector of colours per group. Defaults
-#'   to `c("1" = "#4393C3", "2" = "#D6604D")` (blue / red), matching the
-#'   typical HP haplotype tag output. Pass `NULL` to use ggplot2 defaults, or
-#'   supply a fully named vector for other group names.
+#'   to `c("1" = "#95babc", "2" = "#efbb76")`, matching the typical HP
+#'   haplotype tag output. Pass `NULL` to use ggplot2 defaults, or supply a
+#'   fully named vector for other group names.
 #' @param smooth_span Loess smoothing span for the bottom panel (default 0.3).
 #' @param panel_heights Numeric vector giving relative heights of the panels.
 #'   When `annotations = NULL`, expects length 2 (reads + smooth); when
@@ -237,10 +237,10 @@
 plot_methylation <- function(data, sort_by = NULL,
                              colour_low = "#BDBDBD",
                              colour_high = "#C62828",
-                             dot_size = 0.5,
+                             line_width = 0.2,
                              colour_strand = FALSE,
                              strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
-                             group_colours = c("1" = "#4393C3", "2" = "#D6604D"),
+                             group_colours = c("1" = "#95babc", "2" = "#efbb76"),
                              mod_code_shapes = NULL,
                              smooth_span = 0.3,
                              panel_heights = NULL,
@@ -256,7 +256,7 @@ plot_methylation <- function(data, sort_by = NULL,
       sort_by            = sort_by,
       colour_low         = colour_low,
       colour_high        = colour_high,
-      dot_size           = dot_size,
+      line_width         = line_width,
       colour_strand      = colour_strand,
       strand_colours     = strand_colours,
       group_colours      = group_colours,
@@ -412,7 +412,7 @@ plot_methylation <- function(data, sort_by = NULL,
     region_end         = region_end,
     colour_low         = colour_low,
     colour_high        = colour_high,
-    dot_size           = dot_size,
+    line_width         = line_width,
     colour_strand      = colour_strand,
     strand_colours     = strand_colours,
     group_colours      = group_colours,
@@ -456,7 +456,12 @@ plot_methylation <- function(data, sort_by = NULL,
         ) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
-        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::theme(
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.key.size  = ggplot2::unit(0.4, "cm")
+        ) +
         ggplot2::labs(x = "Genomic position (bp)")
     } else {
       # Multi-code: one line per code, colour by mod_code
@@ -481,7 +486,12 @@ plot_methylation <- function(data, sort_by = NULL,
         ) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
-        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::theme(
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.key.size  = ggplot2::unit(0.4, "cm")
+        ) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Modification")
     }
   } else {
@@ -511,7 +521,12 @@ plot_methylation <- function(data, sort_by = NULL,
         ) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
-        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::theme(
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.key.size  = ggplot2::unit(0.4, "cm")
+        ) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
 
       if (!is.null(group_colours)) {
@@ -553,7 +568,12 @@ plot_methylation <- function(data, sort_by = NULL,
           name = "Modification"
         ) +
         ggplot2::theme_minimal() +
-        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::theme(
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.key.size  = ggplot2::unit(0.4, "cm")
+        ) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
 
       if (!is.null(group_colours)) {
@@ -639,7 +659,7 @@ plot_methylation <- function(data, sort_by = NULL,
 # Not exported — called by plot_methylation() when data is multi_methylation_data.
 
 .plot_multi_methylation <- function(data, sort_by, colour_low, colour_high,
-                                    dot_size, colour_strand, strand_colours,
+                                    line_width, colour_strand, strand_colours,
                                     group_colours, mod_code_shapes,
                                     smooth_span, panel_heights, annotations,
                                     variants, show_cigar = FALSE,
@@ -779,7 +799,7 @@ plot_methylation <- function(data, sort_by = NULL,
       region_end         = region_end,
       colour_low         = colour_low,
       colour_high        = colour_high,
-      dot_size           = dot_size,
+      line_width         = line_width,
       colour_strand      = colour_strand,
       strand_colours     = strand_colours,
       group_colours      = group_colours,
@@ -877,7 +897,12 @@ plot_methylation <- function(data, sort_by = NULL,
         ) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
-        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::theme(
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.key.size  = ggplot2::unit(0.4, "cm")
+        ) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group",
                       linetype = "Sample")
 
@@ -902,7 +927,12 @@ plot_methylation <- function(data, sort_by = NULL,
         ) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
-        ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
+        ggplot2::theme(
+          panel.grid.minor = ggplot2::element_blank(),
+          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
+          legend.key.size  = ggplot2::unit(0.4, "cm")
+        ) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Sample")
     }
 
