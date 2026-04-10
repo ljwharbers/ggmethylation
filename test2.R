@@ -14,9 +14,10 @@ library(patchwork)
 
 # -- Shared paths -------------------------------------------------------------
 
-BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/bamfiles/BL1_tumor.bam"
+BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL5/bamfiles/BL5_tumor.bam"
 REGION     <- "chr8:127598491-127604951" #hg38
 REGION     <- "chr8:128861685-128872405" #CHM13
+REGION     <- "chr8:128861685-128865405" #CHM13
 
 
 annotation = read_annotations(genome = "chm13", region = REGION)
@@ -28,9 +29,11 @@ meth_hp <- read_methylation(BAM_PTCL8,
                             group_tag   = "HP",
                             drop_na_group = TRUE)
 
-plot_methylation(meth_hp,
+plt = plot_methylation(meth_hp,
                  annotations = annotation,
                  show_cigar = TRUE,
                  show_supplementary = TRUE,
+                 dot_size = 0.6,
                  group_colours = c("1" = "#3120c9", "2" = "#c47612"),
                  panel_heights = c(1, 0.5, 0.04))
+ggsave("test.png", plot = plt, width = 8, height = 6)

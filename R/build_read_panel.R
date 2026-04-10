@@ -286,21 +286,6 @@ build_read_panel <- function(data,
   codes      <- unique(data$sites$mod_code)
   multi_code <- length(codes) > 1L
 
-  # Merge lane info and read extent into sites
-  sites_plot <- merge(
-    data$sites,
-    data$reads[, c("read_name", "lane", "start", "end"), drop = FALSE],
-    by = "read_name"
-  )
-  # Remove dots outside the visible read bar (clipped positions)
-  sites_plot <- sites_plot[
-    sites_plot$position >= sites_plot$start &
-      sites_plot$position <= sites_plot$end,
-    , drop = FALSE
-  ]
-  sites_plot$start <- NULL
-  sites_plot$end   <- NULL
-
   # When show_cigar is TRUE, split reads on large deletions so the thick read
   # bar has IGV-style gaps instead of running through deletion regions.
   reads_plot <- data$reads
@@ -334,6 +319,25 @@ build_read_panel <- function(data,
       reads_plot$is_last_segment[sorted_idx[length(sorted_idx)]] <- TRUE
     }
   }
+
+  # Merge lane info and segment extents into sites.  Using reads_plot (the
+  # deletion-split version when show_cigar=TRUE) means dots that fall in
+  # large-deletion gaps are excluded along with any remaining soft-clipped
+  # positions.  When show_cigar=FALSE, reads_plot == data$reads so behaviour
+  # is unchanged.
+  sites_plot <- merge(
+    data$sites,
+    reads_plot[, c("read_name", "lane", "start", "end"), drop = FALSE],
+    by = "read_name"
+  )
+  # Keep only dots that lie within a visible read segment
+  sites_plot <- sites_plot[
+    sites_plot$position >= sites_plot$start &
+      sites_plot$position <= sites_plot$end,
+    , drop = FALSE
+  ]
+  sites_plot$start <- NULL
+  sites_plot$end   <- NULL
 
   # --- Arrow geometry parameters ---
   arrow_w     <- (region_end - region_start) * 0.003
@@ -644,7 +648,7 @@ build_read_panel <- function(data,
 
   p <- p +
     ggplot2::scale_y_reverse() +
-    ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+    ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
     ggplot2::theme_minimal() +
     ggplot2::theme(
       axis.text.y        = ggplot2::element_blank(),

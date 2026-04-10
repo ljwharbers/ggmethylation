@@ -435,7 +435,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name = "Mean modification\nprobability"
         ) +
-        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
         ggplot2::labs(x = "Genomic position (bp)")
@@ -460,7 +460,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name = "Mean modification\nprobability"
         ) +
-        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Modification")
@@ -490,7 +490,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name = "Mean modification\nprobability"
         ) +
-        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
@@ -525,7 +525,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name = "Mean modification\nprobability"
         ) +
-        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::scale_linetype_manual(
           values = stats::setNames(
             default_linetypes[seq_along(codes)],
@@ -856,7 +856,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name   = "Mean modification\nprobability"
         ) +
-        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group",
@@ -881,7 +881,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name   = "Mean modification\nprobability"
         ) +
-        ggplot2::scale_x_continuous(limits = c(region_start, region_end)) +
+        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(panel.grid.minor = ggplot2::element_blank()) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Sample")
