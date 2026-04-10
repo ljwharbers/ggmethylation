@@ -84,3 +84,41 @@ test_that("pack_reads lane assignments are positive integers", {
   result <- ggmethylation:::pack_reads(reads, gap = 0L)
   expect_true(all(result >= 1L))
 })
+
+test_that("clipped reads get wider gap", {
+  reads <- data.frame(
+    read_name = c("r1", "r2"),
+    start     = c(100L, 160L),
+    end       = c(150L, 200L)
+  )
+  clip_side <- c("right", "left")
+
+  # With clip_gap = 100, r2 starts at 160 which is only 10 past r1 end (150),
+  # so r2 should NOT fit in the same lane (needs > 150 + 100 = 250)
+  lanes <- ggmethylation:::pack_reads(reads, clip_side = clip_side, clip_gap = 100L)
+  expect_equal(lanes[1], 1L)
+  expect_equal(lanes[2], 2L)
+})
+
+test_that("non-clipped reads use normal gap", {
+  reads <- data.frame(
+    read_name = c("r1", "r2"),
+    start     = c(100L, 161L),
+    end       = c(150L, 200L)
+  )
+  # No clipping — normal gap of 10, r2 at 161 > 150+10=160, fits in same lane
+  lanes <- ggmethylation:::pack_reads(reads, clip_side = c(NA_character_, NA_character_))
+  expect_equal(lanes[1], 1L)
+  expect_equal(lanes[2], 1L)
+})
+
+test_that("NULL clip_side falls back to normal gap", {
+  reads <- data.frame(
+    read_name = c("r1", "r2"),
+    start     = c(100L, 161L),
+    end       = c(150L, 200L)
+  )
+  lanes <- ggmethylation:::pack_reads(reads)
+  expect_equal(lanes[1], 1L)
+  expect_equal(lanes[2], 1L)
+})

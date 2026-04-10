@@ -366,14 +366,14 @@ plot_methylation <- function(data, sort_by = NULL,
     lane_offset <- 0L
     for (grp in groups_ordered) {
       idx <- which(.match_plot_group(data$reads$group, grp))
-      data$reads$lane[idx] <- pack_reads(data$reads[idx, ]) + lane_offset
+      data$reads$lane[idx] <- pack_reads(data$reads[idx, ], clip_side = data$reads$clip_side[idx]) + lane_offset
       lane_offset <- max(data$reads$lane[idx]) + 2L
       separator_lanes <- c(separator_lanes, lane_offset - 1L)
     }
     # Drop the trailing separator (after the last group)
     separator_lanes <- separator_lanes[-length(separator_lanes)]
   } else {
-    data$reads$lane <- pack_reads(data$reads)
+    data$reads$lane <- pack_reads(data$reads, clip_side = data$reads$clip_side)
   }
 
   # --- 5b. Prepare variant overlay data ---

@@ -4,7 +4,7 @@
 \alias{pack_reads}
 \title{Pack reads into horizontal lanes for compact visualization}
 \usage{
-pack_reads(reads, gap = 10)
+pack_reads(reads, gap = 10, clip_side = NULL, clip_gap = 100L)
 }
 \arguments{
 \item{reads}{A data.frame with columns \code{read_name}, \code{start}, and \code{end}.
@@ -12,6 +12,15 @@ Rows should already be sorted in the desired display order.}
 
 \item{gap}{Minimum gap in base pairs between reads on the same lane
 (default 10).}
+
+\item{clip_side}{Character vector (same length as \code{nrow(reads)}) indicating
+soft-clip status of each read: \code{"left"}, \code{"right"}, \code{"both"}, or \code{NA}.
+When non-NULL, adjacent clipped reads receive a wider gap so that
+supplementary-alignment indicators do not overlap. Default \code{NULL} (no
+clip-aware packing).}
+
+\item{clip_gap}{Minimum gap in base pairs between reads when at least one
+side is clipped (default 100).}
 }
 \value{
 An integer vector of lane assignments (same length as
