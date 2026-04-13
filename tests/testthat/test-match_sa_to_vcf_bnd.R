@@ -142,6 +142,25 @@ test_that("match_sa_to_vcf_bnd always produces a logical vcf_validated column", 
   expect_type(result$vcf_validated, "logical")
 })
 
+# --- Tests for build_bnd_layer() ---------------------------------------------
+
+test_that("build_bnd_layer returns NULL for NULL input", {
+  expect_null(ggmethylation:::build_bnd_layer(NULL))
+})
+
+test_that("build_bnd_layer returns a list of length 2 for a one-row bnd_df", {
+  bnd_df <- data.frame(
+    position   = 1000L,
+    mate_chrom = "chr7",
+    mate_pos   = 5000L,
+    stringsAsFactors = FALSE
+  )
+  result <- ggmethylation:::build_bnd_layer(bnd_df)
+
+  expect_type(result, "list")
+  expect_length(result, 2L)
+})
+
 # --- Bonus: mixed reads (some SA, some not) -----------------------------------
 
 test_that("match_sa_to_vcf_bnd handles mixed SA and non-SA reads correctly", {

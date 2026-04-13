@@ -31,8 +31,8 @@ match_sa_to_vcf_bnd <- function(reads, bnd_df, tol = 50L) {
     return(reads)
   }
 
-  # Only consider reads that have an SA tag (non-NA sa_chrom)
-  has_sa <- !is.na(reads$sa_chrom)
+  # Only consider reads that have an SA tag (non-NA sa_chrom and sa_pos)
+  has_sa <- !is.na(reads$sa_chrom) & !is.na(reads$sa_pos)
 
   if (!any(has_sa)) {
     return(reads)
@@ -89,11 +89,11 @@ build_bnd_layer <- function(bnd_df) {
     ),
     ggplot2::geom_text(
       data        = bnd_df,
-      ggplot2::aes(
+      mapping     = ggplot2::aes(
         x     = .data$position,
-        y     = -Inf,
         label = paste0("\u22c8 ", .data$mate_chrom)
       ),
+      y           = -Inf,
       vjust       = -0.3,
       hjust       = 0.5,
       size        = 1.8,
