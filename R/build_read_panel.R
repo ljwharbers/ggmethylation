@@ -151,6 +151,7 @@
     return(data.frame(
       x = numeric(0), y = numeric(0), polygon_id = character(0),
       sa_chrom = character(0), lane = numeric(0),
+      vcf_validated = logical(0),
       stringsAsFactors = FALSE
     ))
   }
@@ -208,11 +209,12 @@
       }
 
       poly_list[[pid_counter]] <- data.frame(
-        x          = xs,
-        y          = ys,
-        polygon_id = pid,
-        sa_chrom   = r$sa_chrom,
-        lane       = ln,
+        x             = xs,
+        y             = ys,
+        polygon_id    = pid,
+        sa_chrom      = r$sa_chrom,
+        lane          = ln,
+        vcf_validated = if ("vcf_validated" %in% names(r)) isTRUE(r$vcf_validated) else FALSE,
         stringsAsFactors = FALSE
       )
     }
@@ -249,11 +251,9 @@
 #'   shapes.
 #' @param show_x_axis Logical. When `FALSE` (default), x-axis text and ticks
 #'   are hidden. Set to `TRUE` for the bottom-most read panel.
-#' @param variant_bases Data.frame returned by [extract_variant_bases()], or
-#'   `NULL`. When non-NULL, per-read base letters are drawn at variant positions
-#'   and coloured by `variant_class` (ref/alt/del/other).
-#' @param variant_positions Numeric vector of genomic positions at which to draw
-#'   vertical dashed marker lines, or `NULL`.
+#' @param variant_overlay A list returned by [build_variant_overlay()], or `NULL`.
+#'   When non-NULL, SNV point marks, SV spans, and BND position markers are drawn
+#'   on the read panel.
 #' @param show_cigar Logical. When `TRUE`, structural variants from CIGAR
 #'   strings are overlaid on reads. Default `FALSE`.
 #' @param cigar_features Data.frame of CIGAR features (from
@@ -277,8 +277,7 @@ build_read_panel <- function(data,
                              group_colours,
                              mod_code_shapes,
                              show_x_axis        = FALSE,
-                             variant_bases      = NULL,
-                             variant_positions  = NULL,
+                             variant_overlay    = NULL,
                              show_cigar         = FALSE,
                              cigar_features     = NULL,
                              min_indel_size     = 50L,
@@ -318,6 +317,13 @@ build_read_panel <- function(data,
       reads_plot$is_first_segment[sorted_idx[1L]] <- TRUE
       reads_plot$is_last_segment[sorted_idx[length(sorted_idx)]] <- TRUE
     }
+  }
+
+  # Merge vcf_validated flag from variant_overlay$sa_reads into reads_plot
+  if (!is.null(variant_overlay) && !is.null(variant_overlay$sa_reads)) {
+    validated_flag <- variant_overlay$sa_reads[, c("read_name", "vcf_validated"), drop = FALSE]
+    reads_plot <- merge(reads_plot, validated_flag, by = "read_name", all.x = TRUE)
+    reads_plot$vcf_validated[is.na(reads_plot$vcf_validated)] <- FALSE
   }
 
   # Merge lane info and segment extents into sites.  Using reads_plot (the
@@ -418,6 +424,16 @@ build_read_panel <- function(data,
           ) +
           ggplot2::scale_fill_hue(name = "SA partner")
 
+        # VCF-validated SA border
+        if (!is.null(variant_overlay) &&
+            "vcf_validated" %in% names(sa_polys) &&
+            any(sa_polys$vcf_validated, na.rm = TRUE)) {
+          p <- p + ggplot2::geom_polygon(
+            data = sa_polys[sa_polys$vcf_validated %in% TRUE, , drop = FALSE],
+            ggplot2::aes(x = .data$x, y = .data$y, group = .data$polygon_id),
+            fill = NA, colour = "#880E4F", linewidth = 0.6, inherit.aes = FALSE
+          )
+        }
       }
     }
 
@@ -483,6 +499,17 @@ build_read_panel <- function(data,
               inherit.aes = FALSE
             ) +
             ggplot2::scale_fill_hue(name = "SA partner")
+
+          # VCF-validated SA border
+          if (!is.null(variant_overlay) &&
+              "vcf_validated" %in% names(sa_polys) &&
+              any(sa_polys$vcf_validated, na.rm = TRUE)) {
+            p <- p + ggplot2::geom_polygon(
+              data = sa_polys[sa_polys$vcf_validated %in% TRUE, , drop = FALSE],
+              ggplot2::aes(x = .data$x, y = .data$y, group = .data$polygon_id),
+              fill = NA, colour = "#880E4F", linewidth = 0.6, inherit.aes = FALSE
+            )
+          }
         }
       }
 
@@ -536,6 +563,17 @@ build_read_panel <- function(data,
               inherit.aes = FALSE
             ) +
             ggplot2::scale_fill_hue(name = "SA partner")
+
+          # VCF-validated SA border
+          if (!is.null(variant_overlay) &&
+              "vcf_validated" %in% names(sa_polys) &&
+              any(sa_polys$vcf_validated, na.rm = TRUE)) {
+            p <- p + ggplot2::geom_polygon(
+              data = sa_polys[sa_polys$vcf_validated %in% TRUE, , drop = FALSE],
+              ggplot2::aes(x = .data$x, y = .data$y, group = .data$polygon_id),
+              fill = NA, colour = "#880E4F", linewidth = 0.6, inherit.aes = FALSE
+            )
+          }
         }
       }
 
@@ -607,30 +645,19 @@ build_read_panel <- function(data,
 
   }
 
-  # Variant base letters
-  if (!is.null(variant_bases) && nrow(variant_bases) > 0L) {
-    p <- p +
-      ggnewscale::new_scale_colour() +
-      ggplot2::geom_text(
-        data = variant_bases,
-        ggplot2::aes(x = .data$position, y = .data$lane,
-                     label = .data$base, colour = .data$variant_class),
-        size = 2, fontface = "bold", show.legend = FALSE,
-        inherit.aes = FALSE
-      ) +
-      ggplot2::scale_colour_manual(
-        values = c(ref = "#9E9E9E", alt = "#E53935", other = "#FDD835", del = "#212121"),
-        guide  = "none"
-      )
-  }
-
-  # Vertical lines at variant positions
-  if (!is.null(variant_positions) && length(variant_positions) > 0L) {
-    p <- p +
-      ggplot2::geom_vline(
-        xintercept = variant_positions,
-        linetype = "dashed", colour = "#424242", linewidth = 0.4, alpha = 0.7
-      )
+  # --- New variant overlay layers ---
+  if (!is.null(variant_overlay)) {
+    for (layer_group in list(
+      variant_overlay$snv,
+      variant_overlay$sv,
+      variant_overlay$bnd
+    )) {
+      if (!is.null(layer_group)) {
+        for (lyr in layer_group) {
+          p <- p + lyr
+        }
+      }
+    }
   }
 
   p <- p +

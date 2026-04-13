@@ -105,3 +105,68 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
 
   do.call(rbind, result_list[seq_len(result_idx)])
 }
+
+#' Compose all variant overlay layers for a single methylation_data object
+#'
+#' Dispatches to [build_snv_layer()], [build_sv_layer()], [build_bnd_layer()],
+#' and [match_sa_to_vcf_bnd()] based on which variant types are present in
+#' `variants$variants`. Returns a named list suitable for consumption by
+#' [build_read_panel()].
+#'
+#' @param data A `methylation_data` object.
+#' @param variants A `variant_data` object returned by [read_variants()], or
+#'   `NULL`.
+#' @param bnd_match_tol Integer. Position tolerance (bp) for matching SA
+#'   breakpoints to VCF BND calls. Default `50L`.
+#'
+#' @return A named list with elements `snv`, `sv`, `bnd`, and `sa_reads`
+#'   (each is a list of ggplot2 layer objects or `NULL`), or `NULL` when
+#'   `variants` is `NULL` or not a `variant_data` object.
+#'
+#' @keywords internal
+build_variant_overlay <- function(data, variants, bnd_match_tol = 50L) {
+  if (is.null(variants) || !inherits(variants, "variant_data")) {
+    return(NULL)
+  }
+
+  vdf <- variants$variants
+
+  # Partition by type
+  snv_rows <- vdf[vdf$type %in% c("SNV", "insertion", "deletion"), , drop = FALSE]
+  sv_rows  <- vdf[vdf$type %in% c("DEL", "DUP", "INV"),           , drop = FALSE]
+  bnd_rows <- vdf[vdf$type == "BND",                               , drop = FALSE]
+
+  # --- SNV layer ---
+  snv_layers <- NULL
+  if (nrow(snv_rows) > 0L) {
+    if (!is.null(data$sequences) && length(data$sequences) > 0L) {
+      vbases     <- extract_variant_bases(data$reads, data$sequences, data$cigars, snv_rows)
+      snv_layers <- build_snv_layer(vbases)
+    } else {
+      warning(
+        "VCF overlay requires sequences stored in methylation_data. ",
+        "Re-run read_methylation() to get a current object with sequences.",
+        call. = FALSE
+      )
+    }
+  }
+
+  # --- SV layer ---
+  region_start <- GenomicRanges::start(data$region)
+  region_end   <- GenomicRanges::end(data$region)
+  sv_layers    <- build_sv_layer(data$reads, sv_rows, region_start, region_end)
+
+  # --- BND layer and SA matching ---
+  bnd_layers         <- build_bnd_layer(bnd_rows)
+  sa_reads_validated <- NULL
+  if ("sa_chrom" %in% names(data$reads)) {
+    sa_reads_validated <- match_sa_to_vcf_bnd(data$reads, bnd_rows, tol = bnd_match_tol)
+  }
+
+  list(
+    snv      = snv_layers,
+    sv       = sv_layers,
+    bnd      = bnd_layers,
+    sa_reads = sa_reads_validated
+  )
+}
