@@ -96,8 +96,26 @@ read_variants <- function(vcf, region) {
 
   # Extract INFO fields (may be NULL if absent in VCF)
   info_df   <- VariantAnnotation::info(vcf_obj)
-  svtype_vec <- if ("SVTYPE" %in% names(info_df)) info_df[["SVTYPE"]] else NULL
-  end_info   <- if ("END"    %in% names(info_df)) info_df[["END"]]    else NULL
+  svtype_vec <- if ("SVTYPE" %in% names(info_df)) {
+    sv <- info_df[["SVTYPE"]]
+    if (is.list(sv)) {
+      vapply(sv, function(x) if (length(x) > 0L) as.character(x[[1L]]) else NA_character_, character(1L))
+    } else {
+      as.character(sv)
+    }
+  } else {
+    NULL
+  }
+  end_info   <- if ("END" %in% names(info_df)) {
+    ei <- info_df[["END"]]
+    if (is.list(ei)) {
+      vapply(ei, function(x) if (length(x) > 0L) as.integer(x[[1L]]) else NA_integer_, integer(1L))
+    } else {
+      as.integer(ei)
+    }
+  } else {
+    NULL
+  }
   svlen_info <- if ("SVLEN"  %in% names(info_df)) info_df[["SVLEN"]]  else NULL
 
   # Classify each variant
