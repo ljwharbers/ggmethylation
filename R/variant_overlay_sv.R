@@ -90,7 +90,7 @@ build_sv_layer <- function(reads, sv_df, region_start, region_end) {
   left_clips  <- seg_df[seg_df$clipped_left,  , drop = FALSE]
   right_clips <- seg_df[seg_df$clipped_right, , drop = FALSE]
 
-  layers <- list(ggnewscale::new_scale_colour())
+  layers <- list()
 
   # --- DEL: dark red bracket-style line + tick marks at ends ---
   if (nrow(del_df) > 0L) {
@@ -192,40 +192,49 @@ build_sv_layer <- function(reads, sv_df, region_start, region_end) {
   }
 
   # --- Clipping chevrons ---
-  if (nrow(left_clips) > 0L) {
-    layers <- c(layers, list(
-      ggplot2::geom_text(
-        data = left_clips,
-        ggplot2::aes(
-          x     = .data$seg_left,
-          y     = .data$lane,
-          label = "\u00AB",
-          colour = .data$sv_colour
-        ),
-        size        = 2,
-        vjust       = -0.5,
-        inherit.aes = FALSE,
-        show.legend = FALSE
-      )
-    ))
-  }
+  has_left_clips  <- nrow(left_clips)  > 0L
+  has_right_clips <- nrow(right_clips) > 0L
 
-  if (nrow(right_clips) > 0L) {
-    layers <- c(layers, list(
-      ggplot2::geom_text(
-        data = right_clips,
-        ggplot2::aes(
-          x     = .data$seg_right,
-          y     = .data$lane,
-          label = "\u00BB",
-          colour = .data$sv_colour
-        ),
-        size        = 2,
-        vjust       = -0.5,
-        inherit.aes = FALSE,
-        show.legend = FALSE
-      )
-    ))
+  if (has_left_clips || has_right_clips) {
+    layers <- c(layers, list(ggnewscale::new_scale_colour()))
+
+    if (has_left_clips) {
+      layers <- c(layers, list(
+        ggplot2::geom_text(
+          data = left_clips,
+          ggplot2::aes(
+            x      = .data$seg_left,
+            y      = .data$lane,
+            label  = "\u00AB",
+            colour = .data$sv_colour
+          ),
+          size        = 2,
+          vjust       = -0.5,
+          inherit.aes = FALSE,
+          show.legend = FALSE
+        )
+      ))
+    }
+
+    if (has_right_clips) {
+      layers <- c(layers, list(
+        ggplot2::geom_text(
+          data = right_clips,
+          ggplot2::aes(
+            x      = .data$seg_right,
+            y      = .data$lane,
+            label  = "\u00BB",
+            colour = .data$sv_colour
+          ),
+          size        = 2,
+          vjust       = -0.5,
+          inherit.aes = FALSE,
+          show.legend = FALSE
+        )
+      ))
+    }
+
+    layers <- c(layers, list(ggplot2::scale_colour_identity(guide = "none")))
   }
 
   layers
