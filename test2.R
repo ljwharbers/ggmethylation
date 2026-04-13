@@ -15,13 +15,16 @@ library(patchwork)
 # -- Shared paths -------------------------------------------------------------
 
 BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/bamfiles/BL1_tumor.bam"
-REGION     <- "chr8:127598491-127604951" #hg38
+VCF_SVs = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/variants/severus/somatic_SVs/severus_somatic.vcf.gz"
+VCF_SNVs = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/variants/clairsto/somatic.vcf.gz"
+# REGION     <- "chr8:127598491-127604951" #hg38
 REGION     <- "chr8:128861685-128872405" #CHM13
-REGION     <- "chr8:128861685-128865405" #CHM13
-
+# REGION     <- "chr8:128801685-128885405" #CHM13
+# REGION = "chr12:6542873-6650727"
+REGION2 = "chr1:170736-258136"
 
 annotation = read_annotations(genome = "chm13", region = REGION)
-
+vars <- read_variants(VCF_SVs, REGION)
 
 meth_hp <- read_methylation(BAM_PTCL8,
                             REGION,
@@ -31,9 +34,21 @@ meth_hp <- read_methylation(BAM_PTCL8,
 
 plt = plot_methylation(meth_hp,
                  annotations = annotation,
-                 show_cigar = TRUE,
-                 show_supplementary = TRUE,
-                 line_width = 0.2,
-                 group_colours = c("1" = "#95babc", "2" = "#efbb76"),
-                 panel_heights = c(1, 0.2, 0.04))
+                 variants = vars)
 ggsave("test.png", plot = plt, width = 8, height = 6)
+
+########
+
+annotation2 = read_annotations(genome = "chm13", region = REGION2)
+vars2 <- read_variants(VCF_SNVs, REGION2)
+
+meth_hp2 <- read_methylation(BAM_PTCL8,
+                            REGION2,
+                            mod_code    = "m",
+                            group_tag   = "HP",
+                            drop_na_group = FALSE)
+
+plt2 = plot_methylation(meth_hp2,
+                 annotations = annotation2,
+                 variants = vars2)
+ggsave("test2.png", plot = plt2, width = 8, height = 6)

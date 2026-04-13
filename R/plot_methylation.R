@@ -250,9 +250,9 @@ plot_methylation <- function(data, sort_by = NULL,
                              panel_heights = NULL,
                              annotations = NULL,
                              variants = NULL,
-                             show_cigar = FALSE,
+                             show_cigar = TRUE,
                              min_indel_size = 50L,
-                             show_supplementary = FALSE,
+                             show_supplementary = TRUE,
                              bnd_match_tol = 50L) {
   # --- 1. Validate input ---
   if (inherits(data, "multi_methylation_data")) {
@@ -442,6 +442,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name = "Mean modification\nprobability"
         ) +
+        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(
@@ -472,6 +473,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name = "Mean modification\nprobability"
         ) +
+        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(
@@ -507,6 +509,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name = "Mean modification\nprobability"
         ) +
+        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(
@@ -547,6 +550,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name = "Mean modification\nprobability"
         ) +
+        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::scale_linetype_manual(
           values = stats::setNames(
@@ -590,29 +594,24 @@ plot_methylation <- function(data, sort_by = NULL,
       annotations  = annotations,
       region_start = region_start,
       region_end   = region_end,
-      bottom_label = TRUE
+      bottom_label = FALSE
     )
   }
 
   # --- 9. Combine with patchwork ---
+  # Panel order (when gene panel present): gene (top), reads, smooth (bottom
+  # with genomic coordinates). When no gene panel: reads, smooth.
   panels   <- list(p_top, p_bottom)
   n_panels <- 2L
 
   if (!is.null(p_gene)) {
-    # Move x-axis label off smooth panel, onto gene panel
-    p_bottom <- p_bottom + ggplot2::labs(x = NULL) +
-      ggplot2::theme(
-        axis.text.x  = ggplot2::element_blank(),
-        axis.ticks.x = ggplot2::element_blank()
-      )
-    panels[[2L]] <- p_bottom
-    panels       <- c(panels, list(p_gene))
-    n_panels     <- 3L
+    panels   <- c(list(p_gene), panels)
+    n_panels <- 3L
   }
 
   # Compute heights
   if (is.null(panel_heights)) {
-    heights <- c(3, 1, if (!is.null(p_gene)) 0.6 else NULL)
+    heights <- c(if (!is.null(p_gene)) 0.08 else NULL, 1, 0.25)
   } else {
     if (length(panel_heights) != n_panels) {
       stop(sprintf(
@@ -849,6 +848,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name   = "Mean modification\nprobability"
         ) +
+        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(
@@ -879,6 +879,7 @@ plot_methylation <- function(data, sort_by = NULL,
           limits = c(0, 1),
           name   = "Mean modification\nprobability"
         ) +
+        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
         ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::theme_minimal() +
         ggplot2::theme(
@@ -910,29 +911,24 @@ plot_methylation <- function(data, sort_by = NULL,
       annotations  = annotations,
       region_start = region_start,
       region_end   = region_end,
-      bottom_label = TRUE
+      bottom_label = FALSE
     )
   }
 
   # --- 4. Assemble panels ---
-  all_panels <- c(sample_panels, list(p_smooth))
-  n_panels   <- n_samples + 1L
-
+  # Panel order (when gene panel present): gene (top), sample reads..., smooth
+  # (bottom with genomic coordinates). When no gene panel: sample reads, smooth.
   if (!is.null(p_gene)) {
-    # Move x-axis label from smooth panel to gene panel
-    p_smooth <- p_smooth + ggplot2::labs(x = NULL) +
-      ggplot2::theme(
-        axis.text.x  = ggplot2::element_blank(),
-        axis.ticks.x = ggplot2::element_blank()
-      )
-    all_panels[[n_panels]] <- p_smooth
-    all_panels <- c(all_panels, list(p_gene))
-    n_panels   <- n_panels + 1L
+    all_panels <- c(list(p_gene), sample_panels, list(p_smooth))
+    n_panels   <- n_samples + 2L
+  } else {
+    all_panels <- c(sample_panels, list(p_smooth))
+    n_panels   <- n_samples + 1L
   }
 
   # Compute heights
   if (is.null(panel_heights)) {
-    heights <- c(rep(3, n_samples), 1, if (!is.null(p_gene)) 0.6 else NULL)
+    heights <- c(if (!is.null(p_gene)) 0.6 else NULL, rep(3, n_samples), 1)
   } else {
     if (length(panel_heights) != n_panels) {
       stop(sprintf(

@@ -12,10 +12,9 @@
 #'   `"del"`), as returned by [extract_variant_bases()]. May be `NULL` or
 #'   zero-row.
 #'
-#' @return A list of four ggplot2 layer objects
-#'   (`ggnewscale::new_scale_colour()`, `geom_point`, `scale_colour_manual`,
-#'   `scale_shape_manual`) that can be appended to a ggplot with `+`, or
-#'   `NULL` when there are no non-ref calls to draw.
+#' @return A list with one ggplot2 `geom_point` layer that can be appended to a
+#'   ggplot with `+`, or `NULL` when there are no non-ref calls to draw. All
+#'   variant classes are drawn as a small red asterisk (shape 8).
 #'
 #' @keywords internal
 build_snv_layer <- function(variant_bases) {
@@ -28,26 +27,17 @@ build_snv_layer <- function(variant_bases) {
   if (nrow(non_ref) == 0L) return(NULL)
 
   list(
-    ggnewscale::new_scale_colour(),
     ggplot2::geom_point(
       data = non_ref,
       ggplot2::aes(
-        x      = .data$position,
-        y      = .data$lane,
-        colour = .data$variant_class,
-        shape  = .data$variant_class
+        x = .data$position,
+        y = .data$lane
       ),
-      size        = 1.5,
+      colour      = "#000000",
+      shape       = 8L,
+      size        = 0.8,
+      stroke      = 0.3,
       inherit.aes = FALSE
-    ),
-    ggplot2::scale_colour_manual(
-      values = c(alt = "#E53935", other = "#FDD835", del = "#212121"),
-      # #212121 = soft black, consistent with existing variant colour palette in build_read_panel.R
-      guide  = "none"
-    ),
-    ggplot2::scale_shape_manual(
-      values = c(alt = 19L, other = 18L, del = 1L),
-      guide  = "none"
     )
   )
 }

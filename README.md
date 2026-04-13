@@ -9,20 +9,21 @@ Given a modBAM file and a genomic region, `ggmethylation` produces a two-panel p
 
 ## Installation
 
-`ggmethylation` depends on Bioconductor packages. Install them first:
+`ggmethylation` depends on the following (Bioconductor) packages. Install them first:
 
 ```r
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 BiocManager::install(c("Rsamtools", "GenomicRanges", "GenomicAlignments", "IRanges"))
+install.packages(c("ggplot2", "patchwork"))
 ```
 
 Then install `ggmethylation`:
 
 ```r
 # From GitHub (once published):
-# devtools::install_github("lharbers/ggmethylation")
+# devtools::install_github("ljwharbers/ggmethylation")
 
 # Or from a local clone:
 devtools::install("path/to/ggmethylation")

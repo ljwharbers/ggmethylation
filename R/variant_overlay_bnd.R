@@ -60,9 +60,9 @@ match_sa_to_vcf_bnd <- function(reads, bnd_df, tol = 50L) {
 
 #' Build ggplot2 layers marking VCF BND positions on the read panel
 #'
-#' Returns a flat list of ggplot2 layer objects (a vertical line and a text
-#' label) for each BND position. The vertical line marks the BND call;
-#' the label shows the mate chromosome using the join symbol (⋈).
+#' Returns a flat list of ggplot2 layer objects (one `geom_text` per BND)
+#' showing the full mate location (chromosome:position with comma thousands
+#' separator) using the join symbol (⋈).
 #'
 #' Because the read panel uses `scale_y_reverse()`, `y = -Inf` places the
 #' text at the *top* of the panel (the intended position).
@@ -71,27 +71,28 @@ match_sa_to_vcf_bnd <- function(reads, bnd_df, tol = 50L) {
 #'   `position` (int), `mate_chrom` (chr), `mate_pos` (int)). May be `NULL`
 #'   or zero-row.
 #'
-#' @return A flat list with two ggplot2 layer objects per BND
-#'   (`geom_vline` + `geom_text`), or `NULL` when `bnd_df` is `NULL` or
-#'   zero-row.
+#' @return A flat list with one ggplot2 `geom_text` layer per BND showing the
+#'   full mate location (chromosome:position with comma thousands separator),
+#'   or `NULL` when `bnd_df` is `NULL` or zero-row.
 #'
 #' @keywords internal
 build_bnd_layer <- function(bnd_df) {
   if (is.null(bnd_df) || nrow(bnd_df) == 0L) return(NULL)
 
+  # Pre-format the full mate location label (done outside aes for clarity)
+  bnd_df$mate_label <- paste0(
+    "\u22c8 ",
+    bnd_df$mate_chrom,
+    ":",
+    format(bnd_df$mate_pos, big.mark = ",", scientific = FALSE, trim = TRUE)
+  )
+
   list(
-    ggplot2::geom_vline(
-      xintercept = bnd_df$position,
-      linetype   = "solid",
-      colour     = "#880E4F",
-      linewidth  = 0.6,
-      alpha      = 0.8
-    ),
     ggplot2::geom_text(
       data        = bnd_df,
       mapping     = ggplot2::aes(
         x     = .data$position,
-        label = paste0("\u22c8 ", .data$mate_chrom)
+        label = .data$mate_label
       ),
       y           = -Inf,
       vjust       = -0.3,
