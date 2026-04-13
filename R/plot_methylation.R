@@ -221,8 +221,9 @@
 #'   or default grey) is preserved inside the halo. Reads with no supplementary
 #'   alignment have no halo. Default `FALSE`.
 #' @param bnd_match_tol Integer. Position tolerance (bp) for matching
-#'   supplementary-alignment breakpoints to VCF BND calls when
-#'   \code{show_supplementary = TRUE}. Default 50.
+#'   supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
+#'   whenever `variants` is supplied and reads carry SA tags; the visual border
+#'   marking requires `show_supplementary = TRUE`. Default 50.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -382,6 +383,10 @@ plot_methylation <- function(data, sort_by = NULL,
   }
 
   # --- 5b. Build variant overlay ---
+  if (!is.null(variants) && !inherits(variants, "variant_data")) {
+    stop("`variants` must be a `variant_data` object returned by read_variants().",
+         call. = FALSE)
+  }
   variant_ov <- if (!is.null(variants)) {
     build_variant_overlay(data, variants, bnd_match_tol = bnd_match_tol)
   } else {
@@ -731,6 +736,10 @@ plot_methylation <- function(data, sort_by = NULL,
     }
 
     # Build per-sample variant overlay
+    if (!is.null(variants) && !inherits(variants, "variant_data")) {
+      stop("`variants` must be a `variant_data` object returned by read_variants().",
+           call. = FALSE)
+    }
     s_variant_ov <- if (!is.null(variants)) {
       build_variant_overlay(s, variants, bnd_match_tol = bnd_match_tol)
     } else {

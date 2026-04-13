@@ -320,7 +320,9 @@ build_read_panel <- function(data,
   }
 
   # Merge vcf_validated flag from variant_overlay$sa_reads into reads_plot
-  if (!is.null(variant_overlay) && !is.null(variant_overlay$sa_reads)) {
+  # Only needed when supplementary overlays will actually be drawn.
+  if (isTRUE(show_supplementary) &&
+      !is.null(variant_overlay) && !is.null(variant_overlay$sa_reads)) {
     validated_flag <- variant_overlay$sa_reads[, c("read_name", "vcf_validated"), drop = FALSE]
     reads_plot <- merge(reads_plot, validated_flag, by = "read_name", all.x = TRUE)
     reads_plot$vcf_validated[is.na(reads_plot$vcf_validated)] <- FALSE
