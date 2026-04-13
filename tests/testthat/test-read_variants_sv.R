@@ -147,3 +147,20 @@ test_that("classify_variant_row classifies BND from bracket ALT even without svt
   expect_equal(result$mate_chrom, "chr2")
   expect_equal(result$mate_pos,   12345L)
 })
+
+# --- NA_character_ alt/ref guard ---------------------------------------------
+
+test_that("classify_variant_row returns NA_character_ type for NA alt", {
+  result <- ggmethylation:::classify_variant_row(
+    alt    = NA_character_,
+    ref    = "A",
+    pos    = 100L,
+    svtype = NA_character_,
+    end    = NA,
+    svlen  = NA
+  )
+  expect_equal(result$type,       NA_character_)
+  expect_equal(result$end,        100L)
+  expect_equal(result$mate_chrom, NA_character_)
+  expect_equal(result$mate_pos,   NA_integer_)
+})

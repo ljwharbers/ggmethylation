@@ -203,6 +203,17 @@ classify_variant_row <- function(alt, ref, pos, svtype = NA_character_,
     ))
   }
 
+  # --- Unknown symbolic SV (e.g., <CNV>, <DUP:TANDEM>) ---
+  # This must come after the DEL/DUP/INV branch and before BND.
+  if (!is.na(alt) && grepl("^<[^>]+>$", alt, perl = TRUE)) {
+    return(list(
+      type       = sub("^<(.+)>$", "\\1", alt),
+      end        = as.integer(if (!is.na(end) && length(end) == 1L) end else pos),
+      mate_chrom = NA_character_,
+      mate_pos   = NA_integer_
+    ))
+  }
+
   # --- BND: SVTYPE == "BND" or ALT matches a breakend bracket pattern ---
   is_bnd <- (!is.na(svtype) && svtype == "BND") ||
             (!is.na(alt) && grepl("[\\[\\]]", alt, perl = TRUE))
@@ -214,6 +225,16 @@ classify_variant_row <- function(alt, ref, pos, svtype = NA_character_,
       end        = as.integer(pos),
       mate_chrom = parsed_bnd$mate_chrom,
       mate_pos   = parsed_bnd$mate_pos
+    ))
+  }
+
+  # --- NA guard: alt or ref is NA — cannot classify ---
+  if (is.na(alt) || is.na(ref)) {
+    return(list(
+      type       = NA_character_,
+      end        = as.integer(pos),
+      mate_chrom = NA_character_,
+      mate_pos   = NA_integer_
     ))
   }
 
@@ -292,12 +313,12 @@ parse_bnd_alt <- function(alt_str) {
 #'
 #' @export
 print.variant_data <- function(x, ...) {
-  chrom <- as.character(GenomicRanges::seqnames(x$region))
-  start <- GenomicRanges::start(x$region)
-  end   <- GenomicRanges::end(x$region)
+  chrom      <- as.character(GenomicRanges::seqnames(x$region))
+  start      <- GenomicRanges::start(x$region)
+  region_end <- GenomicRanges::end(x$region)
 
   cat("variant_data object\n")
-  cat(sprintf("Region: %s:%d-%d\n", chrom, start, end))
+  cat(sprintf("Region: %s:%d-%d\n", chrom, start, region_end))
   cat(sprintf("Variants: %d total\n", nrow(x$variants)))
 
   if (nrow(x$variants) > 0L) {
