@@ -42,6 +42,7 @@ build_snv_layer <- function(variant_bases) {
     ),
     ggplot2::scale_colour_manual(
       values = c(alt = "#E53935", other = "#FDD835", del = "#212121"),
+      # #212121 = soft black, consistent with existing variant colour palette in build_read_panel.R
       guide  = "none"
     ),
     ggplot2::scale_shape_manual(
