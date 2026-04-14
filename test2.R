@@ -21,7 +21,7 @@ VCF_SNVs = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/variants/c
 REGION     <- "chr8:128861685-128872405" #CHM13
 # REGION     <- "chr8:128801685-128885405" #CHM13
 # REGION = "chr12:6542873-6650727"
-REGION2 = "chr1:170736-258136"
+REGION2 = "chr16:3685304-3885304"
 
 annotation = read_annotations(genome = "chm13", region = REGION)
 vars <- read_variants(VCF_SVs, REGION)
@@ -52,3 +52,4 @@ plt2 = plot_methylation(meth_hp2,
                  annotations = annotation2,
                  variants = vars2)
 ggsave("test2.png", plot = plt2, width = 8, height = 6)
+

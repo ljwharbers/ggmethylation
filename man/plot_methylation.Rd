@@ -9,18 +9,19 @@ plot_methylation(
   sort_by = NULL,
   colour_low = "#BDBDBD",
   colour_high = "#C62828",
-  dot_size = 0.5,
+  line_width = 0.2,
   colour_strand = FALSE,
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
-  group_colours = c(`1` = "#4393C3", `2` = "#D6604D"),
+  group_colours = c(`1` = "#95babc", `2` = "#efbb76"),
   mod_code_shapes = NULL,
   smooth_span = 0.3,
   panel_heights = NULL,
   annotations = NULL,
   variants = NULL,
-  show_cigar = FALSE,
+  show_cigar = TRUE,
   min_indel_size = 50L,
-  show_supplementary = FALSE
+  show_supplementary = TRUE,
+  bnd_match_tol = 50L
 )
 }
 \arguments{
@@ -36,7 +37,7 @@ when ungrouped or \code{c("group", "start", "mean_mod_prob")} when grouped.}
 \item{colour_high}{Colour for high modification probability (default
 \code{"#C62828"}).}
 
-\item{dot_size}{Linewidth of modification site lines (default 0.5).}
+\item{line_width}{Linewidth of modification site lines (default 0.2).}
 
 \item{colour_strand}{Logical. When \code{TRUE}, read bars are coloured by strand
 (\code{"+"} = forward, \code{"-"} = reverse). Ignored when data is grouped; group
@@ -47,21 +48,29 @@ giving bar colours for each strand. Only used when \code{colour_strand = TRUE}
 and data is ungrouped. Default \code{c("+" = "#4393C3", "-" = "#D6604D")}.}
 
 \item{group_colours}{Named character vector of colours per group. Defaults
-to \code{c("1" = "#4393C3", "2" = "#D6604D")} (blue / red), matching the
-typical HP haplotype tag output. Pass \code{NULL} to use ggplot2 defaults, or
-supply a fully named vector for other group names.}
+to \code{c("1" = "#95babc", "2" = "#efbb76")}, matching the typical HP
+haplotype tag output. Pass \code{NULL} to use ggplot2 defaults, or supply a
+fully named vector for other group names.}
+
+\item{mod_code_shapes}{Named integer vector mapping modification codes to
+point shapes used in the legend when multiple modification codes are
+present. Names must match the mod codes in \code{data$sites$mod_code}. If
+\code{NULL} (default), shapes are assigned automatically (circle, square,
+triangle, diamond for up to four codes).}
 
 \item{smooth_span}{Loess smoothing span for the bottom panel (default 0.3).}
 
 \item{panel_heights}{Numeric vector giving relative heights of the panels.
-When \code{annotations = NULL}, expects length 2 (reads + smooth); when
-annotations are provided, expects length 3 (reads + smooth + gene track).
-Defaults to \code{c(3, 1)} for two panels or \code{c(3, 1, 0.6)} for three panels
-when \code{NULL}.}
+When \code{annotations = NULL}, expects length 2 (\code{reads}, \code{smooth}); when
+annotations are provided, expects length 3 (\verb{gene track}, \code{reads},
+\code{smooth}) — the gene panel is placed at the top, reads in the middle, and
+the smoothed probability curve at the bottom. Pass \code{NULL} to use the
+built-in defaults.}
 
 \item{annotations}{A \code{gene_annotations} object returned by
 \code{\link[=read_annotations]{read_annotations()}}, or \code{NULL} (default). When provided, a gene
-annotation track is appended below the smoothed methylation panel.}
+annotation track is placed at the top of the composite figure (above the
+read panel and the smooth panel).}
 
 \item{variants}{A \code{variant_data} object returned by \code{\link[=read_variants]{read_variants()}}, or
 \code{NULL} (default). When provided, per-read base letters are drawn at
@@ -70,20 +79,26 @@ lines are added at every variant position across all panels. Requires
 that \code{data} was produced by a current version of \code{\link[=read_methylation]{read_methylation()}} that
 stores sequences and CIGARs in the object.}
 
-\item{show_cigar}{Logical. When \code{TRUE}, structural variants from CIGAR
-strings (insertions, deletions, clips) are displayed on reads. Default
-\code{FALSE}.}
+\item{show_cigar}{Logical. When \code{TRUE} (default), structural variants from
+CIGAR strings (insertions, deletions) are displayed on reads. Insertions
+appear as bold purple "I" markers; deletions open a gap in the read bar
+and draw a thin black line. Set to \code{FALSE} to hide these features.}
 
 \item{min_indel_size}{Integer. Minimum size (in bp) for insertions and
 deletions to be displayed when \code{show_cigar = TRUE}. Indels smaller than
 this threshold are hidden to reduce visual clutter from common small
 indels. Default \code{50}.}
 
-\item{show_supplementary}{Logical. When \code{TRUE}, a coloured halo is drawn
-around read bars indicating the chromosome of the supplementary alignment
-partner (from the SA BAM tag). The original bar colouring (group, strand,
-or default grey) is preserved inside the halo. Reads with no supplementary
-alignment have no halo. Default \code{FALSE}.}
+\item{show_supplementary}{Logical. When \code{TRUE} (default), a coloured halo
+is drawn around read bars indicating the chromosome of the supplementary
+alignment partner (from the SA BAM tag). The original bar colouring
+(group, strand, or default grey) is preserved inside the halo. Reads with
+no supplementary alignment have no halo.}
+
+\item{bnd_match_tol}{Integer. Position tolerance (bp) for matching
+supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
+whenever \code{variants} is supplied and reads carry SA tags; the visual border
+marking requires \code{show_supplementary = TRUE}. Default 50.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a

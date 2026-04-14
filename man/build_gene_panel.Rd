@@ -29,5 +29,12 @@ suitable for assembly with patchwork.
 When the annotations object contains CDS data (\verb{$cds}), an IGV-style
 three-tier rendering is used: thin intron line, medium-height UTR boxes,
 and full-height CDS boxes. Without CDS data a uniform exon box is drawn.
+
+Gene names are rendered underneath each gene body, centred on the visible
+portion of the transcript. Non-overlapping genes are packed into shared rows
+using the same greedy interval-scheduling algorithm as the read panel.
+Geometry extending past the visible region is pre-clipped so that partial
+genes still show their exon/CDS/UTR boxes rather than just a thin intron
+line.
 }
 \keyword{internal}

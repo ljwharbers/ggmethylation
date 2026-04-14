@@ -34,12 +34,23 @@
 #' @return A `methylation_data` object (S3 list) with elements:
 #'   \describe{
 #'     \item{reads}{Data.frame with columns `read_name`, `start`, `end`,
-#'       `strand`, and optionally `group`.}
+#'       `strand`, `is_supplementary` (logical), `sa_chrom` (chr or NA),
+#'       `sa_pos` (int or NA), `clip_side` (chr: `"left"`, `"right"`,
+#'       `"both"`, or NA), and optionally `group`.}
 #'     \item{sites}{Data.frame with columns `position`, `mod_prob`,
 #'       `read_name`, `mod_code`, and optionally `group`.}
 #'     \item{region}{A [GenomicRanges::GRanges] object for the queried region.}
-#'     \item{mod_code}{The modification code used.}
-#'     \item{group_tag}{The grouping tag used, or NULL.}
+#'     \item{mod_code}{The modification code(s) used.}
+#'     \item{group_tag}{The grouping tag used, or `NULL`.}
+#'     \item{snv_position}{The SNV position used for grouping, or `NULL`.}
+#'     \item{sequences}{Named character vector of read sequences, keyed by
+#'       `read_name`. Used internally by [plot_methylation()] for variant
+#'       overlay.}
+#'     \item{cigars}{Named character vector of CIGAR strings, keyed by
+#'       `read_name`. Used internally for CIGAR feature decomposition.}
+#'     \item{cigar_features}{Data.frame of structural CIGAR features (type,
+#'       ref_start, ref_end, query_start, query_end, length, read_name) for
+#'       insertions (`"I"`), deletions (`"D"`), and skipped regions (`"N"`).}
 #'   }
 #'
 #' @examples

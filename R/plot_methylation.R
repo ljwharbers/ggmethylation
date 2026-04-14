@@ -195,31 +195,39 @@
 #'   fully named vector for other group names.
 #' @param smooth_span Loess smoothing span for the bottom panel (default 0.3).
 #' @param panel_heights Numeric vector giving relative heights of the panels.
-#'   When `annotations = NULL`, expects length 2 (reads + smooth); when
-#'   annotations are provided, expects length 3 (reads + smooth + gene track).
-#'   Defaults to `c(3, 1)` for two panels or `c(3, 1, 0.6)` for three panels
-#'   when `NULL`.
+#'   When `annotations = NULL`, expects length 2 (`reads`, `smooth`); when
+#'   annotations are provided, expects length 3 (`gene track`, `reads`,
+#'   `smooth`) — the gene panel is placed at the top, reads in the middle, and
+#'   the smoothed probability curve at the bottom. Pass `NULL` to use the
+#'   built-in defaults.
 #' @param annotations A `gene_annotations` object returned by
 #'   [read_annotations()], or `NULL` (default). When provided, a gene
-#'   annotation track is appended below the smoothed methylation panel.
+#'   annotation track is placed at the top of the composite figure (above the
+#'   read panel and the smooth panel).
 #' @param variants A `variant_data` object returned by [read_variants()], or
 #'   `NULL` (default). When provided, per-read base letters are drawn at
 #'   variant positions (coloured by match to ref/alt), and vertical dashed
 #'   lines are added at every variant position across all panels. Requires
 #'   that `data` was produced by a current version of [read_methylation()] that
 #'   stores sequences and CIGARs in the object.
-#' @param show_cigar Logical. When `TRUE`, structural variants from CIGAR
-#'   strings (insertions, deletions, clips) are displayed on reads. Default
-#'   `FALSE`.
+#' @param mod_code_shapes Named integer vector mapping modification codes to
+#'   point shapes used in the legend when multiple modification codes are
+#'   present. Names must match the mod codes in `data$sites$mod_code`. If
+#'   `NULL` (default), shapes are assigned automatically (circle, square,
+#'   triangle, diamond for up to four codes).
+#' @param show_cigar Logical. When `TRUE` (default), structural variants from
+#'   CIGAR strings (insertions, deletions) are displayed on reads. Insertions
+#'   appear as bold purple "I" markers; deletions open a gap in the read bar
+#'   and draw a thin black line. Set to `FALSE` to hide these features.
 #' @param min_indel_size Integer. Minimum size (in bp) for insertions and
 #'   deletions to be displayed when `show_cigar = TRUE`. Indels smaller than
 #'   this threshold are hidden to reduce visual clutter from common small
 #'   indels. Default `50`.
-#' @param show_supplementary Logical. When `TRUE`, a coloured halo is drawn
-#'   around read bars indicating the chromosome of the supplementary alignment
-#'   partner (from the SA BAM tag). The original bar colouring (group, strand,
-#'   or default grey) is preserved inside the halo. Reads with no supplementary
-#'   alignment have no halo. Default `FALSE`.
+#' @param show_supplementary Logical. When `TRUE` (default), a coloured halo
+#'   is drawn around read bars indicating the chromosome of the supplementary
+#'   alignment partner (from the SA BAM tag). The original bar colouring
+#'   (group, strand, or default grey) is preserved inside the halo. Reads with
+#'   no supplementary alignment have no halo.
 #' @param bnd_match_tol Integer. Position tolerance (bp) for matching
 #'   supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
 #'   whenever `variants` is supplied and reads carry SA tags; the visual border

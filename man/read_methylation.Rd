@@ -61,12 +61,23 @@ unphased reads in the data.}
 A \code{methylation_data} object (S3 list) with elements:
 \describe{
 \item{reads}{Data.frame with columns \code{read_name}, \code{start}, \code{end},
-\code{strand}, and optionally \code{group}.}
+\code{strand}, \code{is_supplementary} (logical), \code{sa_chrom} (chr or NA),
+\code{sa_pos} (int or NA), \code{clip_side} (chr: \code{"left"}, \code{"right"},
+\code{"both"}, or NA), and optionally \code{group}.}
 \item{sites}{Data.frame with columns \code{position}, \code{mod_prob},
 \code{read_name}, \code{mod_code}, and optionally \code{group}.}
 \item{region}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object for the queried region.}
-\item{mod_code}{The modification code used.}
-\item{group_tag}{The grouping tag used, or NULL.}
+\item{mod_code}{The modification code(s) used.}
+\item{group_tag}{The grouping tag used, or \code{NULL}.}
+\item{snv_position}{The SNV position used for grouping, or \code{NULL}.}
+\item{sequences}{Named character vector of read sequences, keyed by
+\code{read_name}. Used internally by \code{\link[=plot_methylation]{plot_methylation()}} for variant
+overlay.}
+\item{cigars}{Named character vector of CIGAR strings, keyed by
+\code{read_name}. Used internally for CIGAR feature decomposition.}
+\item{cigar_features}{Data.frame of structural CIGAR features (type,
+ref_start, ref_end, query_start, query_end, length, read_name) for
+insertions (\code{"I"}), deletions (\code{"D"}), and skipped regions (\code{"N"}).}
 }
 }
 \description{

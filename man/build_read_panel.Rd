@@ -11,14 +11,13 @@ build_read_panel(
   region_end,
   colour_low,
   colour_high,
-  dot_size,
+  line_width,
   colour_strand,
   strand_colours,
   group_colours,
   mod_code_shapes,
   show_x_axis = FALSE,
-  variant_bases = NULL,
-  variant_positions = NULL,
+  variant_overlay = NULL,
   show_cigar = FALSE,
   cigar_features = NULL,
   min_indel_size = 50L,
@@ -41,7 +40,7 @@ dashed separator lines should be drawn (between groups). Pass
 
 \item{colour_high}{Colour for high modification probability.}
 
-\item{dot_size}{Linewidth of modification site markers.}
+\item{line_width}{Linewidth of modification site markers.}
 
 \item{colour_strand}{Logical. Colour read bars by strand when ungrouped.}
 
@@ -55,12 +54,9 @@ shapes.}
 \item{show_x_axis}{Logical. When \code{FALSE} (default), x-axis text and ticks
 are hidden. Set to \code{TRUE} for the bottom-most read panel.}
 
-\item{variant_bases}{Data.frame returned by \code{\link[=extract_variant_bases]{extract_variant_bases()}}, or
-\code{NULL}. When non-NULL, per-read base letters are drawn at variant positions
-and coloured by \code{variant_class} (ref/alt/del/other).}
-
-\item{variant_positions}{Numeric vector of genomic positions at which to draw
-vertical dashed marker lines, or \code{NULL}.}
+\item{variant_overlay}{A list returned by \code{\link[=build_variant_overlay]{build_variant_overlay()}}, or \code{NULL}.
+When non-NULL, SNV point marks, SV spans, and BND position markers are drawn
+on the read panel.}
 
 \item{show_cigar}{Logical. When \code{TRUE}, structural variants from CIGAR
 strings are overlaid on reads. Default \code{FALSE}.}

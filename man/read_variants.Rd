@@ -17,8 +17,10 @@ The same format accepted by \code{\link[=read_methylation]{read_methylation()}}.
 A \code{variant_data} object (S3 list) with elements:
 \describe{
 \item{variants}{Data.frame with columns \code{position} (integer),
-\code{ref} (character), \code{alt} (character), and \code{type} (character:
-\code{"SNV"}, \code{"insertion"}, or \code{"deletion"}).}
+\code{ref} (character), \code{alt} (character), \code{type} (character:
+\code{"SNV"}, \code{"insertion"}, \code{"deletion"}, \code{"BND"}, \code{"DEL"}, \code{"DUP"},
+or \code{"INV"}), \code{end} (integer), \code{mate_chrom} (character), and
+\code{mate_pos} (integer).}
 \item{region}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object for the queried region.}
 }
 }
