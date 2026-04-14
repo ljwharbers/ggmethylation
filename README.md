@@ -23,10 +23,10 @@ Then install `ggmethylation`:
 
 ```r
 # From GitHub (once published):
-# devtools::install_github("ljwharbers/ggmethylation")
+devtools::install_github("ljwharbers/ggmethylation")
 
 # Or from a local clone:
-devtools::install("path/to/ggmethylation")
+# devtools::install("path/to/ggmethylation")
 ```
 
 ## Usage
