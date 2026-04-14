@@ -14,18 +14,17 @@ library(patchwork)
 
 # -- Shared paths -------------------------------------------------------------
 
-BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/PTCL8_PB/bamfiles/PTCL8_PB_tumor.bam"
-BAM_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/AITL4/bamfiles/AITL4_tumor.bam"
-VCF_AITL4  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_hg38/AITL4/variants/clairsto/somatic.vcf.gz"
+BAM = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/bamfiles/BL1_tumor.bam"
+VCF_SVs = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/variants/severus/somatic_SVs/severus_somatic.vcf.gz"
+VCF_SNVs = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/variants/clairsto/somatic.vcf.gz"
 
-REGION     <- "chr8:127733434-127744951"
-#REGION     <- "chr8:127598491-127599663"
+REGION     = "chr8:128861685-128872405"
 
 # =============================================================================
 # 1. Basic single-sample, ungrouped
 # =============================================================================
 
-meth <- read_methylation(BAM_PTCL8, REGION, mod_code = "m")
+meth = read_methylation(BAM, REGION, mod_code = "m")
 
 print(meth)
 summary(meth)
@@ -37,7 +36,7 @@ plot_methylation(meth)
 # 2. Grouped by haplotype tag (HP)
 # =============================================================================
 
-meth_hp <- read_methylation(BAM_PTCL8, REGION,
+meth_hp = read_methylation(BAM, REGION,
                              mod_code    = "m",
                              group_tag   = "HP",
                              drop_na_group = TRUE)
@@ -51,7 +50,7 @@ plot_methylation(meth_hp)
 # 3. Grouped by SNV genotype
 # =============================================================================
 
-meth_snv <- read_methylation(BAM_PTCL8, REGION,
+meth_snv = read_methylation(BAM, REGION,
                               mod_code     = "m",
                               snv_position = 127740000L,
                               ref_base     = "A",
@@ -64,7 +63,7 @@ plot_methylation(meth_snv)
 # 4. Read filters — MAPQ, strand, length, downsampling
 # =============================================================================
 
-meth_filtered <- read_methylation(BAM_PTCL8, REGION,
+meth_filtered = read_methylation(BAM, REGION,
                                    mod_code        = "m",
                                    min_mapq        = 20L,
                                    strand_filter   = "+",
@@ -75,7 +74,7 @@ plot_methylation(meth_filtered)
 
 # Per-group downsampling: apply max_reads cap independently within each group
 # (useful when one haplotype has far more reads than the other)
-meth_hp_balanced <- read_methylation(BAM_PTCL8, REGION,
+meth_hp_balanced = read_methylation(BAM, REGION,
                                       mod_code            = "m",
                                       group_tag           = "HP",
                                       drop_na_group       = TRUE,
@@ -117,7 +116,7 @@ plot_methylation(meth_hp, panel_heights = c(4, 1))
 
 # Custom shape mapping when multiple modification codes are present
 # (e.g. 5mC "m" and 5hmC "h" from a dual-modification BAM)
-# meth_dual <- read_methylation(BAM_PTCL8, REGION, mod_code = c("m", "h"))
+# meth_dual = read_methylation(BAM, REGION, mod_code = c("m", "h"))
 # plot_methylation(meth_dual, mod_code_shapes = c(m = 16L, h = 17L))
 
 
@@ -135,15 +134,15 @@ plot_methylation(meth_hp, panel_heights = c(4, 1))
 #
 # To change the cache location (e.g. to scratch on HPC):
 #   options(ggmethylation.cache_dir = "$VSC_SCRATCH/ggmethylation_cache")
-annot <- read_annotations(genome = "hg38", region = REGION)
+annot = read_annotations(genome = "chm13", region = REGION)
 
 print(annot)
 
 # Second call reuses both the downloaded GTF and the TxDb cache
-annot2 <- read_annotations(genome = "hg38", region = "chr8:127700000-127800000")
+annot2 = read_annotations(genome = "chm13", region = "chr8:127700000-127800000")
 
 # Opt out of transcript collapsing to show all isoforms
-annot_all_isoforms <- read_annotations(genome = "hg38", region = REGION,
+annot_all_isoforms = read_annotations(genome = "chm13", region = REGION,
                                        collapse_transcripts = FALSE)
 print(annot_all_isoforms)
 
@@ -151,14 +150,14 @@ print(annot_all_isoforms)
 clear_annotation_cache()
 
 # CHM13 / T2T genome
-# annot_chm13 <- read_annotations(genome = "chm13", region = REGION)
+# annot_chm13 = read_annotations(genome = "chm13", region = REGION)
 
 # From a local GTF file (e.g. custom annotation)
-# annot_gtf <- read_annotations(gtf = "/path/to/custom.gtf", region = REGION)
+# annot_gtf = read_annotations(gtf = "/path/to/custom.gtf", region = REGION)
 
 # From a pre-built TxDb (e.g., Bioconductor annotation package)
 # library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-# annot_txdb <- read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
+# annot_txdb = read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
 #                                region = REGION)
 
 # IGV-style gene track: thin intron lines, medium UTR boxes, full CDS boxes
@@ -196,31 +195,30 @@ plot_methylation(meth_hp, annotations = annot)
 # matches a BND call are additionally outlined in dark red.
 
 plot_methylation(meth_hp)                             # SA halos on by default
-plot_methylation(meth_hp, show_supplementary = FALSE) # disable SA halos
+plot_methylation(meth_hp, show_supplementary = FALSE) # disable SA reads
 
 # Combined: CIGAR off, SA halos on
 plot_methylation(meth_hp, show_cigar = FALSE, show_supplementary = TRUE)
 
-# BND matching tolerance (bp) for VCF-validated SA border
-plot_methylation(meth_aitl4, variants = vars, bnd_match_tol = 100L)
+
 
 
 # =============================================================================
 # 9. Variant overlay (VCF)
 # =============================================================================
 
-vars <- read_variants(VCF_AITL4, REGION)
+vars = read_variants(VCF_SVs, REGION)
 
 print(vars)
+plot_methylation(meth_hp, variants = vars)
 
-meth_aitl4 <- read_methylation(BAM_AITL4, REGION,
-                                mod_code  = "m",
-                                group_tag = "HP")
+# BND matching tolerance (bp) for VCF-validated SA border
+plot_methylation(meth_hp, variants = vars, bnd_match_tol = 100L)
 
-plot_methylation(meth_aitl4, variants = vars)
+
 
 # Combined: annotations + variants
-plot_methylation(meth_aitl4,
+plot_methylation(meth_hp,
                  annotations = annot,
                  variants    = vars)
 
@@ -229,11 +227,11 @@ plot_methylation(meth_aitl4,
 # 10. Multi-sample comparison
 # =============================================================================
 
-merged <- merge_methylation(PTCL8 = meth_hp,
-                             AITL4 = meth_aitl4)
+merged = merge_methylation(sample1 = meth_hp,
+                           sample2 = meth_hp)
 
 # Equivalent using .list
-merged <- merge_methylation(.list = list(PTCL8 = meth_hp, AITL4 = meth_aitl4))
+merged = merge_methylation(.list = list(sample1 = meth_hp, sample2 = meth_hp))
 
 print(merged)
 summary(merged)
@@ -264,14 +262,14 @@ meth |>
 #   No annotations:  [[1]] reads,  [[2]] smooth
 #   With annotations: [[1]] gene,  [[2]] reads, [[3]] smooth
 
-p_no_annot <- plot_methylation(meth_hp)
-reads_panel_2  <- p_no_annot[[1]]
-smooth_panel_2 <- p_no_annot[[2]]
+p_no_annot = plot_methylation(meth_hp)
+reads_panel_2  = p_no_annot[[1]]
+smooth_panel_2 = p_no_annot[[2]]
 
-p <- plot_methylation(meth_hp, annotations = annot)
-gene_panel   <- p[[1]]
-reads_panel  <- p[[2]]
-smooth_panel <- p[[3]]
+p = plot_methylation(meth_hp, annotations = annot)
+gene_panel   = p[[1]]
+reads_panel  = p[[2]]
+smooth_panel = p[[3]]
 
 # Modify a panel and reassemble
 reads_panel + labs(y = "Read lane") + theme_classic()

@@ -14,19 +14,19 @@ library(patchwork)
 
 # -- Shared paths -------------------------------------------------------------
 
-BAM_PTCL8  <- "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/bamfiles/BL1_tumor.bam"
+BAM_PTCL8  = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/bamfiles/BL1_tumor.bam"
 VCF_SVs = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/variants/severus/somatic_SVs/severus_somatic.vcf.gz"
 VCF_SNVs = "/staging/leuven/stg_00096/home/averham/LR_SOMATIC_T2T/BL1/variants/clairsto/somatic.vcf.gz"
-# REGION     <- "chr8:127598491-127604951" #hg38
-REGION     <- "chr8:128861685-128872405" #CHM13
-# REGION     <- "chr8:128801685-128885405" #CHM13
+# REGION     = "chr8:127598491-127604951" #hg38
+REGION     = "chr8:128861685-128872405" #CHM13
+# REGION     = "chr8:128801685-128885405" #CHM13
 # REGION = "chr12:6542873-6650727"
 REGION2 = "chr16:3685304-3885304"
 
 annotation = read_annotations(genome = "chm13", region = REGION)
-vars <- read_variants(VCF_SVs, REGION)
+vars = read_variants(VCF_SVs, REGION)
 
-meth_hp <- read_methylation(BAM_PTCL8,
+meth_hp = read_methylation(BAM_PTCL8,
                             REGION,
                             mod_code    = "m",
                             group_tag   = "HP",
@@ -40,9 +40,9 @@ ggsave("test.png", plot = plt, width = 8, height = 6)
 ########
 
 annotation2 = read_annotations(genome = "chm13", region = REGION2)
-vars2 <- read_variants(VCF_SNVs, REGION2)
+vars2 = read_variants(VCF_SNVs, REGION2)
 
-meth_hp2 <- read_methylation(BAM_PTCL8,
+meth_hp2 = read_methylation(BAM_PTCL8,
                             REGION2,
                             mod_code    = "m",
                             group_tag   = "HP",

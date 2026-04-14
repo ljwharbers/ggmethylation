@@ -15,4 +15,5 @@
 .worktrees
 
 test.*
+test*
 .claude/
