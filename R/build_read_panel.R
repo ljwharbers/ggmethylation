@@ -405,57 +405,12 @@ build_read_panel <- function(data,
       p <- p + ggplot2::scale_fill_discrete(name = "Group")
     }
 
-    # --- SA overlay (grouped) ---
-    if (isTRUE(show_supplementary) && "sa_chrom" %in% names(reads_plot)) {
-      sa_polys <- .make_sa_overlay_polygons(
-        reads_plot, arrow_w * 1.5, half_height, region_start, region_end
-      )
-      if (nrow(sa_polys) > 0L) {
-        p <- p +
-          ggnewscale::new_scale_fill() +
-          ggplot2::geom_polygon(
-            data = sa_polys,
-            ggplot2::aes(
-              x     = .data$x,
-              y     = .data$y,
-              group = .data$polygon_id,
-              fill  = .data$sa_chrom
-            ),
-            colour = NA,
-            inherit.aes = FALSE
-          ) +
-          ggplot2::scale_fill_hue(name = "SA partner")
-
-        # VCF-validated SA border
-        if (!is.null(variant_overlay) &&
-            "vcf_validated" %in% names(sa_polys) &&
-            any(sa_polys$vcf_validated, na.rm = TRUE)) {
-          p <- p + ggplot2::geom_polygon(
-            data = sa_polys[sa_polys$vcf_validated %in% TRUE, , drop = FALSE],
-            ggplot2::aes(x = .data$x, y = .data$y, group = .data$polygon_id),
-            fill = NA, colour = "#880E4F", linewidth = 0.6, inherit.aes = FALSE
-          )
-        }
-      }
+    if (isTRUE(show_supplementary)) {
+      p <- .add_sa_overlay(p, reads_plot, arrow_w * 1.5, half_height,
+                           region_start, region_end, variant_overlay,
+                           needs_new_scale = TRUE)
     }
-
-    p <- p +
-      ggplot2::geom_segment(
-        data = sites_plot,
-        ggplot2::aes(
-          x      = .data$position,
-          xend   = .data$position,
-          y      = .data$lane - half_height,
-          yend   = .data$lane + half_height,
-          colour = .data$mod_prob
-        ),
-        linewidth = line_width
-      ) +
-      ggplot2::scale_colour_gradient(
-        low = colour_low, high = colour_high,
-        limits = c(0, 1),
-        name = "Modification\nprobability"
-      )
+    p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width, colour_low, colour_high)
 
     if (length(separator_lanes) > 0L) {
       p <- p +
@@ -481,57 +436,12 @@ build_read_panel <- function(data,
         ) +
         ggplot2::scale_fill_manual(values = strand_colours, name = "Strand")
 
-      # --- SA overlay (strand) ---
-      if (isTRUE(show_supplementary) && "sa_chrom" %in% names(reads_plot)) {
-        sa_polys <- .make_sa_overlay_polygons(
-          reads_plot, arrow_w, half_height, region_start, region_end
-        )
-        if (nrow(sa_polys) > 0L) {
-          p <- p +
-            ggnewscale::new_scale_fill() +
-            ggplot2::geom_polygon(
-              data = sa_polys,
-              ggplot2::aes(
-                x     = .data$x,
-                y     = .data$y,
-                group = .data$polygon_id,
-                fill  = .data$sa_chrom
-              ),
-              colour = NA,
-              inherit.aes = FALSE
-            ) +
-            ggplot2::scale_fill_hue(name = "SA partner")
-
-          # VCF-validated SA border
-          if (!is.null(variant_overlay) &&
-              "vcf_validated" %in% names(sa_polys) &&
-              any(sa_polys$vcf_validated, na.rm = TRUE)) {
-            p <- p + ggplot2::geom_polygon(
-              data = sa_polys[sa_polys$vcf_validated %in% TRUE, , drop = FALSE],
-              ggplot2::aes(x = .data$x, y = .data$y, group = .data$polygon_id),
-              fill = NA, colour = "#880E4F", linewidth = 0.6, inherit.aes = FALSE
-            )
-          }
-        }
+      if (isTRUE(show_supplementary)) {
+        p <- .add_sa_overlay(p, reads_plot, arrow_w, half_height,
+                             region_start, region_end, variant_overlay,
+                             needs_new_scale = TRUE)
       }
-
-      p <- p +
-        ggplot2::geom_segment(
-          data = sites_plot,
-          ggplot2::aes(
-            x      = .data$position,
-            xend   = .data$position,
-            y      = .data$lane - half_height,
-            yend   = .data$lane + half_height,
-            colour = .data$mod_prob
-          ),
-          linewidth = line_width
-        ) +
-        ggplot2::scale_colour_gradient(
-          low = colour_low, high = colour_high,
-          limits = c(0, 1),
-          name = "Modification\nprobability"
-        )
+      p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width, colour_low, colour_high)
     } else {
       # Plain (no grouping, no strand colouring)
       p <- p +
@@ -546,56 +456,12 @@ build_read_panel <- function(data,
           colour = NA
         )
 
-      # --- SA overlay (plain) ---
-      if (isTRUE(show_supplementary) && "sa_chrom" %in% names(reads_plot)) {
-        sa_polys <- .make_sa_overlay_polygons(
-          reads_plot, arrow_w, half_height, region_start, region_end
-        )
-        if (nrow(sa_polys) > 0L) {
-          p <- p +
-            ggplot2::geom_polygon(
-              data = sa_polys,
-              ggplot2::aes(
-                x     = .data$x,
-                y     = .data$y,
-                group = .data$polygon_id,
-                fill  = .data$sa_chrom
-              ),
-              colour = NA,
-              inherit.aes = FALSE
-            ) +
-            ggplot2::scale_fill_hue(name = "SA partner")
-
-          # VCF-validated SA border
-          if (!is.null(variant_overlay) &&
-              "vcf_validated" %in% names(sa_polys) &&
-              any(sa_polys$vcf_validated, na.rm = TRUE)) {
-            p <- p + ggplot2::geom_polygon(
-              data = sa_polys[sa_polys$vcf_validated %in% TRUE, , drop = FALSE],
-              ggplot2::aes(x = .data$x, y = .data$y, group = .data$polygon_id),
-              fill = NA, colour = "#880E4F", linewidth = 0.6, inherit.aes = FALSE
-            )
-          }
-        }
+      if (isTRUE(show_supplementary)) {
+        p <- .add_sa_overlay(p, reads_plot, arrow_w, half_height,
+                             region_start, region_end, variant_overlay,
+                             needs_new_scale = FALSE)
       }
-
-      p <- p +
-        ggplot2::geom_segment(
-          data = sites_plot,
-          ggplot2::aes(
-            x      = .data$position,
-            xend   = .data$position,
-            y      = .data$lane - half_height,
-            yend   = .data$lane + half_height,
-            colour = .data$mod_prob
-          ),
-          linewidth = line_width
-        ) +
-        ggplot2::scale_colour_gradient(
-          low = colour_low, high = colour_high,
-          limits = c(0, 1),
-          name = "Modification\nprobability"
-        )
+      p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width, colour_low, colour_high)
     }
   }
 
@@ -634,13 +500,19 @@ build_read_panel <- function(data,
       )
     }
 
-    # Insertions: draw purple "I" markers
+    # Insertions: draw purple I-beam markers spanning the read bar
     ins_df <- cf[cf$type == "I", , drop = FALSE]
     if (nrow(ins_df) > 0L) {
-      p <- p + ggplot2::geom_text(
+      p <- p + ggplot2::geom_errorbar(
         data = ins_df,
-        ggplot2::aes(x = .data$ref_start, y = .data$lane, label = "I"),
-        colour = "#7B1FA2", size = 2, fontface = "bold",
+        ggplot2::aes(
+          x    = .data$ref_start,
+          ymin = .data$lane - half_height,
+          ymax = .data$lane + half_height
+        ),
+        colour    = "#7B1FA2",
+        linewidth = 0.4,
+        width     = arrow_w * 2,
         inherit.aes = FALSE
       )
     }
@@ -687,4 +559,72 @@ build_read_panel <- function(data,
   }
 
   p
+}
+
+# Add SA supplementary-alignment overlay polygons to an existing ggplot.
+#
+# When `needs_new_scale = TRUE` (grouped / strand-coloured branches), a
+# `ggnewscale::new_scale_fill()` call is prepended so the SA fill scale does not
+# replace the read-bar fill scale already on the plot.  The plain branch omits
+# it because the read bars are drawn with a fixed colour, not a scale.
+.add_sa_overlay <- function(p, reads_plot, arrow_w, half_height,
+                             region_start, region_end, variant_overlay,
+                             needs_new_scale = TRUE) {
+  if (!("sa_chrom" %in% names(reads_plot))) return(p)
+
+  sa_polys <- .make_sa_overlay_polygons(
+    reads_plot, arrow_w, half_height, region_start, region_end
+  )
+  if (nrow(sa_polys) == 0L) return(p)
+
+  if (needs_new_scale) p <- p + ggnewscale::new_scale_fill()
+
+  p <- p +
+    ggplot2::geom_polygon(
+      data = sa_polys,
+      ggplot2::aes(
+        x     = .data$x,
+        y     = .data$y,
+        group = .data$polygon_id,
+        fill  = .data$sa_chrom
+      ),
+      colour = NA,
+      inherit.aes = FALSE
+    ) +
+    ggplot2::scale_fill_hue(name = "SA partner")
+
+  # VCF-validated SA border
+  if (!is.null(variant_overlay) &&
+      "vcf_validated" %in% names(sa_polys) &&
+      any(sa_polys$vcf_validated, na.rm = TRUE)) {
+    p <- p + ggplot2::geom_polygon(
+      data = sa_polys[sa_polys$vcf_validated %in% TRUE, , drop = FALSE],
+      ggplot2::aes(x = .data$x, y = .data$y, group = .data$polygon_id),
+      fill = NA, colour = "#880E4F", linewidth = 0.6, inherit.aes = FALSE
+    )
+  }
+
+  p
+}
+
+# Add mod-prob segment layer and colour scale to an existing ggplot.
+.add_mod_prob_segments <- function(p, sites_plot, half_height, line_width,
+                                    colour_low, colour_high) {
+  p +
+    ggplot2::geom_segment(
+      data = sites_plot,
+      ggplot2::aes(
+        x      = .data$position,
+        xend   = .data$position,
+        y      = .data$lane - half_height,
+        yend   = .data$lane + half_height,
+        colour = .data$mod_prob
+      ),
+      linewidth = line_width
+    ) +
+    ggplot2::scale_colour_gradient(
+      low = colour_low, high = colour_high,
+      limits = c(0, 1),
+      name = "Modification\nprobability"
+    )
 }

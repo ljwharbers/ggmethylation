@@ -190,3 +190,23 @@ test_that("detect_clip_side returns NA for star", {
 test_that("detect_clip_side returns NA for NA input", {
   expect_equal(ggmethylation:::detect_clip_side(NA_character_), NA_character_)
 })
+
+# --- region_to_granges ---
+
+test_that("region_to_granges returns GRanges with correct coordinates", {
+  gr <- ggmethylation:::region_to_granges("chr1:1000-2000")
+  expect_s4_class(gr, "GRanges")
+  expect_equal(as.character(GenomicRanges::seqnames(gr)), "chr1")
+  expect_equal(GenomicRanges::start(gr), 1000L)
+  expect_equal(GenomicRanges::end(gr), 2000L)
+})
+
+test_that("region_to_granges handles comma-formatted positions", {
+  gr <- ggmethylation:::region_to_granges("chr2:1,000-2,000")
+  expect_equal(GenomicRanges::start(gr), 1000L)
+  expect_equal(GenomicRanges::end(gr), 2000L)
+})
+
+test_that("region_to_granges rejects malformed region", {
+  expect_error(ggmethylation:::region_to_granges("chr1:1000"), "Invalid region format")
+})

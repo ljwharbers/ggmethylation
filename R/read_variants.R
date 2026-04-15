@@ -49,11 +49,7 @@ read_variants <- function(vcf, region) {
   }
 
   # Parse region string
-  parsed <- parse_region(region)
-  region_gr <- GenomicRanges::GRanges(
-    seqnames = parsed$chrom,
-    ranges   = IRanges::IRanges(start = parsed$start, end = parsed$end)
-  )
+  region_gr <- region_to_granges(region)
 
   # Read VCF for the requested region
   vcf_obj <- tryCatch(

@@ -89,13 +89,8 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   if (!is.integer(min_mapq))        min_mapq <- as.integer(min_mapq)
   if (!is.integer(min_read_length)) min_read_length <- as.integer(min_read_length)
   validate_bam_index(bam)
-  parsed <- parse_region(region)
-
   # --- 2. Set up Rsamtools query ---
-  gr <- GenomicRanges::GRanges(
-    seqnames = parsed$chrom,
-    ranges = IRanges::IRanges(start = parsed$start, end = parsed$end)
-  )
+  gr <- region_to_granges(region)
 
   what <- c("qname", "flag", "pos", "cigar", "strand", "seq", "mapq")
 
@@ -331,12 +326,12 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   }
 
   # --- 7. Clip reads to region ---
-  reads$start <- pmax(reads$start, parsed$start)
-  reads$end <- pmin(reads$end, parsed$end)
+  reads$start <- pmax(reads$start, GenomicRanges::start(gr))
+  reads$end <- pmin(reads$end, GenomicRanges::end(gr))
 
   # --- 8. Filter sites to region ---
   sites <- sites[
-    sites$position >= parsed$start & sites$position <= parsed$end,
+    sites$position >= GenomicRanges::start(gr) & sites$position <= GenomicRanges::end(gr),
     ,
     drop = FALSE
   ]
@@ -379,12 +374,12 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     in_region <- rep(TRUE, nrow(cigar_features))
     # Features with ref_start: must not be entirely outside region
     in_region[has_ref & !is.na(cigar_features$ref_end)] <-
-      cigar_features$ref_start[has_ref & !is.na(cigar_features$ref_end)] <= parsed$end &
-      cigar_features$ref_end[has_ref & !is.na(cigar_features$ref_end)] >= parsed$start
+      cigar_features$ref_start[has_ref & !is.na(cigar_features$ref_end)] <= GenomicRanges::end(gr) &
+      cigar_features$ref_end[has_ref & !is.na(cigar_features$ref_end)] >= GenomicRanges::start(gr)
     # Features with ref_start but NA ref_end (insertions): check point
     in_region[has_ref & is.na(cigar_features$ref_end)] <-
-      cigar_features$ref_start[has_ref & is.na(cigar_features$ref_end)] >= parsed$start &
-      cigar_features$ref_start[has_ref & is.na(cigar_features$ref_end)] <= parsed$end
+      cigar_features$ref_start[has_ref & is.na(cigar_features$ref_end)] >= GenomicRanges::start(gr) &
+      cigar_features$ref_start[has_ref & is.na(cigar_features$ref_end)] <= GenomicRanges::end(gr)
     # Features without ref coords (S, H): keep them (positioned at read ends later)
     cigar_features <- cigar_features[in_region, , drop = FALSE]
     rownames(cigar_features) <- NULL

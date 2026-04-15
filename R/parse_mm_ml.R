@@ -19,8 +19,9 @@
 #' @keywords internal
 seq_to_ref <- function(cigar, pos, query_positions) {
   # Parse CIGAR into operations and lengths
-  ops <- regmatches(cigar, gregexpr("[A-Z=]", cigar))[[1]]
-  lens <- as.integer(regmatches(cigar, gregexpr("\\d+", cigar))[[1]])
+  parsed_cigar <- split_cigar(cigar)
+  ops  <- parsed_cigar$ops
+  lens <- parsed_cigar$lens
 
   # Pre-allocate a mapping vector from query offset to ref position.
   # Compute total query consumption to size the vector.

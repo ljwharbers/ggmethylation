@@ -166,6 +166,48 @@
   .insert_deletion_breaks(smoothed, ranges, group_col)
 }
 
+# Shapes used for multi-code plots: circle, square, triangle, diamond.
+.DEFAULT_SHAPES <- c(16L, 15L, 17L, 18L)
+
+# Resolve a mod_code -> shape mapping from a vector of codes.
+# Returns a named integer vector of the same length as `codes`.
+.resolve_mod_code_shapes <- function(codes, mod_code_shapes) {
+  if (length(codes) > length(.DEFAULT_SHAPES)) {
+    stop("More than 4 mod codes present; supply mod_code_shapes explicitly.", call. = FALSE)
+  }
+  if (is.null(mod_code_shapes)) {
+    return(stats::setNames(.DEFAULT_SHAPES[seq_along(codes)], codes))
+  }
+  missing_codes <- setdiff(codes, names(mod_code_shapes))
+  if (length(missing_codes) > 0L) {
+    warning(
+      "mod_code_shapes has no entry for code(s): ",
+      paste(missing_codes, collapse = ", "),
+      ". Using default shapes.", call. = FALSE
+    )
+    extras <- stats::setNames(.DEFAULT_SHAPES[seq_along(missing_codes)], missing_codes)
+    mod_code_shapes <- c(mod_code_shapes, extras)
+  }
+  mod_code_shapes
+}
+
+# Common ggplot2 layers for the smoothed modification probability panel.
+# Returns a list of scales/coords/theme components shared by every branch.
+.smooth_panel_base <- function(region_start, region_end) {
+  list(
+    ggplot2::scale_y_continuous(limits = c(0, 1), name = "Mean modification\nprobability"),
+    ggplot2::scale_x_continuous(labels = scales::comma_format()),
+    ggplot2::coord_cartesian(xlim = c(region_start, region_end)),
+    ggplot2::theme_minimal(),
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
+      legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
+      legend.key.size  = ggplot2::unit(0.4, "cm")
+    )
+  )
+}
+
 #' Plot read-level methylation data
 #'
 #' Creates a ggplot2 visualisation of read-level base modification data. When
@@ -221,8 +263,9 @@
 #'   triangle, diamond for up to four codes).
 #' @param show_cigar Logical. When `TRUE` (default), structural variants from
 #'   CIGAR strings (insertions, deletions) are displayed on reads. Insertions
-#'   appear as bold purple "I" markers; deletions open a gap in the read bar
-#'   and draw a thin black line. Set to `FALSE` to hide these features.
+#'   appear as purple I-beam markers spanning the full height of the read bar;
+#'   deletions open a gap in the read bar and draw a thin black line. Set to
+#'   `FALSE` to hide these features.
 #' @param min_indel_size Integer. Minimum size (in bp) for insertions and
 #'   deletions to be displayed when `show_cigar = TRUE`. Indels smaller than
 #'   this threshold are hidden to reduce visual clutter from common small
@@ -309,36 +352,9 @@ plot_methylation <- function(data, sort_by = NULL,
   region_end <- GenomicRanges::end(data$region)
 
   # --- 1b. Resolve mod_code shape mapping ---
-  codes <- unique(data$sites$mod_code)
-  default_shapes <- c(16L, 15L, 17L, 18L)   # circle, square, triangle, diamond
-
-  if (length(codes) > length(default_shapes)) {
-    stop("More than 4 mod codes present; supply mod_code_shapes explicitly.", call. = FALSE)
-  }
-
-  if (is.null(mod_code_shapes)) {
-    mod_code_shapes <- stats::setNames(
-      default_shapes[seq_along(codes)],
-      codes
-    )
-  } else {
-    # Validate that all codes present in data have an entry
-    missing_codes <- setdiff(codes, names(mod_code_shapes))
-    if (length(missing_codes) > 0L) {
-      warning(
-        "mod_code_shapes has no entry for code(s): ",
-        paste(missing_codes, collapse = ", "),
-        ". Using default shapes.", call. = FALSE
-      )
-      extras <- stats::setNames(
-        default_shapes[seq_along(missing_codes)],
-        missing_codes
-      )
-      mod_code_shapes <- c(mod_code_shapes, extras)
-    }
-  }
-
-  multi_code <- length(codes) > 1L
+  codes           <- unique(data$sites$mod_code)
+  mod_code_shapes <- .resolve_mod_code_shapes(codes, mod_code_shapes)
+  multi_code      <- length(codes) > 1L
 
   # --- 2. Handle empty data ---
   if (nrow(data$reads) == 0L) {
@@ -450,19 +466,7 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::aes(x = .data$position, y = .data$mean_prob)
       ) +
         ggplot2::geom_line(linewidth = 1, colour = "#C62828") +
-        ggplot2::scale_y_continuous(
-          limits = c(0, 1),
-          name = "Mean modification\nprobability"
-        ) +
-        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
-        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(
-          panel.grid.minor = ggplot2::element_blank(),
-          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.key.size  = ggplot2::unit(0.4, "cm")
-        ) +
+        .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)")
     } else {
       # Multi-code: one line per code, colour by mod_code
@@ -481,19 +485,7 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        ggplot2::scale_y_continuous(
-          limits = c(0, 1),
-          name = "Mean modification\nprobability"
-        ) +
-        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
-        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(
-          panel.grid.minor = ggplot2::element_blank(),
-          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.key.size  = ggplot2::unit(0.4, "cm")
-        ) +
+        .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Modification")
     }
   } else {
@@ -517,19 +509,7 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        ggplot2::scale_y_continuous(
-          limits = c(0, 1),
-          name = "Mean modification\nprobability"
-        ) +
-        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
-        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(
-          panel.grid.minor = ggplot2::element_blank(),
-          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.key.size  = ggplot2::unit(0.4, "cm")
-        ) +
+        .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
 
       if (!is.null(group_colours)) {
@@ -558,26 +538,11 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        ggplot2::scale_y_continuous(
-          limits = c(0, 1),
-          name = "Mean modification\nprobability"
-        ) +
-        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
-        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
         ggplot2::scale_linetype_manual(
-          values = stats::setNames(
-            default_linetypes[seq_along(codes)],
-            codes
-          ),
+          values = stats::setNames(default_linetypes[seq_along(codes)], codes),
           name = "Modification"
         ) +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(
-          panel.grid.minor = ggplot2::element_blank(),
-          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.key.size  = ggplot2::unit(0.4, "cm")
-        ) +
+        .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
 
       if (!is.null(group_colours)) {
@@ -653,31 +618,8 @@ plot_methylation <- function(data, sort_by = NULL,
   region_end   <- GenomicRanges::end(data$region)
 
   # Resolve mod_code shapes from combined codes across all samples
-  all_codes <- unique(unlist(lapply(data$samples, function(s) {
-    unique(s$sites$mod_code)
-  })))
-  default_shapes <- c(16L, 15L, 17L, 18L)
-
-  if (is.null(mod_code_shapes)) {
-    mod_code_shapes <- stats::setNames(
-      default_shapes[seq_along(all_codes)],
-      all_codes
-    )
-  } else {
-    missing_codes <- setdiff(all_codes, names(mod_code_shapes))
-    if (length(missing_codes) > 0L) {
-      warning(
-        "mod_code_shapes has no entry for code(s): ",
-        paste(missing_codes, collapse = ", "),
-        ". Using default shapes.", call. = FALSE
-      )
-      extras <- stats::setNames(
-        default_shapes[seq_along(missing_codes)],
-        missing_codes
-      )
-      mod_code_shapes <- c(mod_code_shapes, extras)
-    }
-  }
+  all_codes       <- unique(unlist(lapply(data$samples, function(s) unique(s$sites$mod_code))))
+  mod_code_shapes <- .resolve_mod_code_shapes(all_codes, mod_code_shapes)
 
   # --- 1. Build per-sample read panels ---
   sample_names  <- names(data$samples)
@@ -856,21 +798,8 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        ggplot2::scale_y_continuous(
-          limits = c(0, 1),
-          name   = "Mean modification\nprobability"
-        ) +
-        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
-        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(
-          panel.grid.minor = ggplot2::element_blank(),
-          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.key.size  = ggplot2::unit(0.4, "cm")
-        ) +
-        ggplot2::labs(x = "Genomic position (bp)", colour = "Group",
-                      linetype = "Sample")
+        .smooth_panel_base(region_start, region_end) +
+        ggplot2::labs(x = "Genomic position (bp)", colour = "Group", linetype = "Sample")
 
       if (!is.null(group_colours)) {
         p_smooth <- p_smooth +
@@ -887,19 +816,7 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        ggplot2::scale_y_continuous(
-          limits = c(0, 1),
-          name   = "Mean modification\nprobability"
-        ) +
-        ggplot2::scale_x_continuous(labels = scales::comma_format()) +
-        ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(
-          panel.grid.minor = ggplot2::element_blank(),
-          legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
-          legend.key.size  = ggplot2::unit(0.4, "cm")
-        ) +
+        .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Sample")
     }
 

@@ -119,3 +119,23 @@ test_that("decompose_cigar handles N (skipped region)", {
   expect_true(is.na(n_op$query_start))
   expect_equal(n_op$length, 100L)
 })
+
+# --- split_cigar ---
+
+test_that("split_cigar returns correct ops and lens for simple CIGAR", {
+  result <- ggmethylation:::split_cigar("10M")
+  expect_equal(result$ops,  "M")
+  expect_equal(result$lens, 10L)
+})
+
+test_that("split_cigar handles multi-op CIGAR", {
+  result <- ggmethylation:::split_cigar("5S10M2I3M")
+  expect_equal(result$ops,  c("S", "M", "I", "M"))
+  expect_equal(result$lens, c(5L, 10L, 2L, 3L))
+})
+
+test_that("split_cigar handles = and X ops", {
+  result <- ggmethylation:::split_cigar("5=3X")
+  expect_equal(result$ops,  c("=", "X"))
+  expect_equal(result$lens, c(5L, 3L))
+})

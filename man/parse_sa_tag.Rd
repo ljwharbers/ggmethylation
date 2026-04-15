@@ -2,63 +2,22 @@
 % Please edit documentation in R/utils.R
 \name{parse_sa_tag}
 \alias{parse_sa_tag}
-\title{Decompose a CIGAR string into individual operations}
+\title{Parse an SA (Supplementary Alignment) BAM auxiliary tag}
 \usage{
 parse_sa_tag(sa_string)
 }
 \arguments{
 \item{sa_string}{Character. The SA tag value (e.g.
 \code{"chr5,45000,+,50M,60,0;"}), or \code{NULL}/\code{NA}.}
-
-\item{cigar}{Character. A CIGAR string (e.g., \code{"5S10M2I3D5M"}).}
-
-\item{pos}{Integer. The 1-based reference position of the first aligned
-base (the BAM POS field).}
 }
 \value{
-A data.frame with columns:
-\describe{
-\item{type}{Character. CIGAR operation: \code{"M"}, \code{"I"}, \code{"D"}, \code{"S"},
-\code{"H"}, \code{"N"}, \code{"="}, or \code{"X"}.}
-\item{ref_start}{Integer. Reference start position (\code{NA} for I/S/H).}
-\item{ref_end}{Integer. Reference end position (\code{NA} for I/S/H).}
-\item{query_start}{Integer. Query start position (\code{NA} for D/N/H).}
-\item{query_end}{Integer. Query end position (\code{NA} for D/N/H).}
-\item{length}{Integer. Operation length.}
-}
-
 A data.frame with columns \code{rname} (character), \code{pos} (integer),
 \code{strand} (character), \code{cigar} (character), \code{mapq} (integer), \code{nm}
 (integer).  Returns a zero-row data.frame for NULL/NA/empty input.
 }
 \description{
-Walks the CIGAR string and returns a data.frame describing each operation
-with reference and query coordinate ranges.
+Splits a semicolon-delimited SA tag string into a data.frame, one row per
+supplementary alignment entry.  The SA tag format is:
+\code{"rname,pos,strand,CIGAR,mapQ,NM;"} (trailing semicolon).
 }
-\keyword{(Supplementary}
-\keyword{(trailing}
-\keyword{Alignment)}
-\keyword{BAM}
-\keyword{Parse}
-\keyword{SA}
-\keyword{Splits}
-\keyword{The}
-\keyword{`"rname,pos,strand,CIGAR,mapQ,NM;"`}
-\keyword{a}
-\keyword{alignment}
-\keyword{an}
-\keyword{auxiliary}
-\keyword{data.frame,}
-\keyword{entry.}
-\keyword{format}
 \keyword{internal}
-\keyword{into}
-\keyword{is:}
-\keyword{one}
-\keyword{per}
-\keyword{row}
-\keyword{semicolon).}
-\keyword{semicolon-delimited}
-\keyword{string}
-\keyword{supplementary}
-\keyword{tag}

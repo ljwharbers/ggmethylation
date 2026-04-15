@@ -71,15 +71,21 @@ validate_bam_index <- function(bam) {
   )
 }
 
-#' Return the complement of a DNA base
+#' Parse a CIGAR string into operation codes and lengths
 #'
-#' Maps A to T, T to A, C to G, and G to C.
+#' @param cigar Character. A single CIGAR string.
 #'
-#' @param base Single character. One of `"A"`, `"T"`, `"C"`, or `"G"`.
-#'
-#' @return Single character. The complementary base.
+#' @return A named list with elements `ops` (character vector of operation
+#'   codes) and `lens` (integer vector of lengths).
 #'
 #' @keywords internal
+split_cigar <- function(cigar) {
+  list(
+    ops  = regmatches(cigar, gregexpr("[A-Z=]", cigar))[[1]],
+    lens = as.integer(regmatches(cigar, gregexpr("\\d+", cigar))[[1]])
+  )
+}
+
 #' Map a reference position to a query (read) position via CIGAR
 #'
 #' Walks the CIGAR string to find the 1-based query position that corresponds
@@ -95,8 +101,9 @@ validate_bam_index <- function(bam) {
 #'
 #' @keywords internal
 ref_to_seq <- function(cigar, ref_start, target_ref_pos) {
-  ops  <- regmatches(cigar, gregexpr("[A-Z=]", cigar))[[1]]
-  lens <- as.integer(regmatches(cigar, gregexpr("\\d+", cigar))[[1]])
+  parsed_cigar <- split_cigar(cigar)
+  ops  <- parsed_cigar$ops
+  lens <- parsed_cigar$lens
 
   q_pos <- 1L
   r_pos <- ref_start
@@ -143,27 +150,6 @@ complement_base <- function(base) {
   as.character(result)
 }
 
-#' Decompose a CIGAR string into individual operations
-#'
-#' Walks the CIGAR string and returns a data.frame describing each operation
-#' with reference and query coordinate ranges.
-#'
-#' @param cigar Character. A CIGAR string (e.g., `"5S10M2I3D5M"`).
-#' @param pos Integer. The 1-based reference position of the first aligned
-#'   base (the BAM POS field).
-#'
-#' @return A data.frame with columns:
-#'   \describe{
-#'     \item{type}{Character. CIGAR operation: `"M"`, `"I"`, `"D"`, `"S"`,
-#'       `"H"`, `"N"`, `"="`, or `"X"`.}
-#'     \item{ref_start}{Integer. Reference start position (`NA` for I/S/H).}
-#'     \item{ref_end}{Integer. Reference end position (`NA` for I/S/H).}
-#'     \item{query_start}{Integer. Query start position (`NA` for D/N/H).}
-#'     \item{query_end}{Integer. Query end position (`NA` for D/N/H).}
-#'     \item{length}{Integer. Operation length.}
-#'   }
-#'
-#' @keywords internal
 #' Parse an SA (Supplementary Alignment) BAM auxiliary tag
 #'
 #' Splits a semicolon-delimited SA tag string into a data.frame, one row per
@@ -214,9 +200,31 @@ parse_sa_tag <- function(sa_string) {
   do.call(rbind, rows)
 }
 
+#' Decompose a CIGAR string into individual operations
+#'
+#' Walks the CIGAR string and returns a data.frame describing each operation
+#' with reference and query coordinate ranges.
+#'
+#' @param cigar Character. A CIGAR string (e.g., `"5S10M2I3D5M"`).
+#' @param pos Integer. The 1-based reference position of the first aligned
+#'   base (the BAM POS field).
+#'
+#' @return A data.frame with columns:
+#'   \describe{
+#'     \item{type}{Character. CIGAR operation: `"M"`, `"I"`, `"D"`, `"S"`,
+#'       `"H"`, `"N"`, `"="`, or `"X"`.}
+#'     \item{ref_start}{Integer. Reference start position (`NA` for I/S/H).}
+#'     \item{ref_end}{Integer. Reference end position (`NA` for I/S/H).}
+#'     \item{query_start}{Integer. Query start position (`NA` for D/N/H).}
+#'     \item{query_end}{Integer. Query end position (`NA` for D/N/H).}
+#'     \item{length}{Integer. Operation length.}
+#'   }
+#'
+#' @keywords internal
 decompose_cigar <- function(cigar, pos) {
-  ops  <- regmatches(cigar, gregexpr("[A-Z=]", cigar))[[1]]
-  lens <- as.integer(regmatches(cigar, gregexpr("\\d+", cigar))[[1]])
+  parsed_cigar <- split_cigar(cigar)
+  ops  <- parsed_cigar$ops
+  lens <- parsed_cigar$lens
 
   n <- length(ops)
   type        <- character(n)
@@ -285,9 +293,8 @@ decompose_cigar <- function(cigar, pos) {
 cigar_ref_width <- function(cigar) {
   vapply(cigar, function(cig) {
     if (is.na(cig) || cig == "*") return(0L)
-    ops  <- regmatches(cig, gregexpr("[A-Z=]", cig))[[1]]
-    lens <- as.integer(regmatches(cig, gregexpr("\\d+", cig))[[1]])
-    sum(lens[ops %in% c("M", "=", "X", "D", "N")])
+    parsed_cigar <- split_cigar(cig)
+    sum(parsed_cigar$lens[parsed_cigar$ops %in% c("M", "=", "X", "D", "N")])
   }, integer(1L), USE.NAMES = FALSE)
 }
 
@@ -305,7 +312,7 @@ cigar_ref_width <- function(cigar) {
 detect_clip_side <- function(cigar) {
   vapply(cigar, function(cig) {
     if (is.na(cig) || cig == "*") return(NA_character_)
-    ops <- regmatches(cig, gregexpr("[A-Z=]", cig))[[1]]
+    ops   <- split_cigar(cig)$ops
     left  <- ops[1] %in% c("S", "H")
     right <- ops[length(ops)] %in% c("S", "H")
     if (left && right) "both"
@@ -313,4 +320,22 @@ detect_clip_side <- function(cigar) {
     else if (right)     "right"
     else                NA_character_
   }, character(1L), USE.NAMES = FALSE)
+}
+
+#' Convert a region string to a GRanges object
+#'
+#' Wraps [parse_region()] and constructs a [GenomicRanges::GRanges] from the
+#' result.
+#'
+#' @param region Character. A genomic region string, e.g. `"chr1:1000-2000"`.
+#'
+#' @return A [GenomicRanges::GRanges] object with one range.
+#'
+#' @keywords internal
+region_to_granges <- function(region) {
+  parsed <- parse_region(region)
+  GenomicRanges::GRanges(
+    seqnames = parsed$chrom,
+    ranges   = IRanges::IRanges(start = parsed$start, end = parsed$end)
+  )
 }

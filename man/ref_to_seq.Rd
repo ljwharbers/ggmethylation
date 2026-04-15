@@ -2,7 +2,7 @@
 % Please edit documentation in R/utils.R
 \name{ref_to_seq}
 \alias{ref_to_seq}
-\title{Return the complement of a DNA base}
+\title{Map a reference position to a query (read) position via CIGAR}
 \usage{
 ref_to_seq(cigar, ref_start, target_ref_pos)
 }
@@ -13,47 +13,13 @@ ref_to_seq(cigar, ref_start, target_ref_pos)
 aligned base (the BAM POS field).}
 
 \item{target_ref_pos}{Integer. The 1-based reference position to look up.}
-
-\item{base}{Single character. One of \code{"A"}, \code{"T"}, \code{"C"}, or \code{"G"}.}
 }
 \value{
-Single character. The complementary base.
-
 Integer. The 1-based query position, or \code{NA_integer_}.
 }
 \description{
-Maps A to T, T to A, C to G, and G to C.
+Walks the CIGAR string to find the 1-based query position that corresponds
+to a given 1-based reference position. Returns \code{NA} if the position falls
+in a deletion, is not covered by the read, or is in a soft/hard clip.
 }
-\keyword{(read)}
-\keyword{1-based}
-\keyword{CIGAR}
-\keyword{Map}
-\keyword{Returns}
-\keyword{Walks}
-\keyword{`NA`}
-\keyword{a}
-\keyword{by}
-\keyword{clip.}
-\keyword{corresponds}
-\keyword{covered}
-\keyword{deletion,}
-\keyword{falls}
-\keyword{find}
-\keyword{given}
-\keyword{if}
-\keyword{in}
 \keyword{internal}
-\keyword{is}
-\keyword{not}
-\keyword{or}
-\keyword{position}
-\keyword{position.}
-\keyword{query}
-\keyword{read,}
-\keyword{reference}
-\keyword{soft/hard}
-\keyword{string}
-\keyword{that}
-\keyword{the}
-\keyword{to}
-\keyword{via}

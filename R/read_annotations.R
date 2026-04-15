@@ -323,11 +323,7 @@ read_annotations <- function(genome = NULL, txdb = NULL, gtf = NULL, region,
   }
 
   # --- 4. Parse region ---
-  parsed    <- parse_region(region)
-  region_gr <- GenomicRanges::GRanges(
-    seqnames = parsed$chrom,
-    ranges   = IRanges::IRanges(start = parsed$start, end = parsed$end)
-  )
+  region_gr <- region_to_granges(region)
 
   # --- 5. Extract overlapping transcripts ---
   txs <- GenomicFeatures::transcriptsByOverlaps(txdb, region_gr)

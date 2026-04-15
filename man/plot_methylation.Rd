@@ -85,8 +85,9 @@ stores sequences and CIGARs in the object.}
 
 \item{show_cigar}{Logical. When \code{TRUE} (default), structural variants from
 CIGAR strings (insertions, deletions) are displayed on reads. Insertions
-appear as bold purple "I" markers; deletions open a gap in the read bar
-and draw a thin black line. Set to \code{FALSE} to hide these features.}
+appear as purple I-beam markers spanning the full height of the read bar;
+deletions open a gap in the read bar and draw a thin black line. Set to
+\code{FALSE} to hide these features.}
 
 \item{min_indel_size}{Integer. Minimum size (in bp) for insertions and
 deletions to be displayed when \code{show_cigar = TRUE}. Indels smaller than

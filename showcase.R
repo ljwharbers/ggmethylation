@@ -47,20 +47,7 @@ plot_methylation(meth_hp)
 
 
 # =============================================================================
-# 3. Grouped by SNV genotype
-# =============================================================================
-
-meth_snv = read_methylation(BAM, REGION,
-                              mod_code     = "m",
-                              snv_position = 127740000L,
-                              ref_base     = "A",
-                              alt_base     = "T")
-
-plot_methylation(meth_snv)
-
-
-# =============================================================================
-# 4. Read filters — MAPQ, strand, length, downsampling
+# 3. Read filters — MAPQ, strand, length, downsampling
 # =============================================================================
 
 meth_filtered = read_methylation(BAM, REGION,
@@ -83,18 +70,8 @@ meth_hp_balanced = read_methylation(BAM, REGION,
 
 plot_methylation(meth_hp_balanced)
 
-
 # =============================================================================
-# 5. sort_by options
-# =============================================================================
-
-plot_methylation(meth_hp, sort_by = "group")
-plot_methylation(meth_hp, sort_by = "start")
-plot_methylation(meth_hp, sort_by = "mean_mod_prob")
-
-
-# =============================================================================
-# 6. Colour and aesthetics customisation
+# 4. Colour and aesthetics customisation
 # =============================================================================
 
 plot_methylation(meth,
@@ -121,7 +98,7 @@ plot_methylation(meth_hp, panel_heights = c(4, 1))
 
 
 # =============================================================================
-# 7. Gene annotations — from UCSC ncbiRefSeq (canonical gene symbols)
+# 5. Gene annotations — from UCSC ncbiRefSeq (canonical gene symbols)
 # =============================================================================
 
 # Use genome = "hg38" or "chm13" to automatically download and cache the UCSC
@@ -168,7 +145,7 @@ plot_methylation(meth_hp, annotations = annot_all_isoforms)
 
 
 # =============================================================================
-# 8. CIGAR structural variant visualisation
+# 6. CIGAR structural variant visualisation
 # =============================================================================
 
 # show_cigar = TRUE is the default. It overlays per-read structural features
@@ -181,12 +158,8 @@ plot_methylation(meth)                          # CIGAR on by default
 plot_methylation(meth, show_cigar = FALSE)      # disable CIGAR overlay
 plot_methylation(meth, min_indel_size = 20L)    # show smaller indels (>= 20 bp)
 
-# Works with grouping and annotations too
-plot_methylation(meth_hp, annotations = annot)
-
-
 # =============================================================================
-# 8b. Supplementary alignment visualisation
+# 7. Supplementary alignment visualisation
 # =============================================================================
 
 # show_supplementary = TRUE is the default. Reads with a SA (supplementary
@@ -194,17 +167,17 @@ plot_methylation(meth_hp, annotations = annot)
 # mate chromosome. When variants = <vcf BND data>, SA reads whose breakpoint
 # matches a BND call are additionally outlined in dark red.
 
-plot_methylation(meth_hp)                             # SA halos on by default
-plot_methylation(meth_hp, show_supplementary = FALSE) # disable SA reads
+plot_methylation(meth_hp)                             # SA coloured arrows on by default
+plot_methylation(meth_hp, show_supplementary = FALSE) # disable SA indicators
 
-# Combined: CIGAR off, SA halos on
+# Combined: CIGAR off, SA arrows on
 plot_methylation(meth_hp, show_cigar = FALSE, show_supplementary = TRUE)
 
 
 
 
 # =============================================================================
-# 9. Variant overlay (VCF)
+# 8. Variant overlay (VCF)
 # =============================================================================
 
 vars = read_variants(VCF_SVs, REGION)
@@ -222,9 +195,14 @@ plot_methylation(meth_hp,
                  annotations = annot,
                  variants    = vars)
 
+# Now with SNVs
+vars_snvs = read_variants(VCF_SNVs, REGION)
+plot_methylation(meth_hp,
+                 annotations = annot,
+                 variants    = vars_snvs)
 
 # =============================================================================
-# 10. Multi-sample comparison
+# 9. Multi-sample comparison
 # =============================================================================
 
 merged = merge_methylation(sample1 = meth_hp,
@@ -243,7 +221,7 @@ plot_methylation(merged, annotations = annot, variants = vars,
 
 
 # =============================================================================
-# 11. Write methylation data to disk
+# 10. Write methylation data to disk
 # =============================================================================
 
 write_methylation(meth, prefix = "/tmp/ptcl8_meth", format = "tsv")
@@ -256,7 +234,7 @@ meth |>
 
 
 # =============================================================================
-# 12. Manipulating patchwork output
+# 11. Manipulating patchwork output
 # =============================================================================
 
 # Panel order depends on which panels are present:
