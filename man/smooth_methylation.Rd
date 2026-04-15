@@ -4,7 +4,12 @@
 \alias{smooth_methylation}
 \title{Smooth methylation probabilities per group using loess}
 \usage{
-smooth_methylation(sites, group_col = "group", mod_code_col = NULL, span = 0.3)
+smooth_methylation(
+  sites,
+  group_col = "group",
+  mod_code_col = NULL,
+  span = NULL
+)
 }
 \arguments{
 \item{sites}{A data.frame with columns \code{position}, \code{mod_prob}, and a
@@ -12,7 +17,10 @@ grouping column (specified by \code{group_col}).}
 
 \item{group_col}{Name of the grouping column (default \code{"group"}).}
 
-\item{span}{Loess smoothing span (default 0.3).}
+\item{span}{Loess smoothing span. When \code{NULL} (default), an adaptive span is
+computed per group as \code{max(0.15, min(0.75, 15 / n_unique_sites))}, targeting
+approximately 15 data points per local fit regardless of region size or CpG
+density. Pass an explicit numeric value (e.g. \code{0.3}) to use a fixed span.}
 }
 \value{
 A data.frame with columns \code{position}, \code{mean_prob}, and the

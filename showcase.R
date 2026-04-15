@@ -39,7 +39,7 @@ plot_methylation(meth)
 meth_hp = read_methylation(BAM, REGION,
                              mod_code    = "m",
                              group_tag   = "HP",
-                             drop_na_group = TRUE)
+                             drop_na_group = FALSE)
 
 print(meth_hp)
 
@@ -238,7 +238,8 @@ summary(merged)
 
 plot_methylation(merged)
 
-plot_methylation(merged, annotations = annot, variants = vars)
+plot_methylation(merged, annotations = annot, variants = vars,
+                 smooth_span = 0.1)
 
 
 # =============================================================================

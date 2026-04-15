@@ -14,7 +14,7 @@ plot_methylation(
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
   group_colours = c(`1` = "#95babc", `2` = "#efbb76"),
   mod_code_shapes = NULL,
-  smooth_span = 0.3,
+  smooth_span = NULL,
   panel_heights = NULL,
   annotations = NULL,
   variants = NULL,
@@ -58,7 +58,11 @@ present. Names must match the mod codes in \code{data$sites$mod_code}. If
 \code{NULL} (default), shapes are assigned automatically (circle, square,
 triangle, diamond for up to four codes).}
 
-\item{smooth_span}{Loess smoothing span for the bottom panel (default 0.3).}
+\item{smooth_span}{Loess smoothing span for the bottom panel. When \code{NULL}
+(default), an adaptive span is computed per group as
+\code{max(0.15, min(0.75, 15 / n_unique_sites))}, targeting ~15 data points
+per local fit regardless of region size or CpG density. Pass an explicit
+numeric value (e.g. \code{0.3}) to use a fixed span.}
 
 \item{panel_heights}{Numeric vector giving relative heights of the panels.
 When \code{annotations = NULL}, expects length 2 (\code{reads}, \code{smooth}); when

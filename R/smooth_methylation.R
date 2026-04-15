@@ -8,7 +8,10 @@
 #' @param sites A data.frame with columns `position`, `mod_prob`, and a
 #'   grouping column (specified by `group_col`).
 #' @param group_col Name of the grouping column (default `"group"`).
-#' @param span Loess smoothing span (default 0.3).
+#' @param span Loess smoothing span. When `NULL` (default), an adaptive span is
+#'   computed per group as `max(0.15, min(0.75, 15 / n_unique_sites))`, targeting
+#'   approximately 15 data points per local fit regardless of region size or CpG
+#'   density. Pass an explicit numeric value (e.g. `0.3`) to use a fixed span.
 #'
 #' @return A data.frame with columns `position`, `mean_prob`, and the
 #'   grouping column. Positions are a regular grid of 200 points with
@@ -17,7 +20,7 @@
 #'
 #' @keywords internal
 smooth_methylation <- function(sites, group_col = "group",
-                               mod_code_col = NULL, span = 0.3) {
+                               mod_code_col = NULL, span = NULL) {
   if (!is.null(mod_code_col) && mod_code_col %in% names(sites)) {
     sites$.smooth_group <- paste(sites[[group_col]], sites[[mod_code_col]], sep = ":::")
     effective_group_col <- ".smooth_group"
@@ -54,13 +57,19 @@ smooth_methylation <- function(sites, group_col = "group",
     )
     names(agg) <- c("position", "mean_prob")
 
+    effective_span <- if (is.null(span)) {
+      max(0.15, min(0.75, 15 / nrow(agg)))
+    } else {
+      span
+    }
+
     if (nrow(agg) < 4L) {
       # Too few unique positions for loess; return raw means
       df <- agg
     } else {
       df <- tryCatch(
         suppressWarnings({
-          fit  <- stats::loess(mean_prob ~ position, data = agg, span = span)
+          fit  <- stats::loess(mean_prob ~ position, data = agg, span = effective_span)
           grid <- seq(min(agg$position, na.rm = TRUE),
                       max(agg$position, na.rm = TRUE),
                       length.out = 200L)
