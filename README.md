@@ -15,7 +15,7 @@ Given a modBAM file and a genomic region, `ggmethylation` produces a two-panel p
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
-BiocManager::install(c("Rsamtools", "GenomicRanges", "GenomicAlignments", "IRanges"))
+BiocManager::install(c("Rsamtools", "GenomicRanges", "GenomicAlignments", "IRanges", "txdbmaker"))
 install.packages(c("ggplot2", "patchwork"))
 ```
 
@@ -67,7 +67,7 @@ plot_methylation(
   meth,
   colour_low = "#EEEEEE",
   colour_high = "#1B5E20",
-  dot_size = 2,
+  line_width = 0.4,
   group_colours = c("1" = "steelblue", "2" = "coral"),
   smooth_span = 0.5,
   panel_heights = c(4, 1)
