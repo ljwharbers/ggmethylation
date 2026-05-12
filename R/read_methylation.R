@@ -34,9 +34,11 @@
 #' @return A `methylation_data` object (S3 list) with elements:
 #'   \describe{
 #'     \item{reads}{Data.frame with columns `read_name`, `start`, `end`,
-#'       `strand`, `is_supplementary` (logical), `sa_chrom` (chr or NA),
-#'       `sa_pos` (int or NA), `clip_side` (chr: `"left"`, `"right"`,
-#'       `"both"`, or NA), and optionally `group`.}
+#'       `bam_pos` (original unclipped alignment start, equal to the BAM POS
+#'       field), `strand`, `is_supplementary` (logical), `sa_chrom` (chr or
+#'       NA), `sa_pos` (int or NA), `clip_side` (chr: `"left"`, `"right"`,
+#'       `"both"`, or NA), and optionally `group`. `start` and `end` are
+#'       clipped to the queried region; `bam_pos` retains the original start.}
 #'     \item{sites}{Data.frame with columns `position`, `mod_prob`,
 #'       `read_name`, `mod_code`, and optionally `group`.}
 #'     \item{region}{A [GenomicRanges::GRanges] object for the queried region.}
@@ -118,6 +120,7 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     read_name = bam_data$qname,
     start = bam_data$pos,
     end = bam_data$pos + ref_widths - 1L,
+    bam_pos = bam_data$pos,
     strand = as.character(bam_data$strand),
     stringsAsFactors = FALSE
   )
@@ -416,6 +419,7 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
     read_name       = character(0L),
     start           = integer(0L),
     end             = integer(0L),
+    bam_pos         = integer(0L),
     strand          = character(0L),
     is_supplementary = logical(0L),
     sa_chrom        = character(0L),

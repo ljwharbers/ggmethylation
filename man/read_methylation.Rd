@@ -61,9 +61,11 @@ unphased reads in the data.}
 A \code{methylation_data} object (S3 list) with elements:
 \describe{
 \item{reads}{Data.frame with columns \code{read_name}, \code{start}, \code{end},
-\code{strand}, \code{is_supplementary} (logical), \code{sa_chrom} (chr or NA),
-\code{sa_pos} (int or NA), \code{clip_side} (chr: \code{"left"}, \code{"right"},
-\code{"both"}, or NA), and optionally \code{group}.}
+\code{bam_pos} (original unclipped alignment start, equal to the BAM POS
+field), \code{strand}, \code{is_supplementary} (logical), \code{sa_chrom} (chr or
+NA), \code{sa_pos} (int or NA), \code{clip_side} (chr: \code{"left"}, \code{"right"},
+\code{"both"}, or NA), and optionally \code{group}. \code{start} and \code{end} are
+clipped to the queried region; \code{bam_pos} retains the original start.}
 \item{sites}{Data.frame with columns \code{position}, \code{mod_prob},
 \code{read_name}, \code{mod_code}, and optionally \code{group}.}
 \item{region}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object for the queried region.}

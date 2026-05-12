@@ -43,22 +43,25 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
     if (!read_name %in% names(sequences)) next
     if (!read_name %in% names(cigars))    next
 
-    seq_str <- sequences[[read_name]]
-    cigar   <- cigars[[read_name]]
-    r_start <- reads$start[i]
-    r_end   <- reads$end[i]
-    lane    <- reads$lane[i]
+    seq_str  <- sequences[[read_name]]
+    cigar    <- cigars[[read_name]]
+    r_start  <- reads$start[i]
+    r_end    <- reads$end[i]
+    bam_pos  <- reads$bam_pos[i]
+    lane     <- reads$lane[i]
 
     for (v in seq_len(nrow(variants))) {
       var_pos <- variants$position[v]
 
-      # Skip if variant is outside this read's span
+      # Skip if variant is outside this read's clipped span
       if (var_pos < r_start || var_pos > r_end) next
 
-      # Map genomic position to query position via CIGAR
+      # Map genomic position to query position via CIGAR.
+      # Use bam_pos (original unclipped alignment start), not the clipped
+      # reads$start, so the CIGAR walk begins from the correct reference offset.
       q_pos <- ref_to_seq(
         cigar          = cigar,
-        ref_start      = r_start,
+        ref_start      = bam_pos,
         target_ref_pos = var_pos
       )
 

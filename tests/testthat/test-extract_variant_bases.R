@@ -13,11 +13,12 @@
 #          variant_class, lane
 
 # Helper: build reads data.frame
-make_reads <- function(read_name, start, end, lane = 1L) {
+make_reads <- function(read_name, start, end, lane = 1L, bam_pos = start) {
   data.frame(
     read_name = read_name,
     start     = start,
     end       = end,
+    bam_pos   = bam_pos,
     strand    = "+",
     lane      = lane,
     stringsAsFactors = FALSE
@@ -153,4 +154,35 @@ test_that("extract_variant_bases handles multiple reads and variants", {
   expect_equal(nrow(result), 4L)
   expect_equal(sort(unique(result$read_name)), c("r1", "r2"))
   expect_equal(sort(unique(result$position)), c(105L, 110L))
+})
+
+# --- Test 6: clipped start regression (issue #19) ---
+# Read's true BAM POS is before the queried region, so reads$start is clipped.
+# The CIGAR must be walked from bam_pos, not the clipped start.
+#
+# Layout: bam_pos=100, clipped start=140, variant at ref pos 143, 50M CIGAR.
+#   correct q_pos = 1 + (143-100) = 44  -> seq_str[44] = 'G'
+#   wrong   q_pos = 1 + (143-140) =  4  -> seq_str[4]  = 'A'
+# ref='G' alt='A': correct gives "ref", wrong gives "alt" -- discriminating.
+test_that("extract_variant_bases uses bam_pos for CIGAR walk when start is clipped", {
+  seq_str  <- "AAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAA"  # 50 bp
+  bam_pos  <- 100L
+  clipped  <- 140L
+
+  # seq_str[44] = 'G' (within GGGG block 41-44), seq_str[4] = 'A' (AAAA block 1-4)
+  correct_base <- substr(seq_str, 44L, 44L)  # 'G' — base at correct q_pos 44
+  wrong_base   <- substr(seq_str, 4L,  4L)   # 'A' — base at wrong q_pos 4
+  expect_false(correct_base == wrong_base)    # confirm they differ
+
+  reads    <- make_reads("r1", start = clipped, end = 149L, lane = 1L,
+                         bam_pos = bam_pos)
+  seqs     <- c(r1 = seq_str)
+  cigs     <- c(r1 = "50M")
+  variants <- make_variants(position = 143L, ref = correct_base, alt = wrong_base)
+
+  result <- ggmethylation:::extract_variant_bases(reads, seqs, cigs, variants)
+
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$base, correct_base)
+  expect_equal(result$variant_class, "ref")
 })
