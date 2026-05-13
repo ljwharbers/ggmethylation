@@ -282,6 +282,40 @@ vars <- read_variants("variants.vcf.gz", "chr21:10000000-10050000")
 plot_methylation(md, variants = vars)
 ```
 
+### Insertion-aware modifications
+
+`read_methylation()` retains modification calls on inserted bases (bases
+present in the read but absent from the reference). These are stored in
+`m$insertion_sites` alongside the standard `m$sites` data frame.
+
+Use `list_insertion_loci()` to discover recurrent insertion events across
+reads, then `plot_insertion_locus()` to visualise the per-locus modification
+pattern in a stitched coordinate system that shows the left reference flank,
+the insertion bases, and the right reference flank as contiguous tracks.
+
+```{r insertion-loci, eval=FALSE}
+md <- read_methylation("sample.bam", "chr21:10000000-10050000")
+
+# Discover insertion loci present in >= 2 reads
+loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
+print(loci)
+
+# Visualise the first locus
+plot_insertion_locus(md, loci$locus_id[1L])
+```
+
+The `n_carriers` column in the `loci` table reports how many reads carry the
+insertion; `n_noncarriers` counts reads that span the locus without an
+insertion. `mean_ins_mod_prob` is the mean modification probability across
+all inserted bases at the locus.
+
+Access the raw insertion-site data directly with the `insertion_sites()`
+accessor:
+
+```{r insertion-accessor, eval=FALSE}
+head(insertion_sites(md))
+```
+
 ## Session info
 
 ```{r session-info, eval = TRUE, echo = TRUE}

@@ -88,6 +88,25 @@ Override with `sort_by`:
 plot_methylation(meth, sort_by = c("group", "start"))
 ```
 
+## Insertion-aware modifications
+
+`read_methylation()` retains modification calls on inserted bases (bases
+present in the read sequence but absent from the reference). These are
+available via the `$insertion_sites` field and the `insertion_sites()` accessor.
+
+Use `list_insertion_loci()` to cluster recurrent insertion events across reads,
+then `plot_insertion_locus()` to visualise modification patterns in a stitched
+coordinate system (left flank | insertion | right flank):
+
+```r
+# Discover loci present in >= 2 reads
+loci <- list_insertion_loci(meth, min_reads = 2L)
+print(loci)
+
+# Plot the first locus
+plot_insertion_locus(meth, loci$locus_id[1L])
+```
+
 ## Supported modification types
 
 Any base modification encoded in MM/ML tags (SAM spec). Common codes:

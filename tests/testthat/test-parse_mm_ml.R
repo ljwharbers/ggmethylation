@@ -151,3 +151,45 @@ test_that("parse_mm_ml drops mods that fall in soft clips", {
   expect_equal(result$sites$position, 102L)
   expect_equal(nrow(result$insertion_sites), 0L)
 })
+
+test_that("parse_mm_ml routes insertion mods to $insertion_sites on minus strand", {
+  # seq: 13 bases (BAM SEQ), CIGAR 5M3I5M from pos 100
+  # G at query positions 3 (M: ref 102), 7 (I: insertion), 12 (M: ref 108)
+  # Strand "-", MM "C+m,0,0;" -> search_base="G", reverse_scan=TRUE
+  # canonical_positions reversed = c(12, 7, 3); deltas 0,0 -> positions c(12, 7)
+  # query 12 -> ref 108 (site); query 7 -> NA insertion -> insertion_site
+  result <- ggmethylation:::parse_mm_ml(
+    seq      = "AAGAAAGAAAAGA",
+    mm_tag   = "C+m,0,0;",
+    ml_tag   = as.integer(c(200, 50)),
+    mod_code = "m",
+    strand   = "-",
+    cigar    = "5M3I5M",
+    pos      = 100L
+  )
+  expect_equal(result$sites$position, 108L)
+  expect_equal(result$sites$mod_prob, 200 / 255)
+  expect_equal(result$insertion_sites$query_pos, 7L)
+  expect_equal(result$insertion_sites$mod_prob, 50 / 255)
+})
+
+test_that("parse_mm_ml routes insertion mods to $insertion_sites on minus strand", {
+  # seq: 13 bases (BAM SEQ), CIGAR 5M3I5M from pos 100
+  # G at query positions 3 (M: ref 102), 7 (I: insertion), 12 (M: ref 108)
+  # Strand "-", MM "C+m,0,0;" -> search_base="G", reverse_scan=TRUE
+  # canonical_positions reversed = c(12, 7, 3); deltas 0,0 -> positions c(12, 7)
+  # query 12 -> ref 108 (site); query 7 -> NA insertion
+  result <- ggmethylation:::parse_mm_ml(
+    seq      = "AAGAAAGAAAAGA",
+    mm_tag   = "C+m,0,0;",
+    ml_tag   = as.integer(c(200, 50)),
+    mod_code = "m",
+    strand   = "-",
+    cigar    = "5M3I5M",
+    pos      = 100L
+  )
+  expect_equal(result$sites$position, 108L)
+  expect_equal(result$sites$mod_prob, 200 / 255)
+  expect_equal(result$insertion_sites$query_pos, 7L)
+  expect_equal(result$insertion_sites$mod_prob, 50 / 255)
+})

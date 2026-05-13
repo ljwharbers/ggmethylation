@@ -94,21 +94,20 @@ plot_insertion_locus <- function(m, locus_id,
   }
 
   # --- 2. Assign lanes via pack_reads ---
-  carrier_reads$carrier_status    <- "carrier"
-  noncarrier_reads$carrier_status <- "non-carrier"
+  carrier_reads$carrier_status    <- rep("carrier",     nrow(carrier_reads))
+  noncarrier_reads$carrier_status <- rep("non-carrier", nrow(noncarrier_reads))
 
   # Pack carriers and non-carriers separately so carriers come first (lower lane)
-  carrier_packed    <- pack_reads(carrier_reads)
-  n_carrier_lanes   <- max(carrier_packed$lane)
+  carrier_reads$lane <- pack_reads(carrier_reads)
+  n_carrier_lanes    <- max(carrier_reads$lane)
 
   if (nrow(noncarrier_reads) > 0L) {
-    nc_packed       <- pack_reads(noncarrier_reads)
-    nc_packed$lane  <- nc_packed$lane + n_carrier_lanes + 1L
-    reads_packed    <- rbind(carrier_packed, nc_packed)
-    separator_lane  <- n_carrier_lanes + 0.5
+    noncarrier_reads$lane <- pack_reads(noncarrier_reads) + n_carrier_lanes + 1L
+    reads_packed          <- rbind(carrier_reads, noncarrier_reads)
+    separator_lane        <- n_carrier_lanes + 0.5
   } else {
-    reads_packed    <- carrier_packed
-    separator_lane  <- NULL
+    reads_packed   <- carrier_reads
+    separator_lane <- NULL
   }
 
   # --- 3. Build stitched sub-segments for read polygons ---

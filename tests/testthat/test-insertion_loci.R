@@ -74,13 +74,13 @@ test_that("insertion_sites() returns m$insertion_sites", {
     cigar_features_df = make_cf("r1", 100L, 10L),
     ins_sites_df    = ins
   )
-  result <- ggmethylation:::insertion_sites(md)
+  result <- ggmethylation::insertion_sites(md)
   expect_equal(nrow(result), 1L)
   expect_equal(result$ref_anchor, 100L)
 })
 
 test_that("insertion_sites() errors on non-methylation_data input", {
-  expect_error(ggmethylation:::insertion_sites(list()), "methylation_data")
+  expect_error(ggmethylation::insertion_sites(list()), "methylation_data")
 })
 
 # --- list_insertion_loci ---
@@ -94,7 +94,7 @@ test_that("list_insertion_loci() returns empty df when no insertions", {
       read_name = character(0), stringsAsFactors = FALSE
     )
   )
-  out <- ggmethylation:::list_insertion_loci(md)
+  out <- ggmethylation::list_insertion_loci(md)
   expect_equal(nrow(out), 0L)
   expect_true("locus_id" %in% names(out))
 })
@@ -106,7 +106,7 @@ test_that("list_insertion_loci() clusters reads with close positions and similar
   cf    <- make_cf(c("r1", "r2", "r3"), c(100L, 105L, 500L), c(50L, 50L, 50L))
   md    <- make_test_md(reads, cf)
 
-  out <- ggmethylation:::list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20,
+  out <- ggmethylation::list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20,
                                               min_reads = 2L)
   # Only the first cluster (r1+r2) meets min_reads=2; r3 is singleton
   expect_equal(nrow(out), 1L)
@@ -119,7 +119,7 @@ test_that("list_insertion_loci() separates clusters by length tolerance", {
   cf    <- make_cf(c("r1", "r2", "r3"), c(100L, 100L, 100L), c(50L, 50L, 200L))
   md    <- make_test_md(reads, cf)
 
-  out <- ggmethylation:::list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20,
+  out <- ggmethylation::list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20,
                                               min_reads = 2L)
   # r1+r2 form one locus; r3 is singleton -> only 1 locus passes min_reads=2
   expect_equal(nrow(out), 1L)
@@ -131,8 +131,8 @@ test_that("list_insertion_loci() locus_id is deterministic", {
   cf    <- make_cf(c("r1", "r2"), c(100L, 104L), c(60L, 60L))
   md    <- make_test_md(reads, cf)
 
-  out1 <- ggmethylation:::list_insertion_loci(md)
-  out2 <- ggmethylation:::list_insertion_loci(md)
+  out1 <- ggmethylation::list_insertion_loci(md)
+  out2 <- ggmethylation::list_insertion_loci(md)
   expect_equal(out1$locus_id, out2$locus_id)
   expect_match(out1$locus_id, "^INS_chr1_\\d+_\\d+bp$")
 })
@@ -145,7 +145,7 @@ test_that("list_insertion_loci() counts non-carriers correctly", {
   )
   md <- make_test_md(reads, cf)
 
-  out <- ggmethylation:::list_insertion_loci(md, min_reads = 2L)
+  out <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
   expect_equal(out$n_carriers, 2L)
   expect_equal(out$n_noncarriers, 1L)
 })
@@ -164,7 +164,64 @@ test_that("list_insertion_loci() populates mean_ins_mod_prob from insertion_site
     stringsAsFactors = FALSE
   )
   md  <- make_test_md(reads, cf, ins_sites_df = ins_sites)
-  out <- ggmethylation:::list_insertion_loci(md, min_reads = 2L)
+  out <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
 
   expect_equal(out$mean_ins_mod_prob, mean(c(0.8, 0.4)))
+})
+
+# --- plot_insertion_locus smoke tests ---
+
+test_that("plot_insertion_locus() returns a ggplot object (show_smoothed = FALSE)", {
+  reads <- make_reads(c("r1", "r2", "r3"), c(1L, 1L, 1L), c(300L, 300L, 300L))
+  cf    <- make_cf(c("r1", "r2"), c(100L, 103L), c(50L, 50L))
+  md    <- make_test_md(reads, cf)
+
+  loci <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
+  expect_equal(nrow(loci), 1L)
+
+  p <- ggmethylation::plot_insertion_locus(md, loci$locus_id[1L], show_smoothed = FALSE)
+  expect_true(inherits(p, c("gg", "patchwork")))
+})
+
+test_that("plot_insertion_locus() returns patchwork when show_smoothed = TRUE", {
+  ins_sites <- data.frame(
+    read_name  = c("r1", "r2"),
+    ref_anchor = c(100L, 103L),
+    query_pos  = c(55L, 55L),
+    ins_offset = c(1L, 1L),
+    ins_length = c(50L, 50L),
+    mod_prob   = c(0.8, 0.6),
+    mod_code   = c("m", "m"),
+    stringsAsFactors = FALSE
+  )
+  reads <- make_reads(c("r1", "r2", "r3"), c(1L, 1L, 1L), c(300L, 300L, 300L))
+  cf    <- make_cf(c("r1", "r2"), c(100L, 103L), c(50L, 50L))
+  md    <- make_test_md(reads, cf, ins_sites_df = ins_sites)
+
+  loci <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
+  p <- ggmethylation::plot_insertion_locus(md, loci$locus_id[1L], show_smoothed = TRUE)
+  expect_true(inherits(p, c("gg", "patchwork")))
+})
+
+test_that("plot_insertion_locus() errors on unknown locus_id", {
+  reads <- make_reads(c("r1", "r2"), c(1L, 1L), c(300L, 300L))
+  cf    <- make_cf(c("r1", "r2"), c(100L, 103L), c(50L, 50L))
+  md    <- make_test_md(reads, cf)
+
+  expect_error(
+    ggmethylation::plot_insertion_locus(md, "INS_chr1_99999_100bp"),
+    "not found"
+  )
+})
+
+test_that("plot_insertion_locus() respects include_noncarriers = FALSE", {
+  reads <- make_reads(c("r1", "r2", "r3"), c(1L, 1L, 1L), c(300L, 300L, 300L))
+  cf    <- make_cf(c("r1", "r2"), c(100L, 103L), c(50L, 50L))
+  md    <- make_test_md(reads, cf)
+
+  loci <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
+  p <- ggmethylation::plot_insertion_locus(md, loci$locus_id[1L],
+                                            show_smoothed = FALSE,
+                                            include_noncarriers = FALSE)
+  expect_true(inherits(p, c("gg", "patchwork")))
 })

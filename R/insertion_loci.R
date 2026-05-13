@@ -123,11 +123,18 @@ list_insertion_loci <- function(m, tol_pos = 10L, tol_len = 0.20,
 
     if (nrow(rows) < min_reads) next
 
-    anchor  <- as.integer(median(rows$ref_start))
     med_len <- as.integer(median(rows$length))
 
-    carrier_names <- unique(rows$read_name)
+    # Post-filter to match plot_insertion_locus() carrier definition: within
+    # tol_len of the final cluster median, not the running merge median.
+    carrier_rows  <- rows[abs(rows$length - med_len) / pmax(med_len, 1L) <= tol_len,
+                          , drop = FALSE]
+    carrier_names <- unique(carrier_rows$read_name)
     n_carriers    <- length(carrier_names)
+    if (n_carriers < min_reads) next
+
+    anchor  <- as.integer(median(carrier_rows$ref_start))
+    med_len <- as.integer(median(carrier_rows$length))
 
     # Non-carriers: reads spanning anchor_pos +/- tol_pos, not in carrier set
     read_start <- pmin(m$reads$bam_pos, m$reads$start)
@@ -158,8 +165,8 @@ list_insertion_loci <- function(m, tol_pos = 10L, tol_len = 0.20,
       n_carriers        = n_carriers,
       n_noncarriers     = n_noncarriers,
       median_length     = med_len,
-      length_min        = min(rows$length),
-      length_max        = max(rows$length),
+      length_min        = min(carrier_rows$length),
+      length_max        = max(carrier_rows$length),
       mean_ins_mod_prob = mean_mod,
       stringsAsFactors  = FALSE
     )
