@@ -31,7 +31,7 @@ insertion_sites <- function(m) {
 #'   insertion anchor positions to be merged into the same locus (default 10).
 #' @param tol_len Numeric. Maximum fractional difference in insertion length
 #'   relative to the running cluster median to be merged into the same locus
-#'   (default 0.20 = 20\%).
+#'   (default 0.20, i.e., 20 percent).
 #' @param min_reads Integer. Minimum number of carrier reads required for a
 #'   locus to be reported (default 2).
 #'
