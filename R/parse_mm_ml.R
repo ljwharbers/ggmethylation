@@ -75,22 +75,32 @@ seq_to_ref <- function(cigar, pos, query_positions) {
 #' @param cigar Character. The CIGAR string for the alignment.
 #' @param pos Integer. 1-based leftmost alignment position (BAM POS field).
 #'
-#' @return A `data.frame` with columns:
+#' @return A named `list` with two `data.frame` elements:
 #'   \describe{
-#'     \item{position}{Integer. 1-based genomic position of the modification.}
-#'     \item{mod_prob}{Numeric. Probability of modification (0--1), computed
-#'       as ML value / 255.}
+#'     \item{sites}{Reference-aligned modifications. Columns `position`
+#'       (integer, 1-based genomic position) and `mod_prob` (numeric,
+#'       ML value / 255).}
+#'     \item{insertion_sites}{Modifications whose query base falls inside
+#'       a CIGAR `I` interval (no reference position). Columns `query_pos`
+#'       (integer, 1-based position in the read sequence) and `mod_prob`
+#'       (numeric). Modifications inside soft/hard clips are still dropped.}
 #'   }
-#'   Returns an empty data.frame (zero rows, same columns) when the
+#'   Returns both frames empty (zero rows, same columns) when the
 #'   requested modification is not present.
 #'
 #' @keywords internal
 parse_mm_ml <- function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos) {
-  empty_result <- data.frame(
+  empty_sites <- data.frame(
     position = integer(0),
     mod_prob = numeric(0),
     stringsAsFactors = FALSE
   )
+  empty_insertion_sites <- data.frame(
+    query_pos = integer(0),
+    mod_prob  = numeric(0),
+    stringsAsFactors = FALSE
+  )
+  empty_result <- list(sites = empty_sites, insertion_sites = empty_insertion_sites)
 
 
   # --- Guard clauses ---
@@ -226,15 +236,40 @@ parse_mm_ml <- function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos) {
   ref_positions <- seq_to_ref(cigar, pos, modified_seq_positions)
 
 
-  # --- 6. Build result, filtering out NA positions ---
-  keep <- !is.na(ref_positions)
-  if (!any(keep)) {
-    return(empty_result)
+  # --- 6. Build result: ref-aligned sites and insertion sites ---
+  ref_mask <- !is.na(ref_positions)
+
+  sites_df <- if (any(ref_mask)) {
+    data.frame(
+      position = ref_positions[ref_mask],
+      mod_prob = ml_values[ref_mask] / 255,
+      stringsAsFactors = FALSE
+    )
+  } else {
+    empty_sites
   }
 
-  data.frame(
-    position = ref_positions[keep],
-    mod_prob = ml_values[keep] / 255,
-    stringsAsFactors = FALSE
-  )
+  # Classify NA positions: insertion (CIGAR I) vs soft/hard clip (dropped)
+  insertion_sites_df <- empty_insertion_sites
+  na_mask <- !ref_mask
+  if (any(na_mask)) {
+    cf <- decompose_cigar(cigar, pos)
+    i_rows <- cf[cf$type == "I", , drop = FALSE]
+    if (nrow(i_rows) > 0L) {
+      na_qpos <- modified_seq_positions[na_mask]
+      na_ml   <- ml_values[na_mask]
+      in_ins  <- vapply(na_qpos, function(qp) {
+        any(qp >= i_rows$query_start & qp <= i_rows$query_end)
+      }, logical(1L))
+      if (any(in_ins)) {
+        insertion_sites_df <- data.frame(
+          query_pos = na_qpos[in_ins],
+          mod_prob  = na_ml[in_ins] / 255,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+
+  list(sites = sites_df, insertion_sites = insertion_sites_df)
 }

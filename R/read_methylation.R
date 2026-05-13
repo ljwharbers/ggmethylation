@@ -53,6 +53,13 @@
 #'     \item{cigar_features}{Data.frame of structural CIGAR features (type,
 #'       ref_start, ref_end, query_start, query_end, length, read_name) for
 #'       insertions (`"I"`), deletions (`"D"`), and skipped regions (`"N"`).}
+#'     \item{insertion_sites}{Data.frame of modification calls that fall on
+#'       inserted bases (no reference coordinate). Columns: `read_name`,
+#'       `ref_anchor` (reference position the insertion sits before),
+#'       `query_pos` (1-based position in the read sequence), `ins_offset`
+#'       (1-based position within the insertion), `ins_length`, `mod_prob`,
+#'       `mod_code`, and optionally `group`. Zero rows when no insertions
+#'       carry modification calls.}
 #'   }
 #'
 #' @examples
@@ -285,17 +292,25 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   keep <- bam_indices[keep_local]
 
   # --- 7. Parse MM/ML tags for each read ---
-  sites_list <- vector("list", length(keep))
+  sites_list     <- vector("list", length(keep))
+  ins_sites_list <- vector("list", length(keep))
+  dc_list        <- vector("list", length(keep))
 
   for (j in seq_along(keep)) {
-    idx       <- keep[j]
-    seq_str   <- as.character(bam_data$seq[[idx]])
-    mm        <- bam_data$tag$MM[idx]
-    ml        <- bam_data$tag$ML[[idx]]
+    idx     <- keep[j]
+    seq_str <- as.character(bam_data$seq[[idx]])
+    mm      <- bam_data$tag$MM[idx]
+    ml      <- bam_data$tag$ML[[idx]]
 
-    code_results <- vector("list", length(mod_code))
+    dc         <- decompose_cigar(bam_data$cigar[idx], bam_data$pos[idx])
+    dc_list[[j]] <- dc
+    i_rows     <- dc[dc$type == "I", , drop = FALSE]
+
+    code_sites <- vector("list", length(mod_code))
+    code_ins   <- vector("list", length(mod_code))
+
     for (ci in seq_along(mod_code)) {
-      result <- parse_mm_ml(
+      parsed <- parse_mm_ml(
         seq      = seq_str,
         mm_tag   = mm,
         ml_tag   = ml,
@@ -304,11 +319,34 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
         cigar    = bam_data$cigar[idx],
         pos      = bam_data$pos[idx]
       )
-      result$read_name <- if (nrow(result) > 0L) reads$read_name[j] else character(0L)
-      result$mod_code  <- if (nrow(result) > 0L) mod_code[ci]       else character(0L)
-      code_results[[ci]] <- result
+
+      s <- parsed$sites
+      s$read_name <- if (nrow(s) > 0L) reads$read_name[j] else character(0L)
+      s$mod_code  <- if (nrow(s) > 0L) mod_code[ci]       else character(0L)
+      code_sites[[ci]] <- s
+
+      is_df <- parsed$insertion_sites
+      if (nrow(is_df) > 0L && nrow(i_rows) > 0L) {
+        row_match <- vapply(is_df$query_pos, function(qp) {
+          m <- which(qp >= i_rows$query_start & qp <= i_rows$query_end)
+          if (length(m) == 0L) NA_integer_ else m[1L]
+        }, integer(1L))
+        is_df$read_name  <- reads$read_name[j]
+        is_df$mod_code   <- mod_code[ci]
+        is_df$ref_anchor <- i_rows$ref_start[row_match]
+        is_df$ins_length <- i_rows$length[row_match]
+        is_df$ins_offset <- is_df$query_pos - i_rows$query_start[row_match] + 1L
+      } else {
+        is_df$read_name  <- character(0L)
+        is_df$mod_code   <- character(0L)
+        is_df$ref_anchor <- integer(0L)
+        is_df$ins_length <- integer(0L)
+        is_df$ins_offset <- integer(0L)
+      }
+      code_ins[[ci]] <- is_df
     }
-    sites_list[[j]] <- do.call(rbind, code_results)
+    sites_list[[j]]     <- do.call(rbind, code_sites)
+    ins_sites_list[[j]] <- do.call(rbind, code_ins)
   }
 
   sites <- do.call(rbind, sites_list)
@@ -328,6 +366,30 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
     sites$group <- reads$group[match(sites$read_name, reads$read_name)]
   }
 
+  # --- Build insertion_sites ---
+  insertion_sites <- do.call(rbind, ins_sites_list)
+  if (is.null(insertion_sites) || nrow(insertion_sites) == 0L) {
+    insertion_sites <- data.frame(
+      read_name  = character(0L),
+      ref_anchor = integer(0L),
+      query_pos  = integer(0L),
+      ins_offset = integer(0L),
+      ins_length = integer(0L),
+      mod_prob   = numeric(0L),
+      mod_code   = character(0L),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    insertion_sites <- insertion_sites[, c("read_name", "ref_anchor", "query_pos",
+                                           "ins_offset", "ins_length",
+                                           "mod_prob", "mod_code"), drop = FALSE]
+    rownames(insertion_sites) <- NULL
+  }
+
+  if (!is.null(group_tag)) {
+    insertion_sites$group <- reads$group[match(insertion_sites$read_name, reads$read_name)]
+  }
+
   # --- 7. Clip reads to region ---
   reads$start <- pmax(reads$start, GenomicRanges::start(gr))
   reads$end <- pmin(reads$end, GenomicRanges::end(gr))
@@ -340,17 +402,24 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   ]
   rownames(sites) <- NULL
 
+  if (nrow(insertion_sites) > 0L) {
+    insertion_sites <- insertion_sites[
+      insertion_sites$ref_anchor >= GenomicRanges::start(gr) &
+      insertion_sites$ref_anchor <= GenomicRanges::end(gr), , drop = FALSE
+    ]
+    rownames(insertion_sites) <- NULL
+  }
+
   # --- 9. Return methylation_data object ---
   # Retain sequences and CIGARs for kept reads (no additional I/O needed)
   sequences <- setNames(as.character(bam_data$seq[keep]), reads$read_name)
   cigars    <- setNames(bam_data$cigar[keep], reads$read_name)
 
   # --- 10. Decompose CIGARs into structural features ---
+  # dc_list already computed per-read in the parse loop above; reuse it.
   cigar_list <- vector("list", length(keep))
   for (j in seq_along(keep)) {
-    idx <- keep[j]
-    dc  <- decompose_cigar(bam_data$cigar[idx], bam_data$pos[idx])
-    # Keep only structurally interesting operations
+    dc <- dc_list[[j]]
     dc <- dc[dc$type %in% c("I", "D", "N"), , drop = FALSE]
     if (nrow(dc) > 0L) {
       dc$read_name <- reads$read_name[j]
@@ -391,15 +460,16 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   # (mod_code column is already populated per-code in the inner loop above)
   structure(
     list(
-      reads = reads,
-      sites = sites,
-      region = gr,
-      mod_code = mod_code,
-      group_tag = group_tag,
-      snv_position = snv_position,
-      sequences = sequences,
-      cigars = cigars,
-      cigar_features = cigar_features
+      reads           = reads,
+      sites           = sites,
+      insertion_sites = insertion_sites,
+      region          = gr,
+      mod_code        = mod_code,
+      group_tag       = group_tag,
+      snv_position    = snv_position,
+      sequences       = sequences,
+      cigars          = cigars,
+      cigar_features  = cigar_features
     ),
     class = "methylation_data"
   )
@@ -436,9 +506,21 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
     stringsAsFactors = FALSE
   )
 
+  insertion_sites <- data.frame(
+    read_name  = character(0L),
+    ref_anchor = integer(0L),
+    query_pos  = integer(0L),
+    ins_offset = integer(0L),
+    ins_length = integer(0L),
+    mod_prob   = numeric(0L),
+    mod_code   = character(0L),
+    stringsAsFactors = FALSE
+  )
+
   if (!is.null(group_tag)) {
-    reads$group <- character(0L)
-    sites$group <- character(0L)
+    reads$group           <- character(0L)
+    sites$group           <- character(0L)
+    insertion_sites$group <- character(0L)
   }
 
   cigar_features <- data.frame(
@@ -454,15 +536,16 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
 
   structure(
     list(
-      reads = reads,
-      sites = sites,
-      region = gr,
-      mod_code = mod_code,
-      group_tag = group_tag,
-      snv_position = snv_position,
-      sequences = setNames(character(0), character(0)),
-      cigars    = setNames(character(0), character(0)),
-      cigar_features = cigar_features
+      reads           = reads,
+      sites           = sites,
+      insertion_sites = insertion_sites,
+      region          = gr,
+      mod_code        = mod_code,
+      group_tag       = group_tag,
+      snv_position    = snv_position,
+      sequences       = setNames(character(0), character(0)),
+      cigars          = setNames(character(0), character(0)),
+      cigar_features  = cigar_features
     ),
     class = "methylation_data"
   )
