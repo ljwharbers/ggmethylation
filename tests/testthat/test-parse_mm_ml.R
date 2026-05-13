@@ -51,56 +51,103 @@ test_that("parse_mm_ml forward strand simple CpG", {
   mm_tag <- "C+m,0,1;"
   ml_tag <- as.integer(c(230, 128))
   result <- ggmethylation:::parse_mm_ml(seq, mm_tag, ml_tag, "m", "+", "9M", 1000L)
-  expect_equal(result$position, c(1001L, 1007L))
-  expect_equal(result$mod_prob, c(230 / 255, 128 / 255))
+  expect_equal(result$sites$position, c(1001L, 1007L))
+  expect_equal(result$sites$mod_prob, c(230 / 255, 128 / 255))
+})
+
+test_that("parse_mm_ml returns a 2-element named list", {
+  result <- ggmethylation:::parse_mm_ml("ACG", "C+m,0;", as.integer(200), "m", "+", "3M", 1L)
+  expect_true(is.list(result))
+  expect_setequal(names(result), c("sites", "insertion_sites"))
 })
 
 test_that("parse_mm_ml returns empty df when mod_code absent", {
   result <- ggmethylation:::parse_mm_ml("ACGACG", "C+m,0;", as.integer(c(200)), "h", "+", "6M", 1L)
-  expect_equal(nrow(result), 0L)
-  expect_true("position" %in% names(result))
-  expect_true("mod_prob" %in% names(result))
+  expect_equal(nrow(result$sites), 0L)
+  expect_true("position" %in% names(result$sites))
+  expect_true("mod_prob" %in% names(result$sites))
 })
 
 test_that("parse_mm_ml returns empty df on NULL mm_tag", {
   result <- ggmethylation:::parse_mm_ml("ACGACG", NULL, as.integer(c(200)), "m", "+", "6M", 1L)
-  expect_equal(nrow(result), 0L)
+  expect_equal(nrow(result$sites), 0L)
 })
 
 test_that("parse_mm_ml returns empty df on NA mm_tag", {
   result <- ggmethylation:::parse_mm_ml("ACGACG", NA_character_, as.integer(c(200)), "m", "+", "6M", 1L)
-  expect_equal(nrow(result), 0L)
+  expect_equal(nrow(result$sites), 0L)
 })
 
 test_that("parse_mm_ml returns empty df on empty ml_tag", {
   result <- ggmethylation:::parse_mm_ml("ACGACG", "C+m,0;", integer(0), "m", "+", "6M", 1L)
-  expect_equal(nrow(result), 0L)
+  expect_equal(nrow(result$sites), 0L)
 })
 
 test_that("parse_mm_ml mod_prob is ml_value / 255", {
   # seq "ACG": C at pos 2; "C+m,0;" -> delta=0 -> first C
   result <- ggmethylation:::parse_mm_ml("ACG", "C+m,0;", as.integer(255), "m", "+", "3M", 1L)
-  expect_equal(result$mod_prob, 1.0)
+  expect_equal(result$sites$mod_prob, 1.0)
   result2 <- ggmethylation:::parse_mm_ml("ACG", "C+m,0;", as.integer(0), "m", "+", "3M", 1L)
-  expect_equal(result2$mod_prob, 0.0)
+  expect_equal(result2$sites$mod_prob, 0.0)
 })
 
 test_that("parse_mm_ml handles trailing semicolon vs no semicolon identically", {
   r1 <- ggmethylation:::parse_mm_ml("ACG", "C+m,0;", as.integer(200), "m", "+", "3M", 1L)
   r2 <- ggmethylation:::parse_mm_ml("ACG", "C+m,0", as.integer(200), "m", "+", "3M", 1L)
-  expect_equal(r1$position, r2$position)
-  expect_equal(r1$mod_prob, r2$mod_prob)
+  expect_equal(r1$sites$position, r2$sites$position)
+  expect_equal(r1$sites$mod_prob, r2$sites$mod_prob)
 })
 
 test_that("parse_mm_ml returns empty when all deltas out of bounds", {
   # seq = "ACGT": 1 C at pos 2
   # "C+m,1;" -> delta=1 -> current = 0+1+1 = 2 -> 2nd C -> out of bounds (only 1 C)
   result <- ggmethylation:::parse_mm_ml("ACGT", "C+m,1;", as.integer(200), "m", "+", "4M", 1L)
-  expect_equal(nrow(result), 0L)
+  expect_equal(nrow(result$sites), 0L)
 })
 
 test_that("parse_mm_ml result columns are position (integer) and mod_prob (numeric)", {
   result <- ggmethylation:::parse_mm_ml("ACG", "C+m,0;", as.integer(200), "m", "+", "3M", 1L)
-  expect_true(is.integer(result$position))
-  expect_true(is.numeric(result$mod_prob))
+  expect_true(is.integer(result$sites$position))
+  expect_true(is.numeric(result$sites$mod_prob))
+})
+
+test_that("parse_mm_ml routes insertion-region mods to $insertion_sites", {
+  # seq: 13 bases, CIGAR 5M3I5M from pos 100
+  #   query 1-5  -> ref 100-104  (M)
+  #   query 6-8  -> NA, insertion at ref_anchor 105  (I)
+  #   query 9-13 -> ref 105-109  (M)
+  # C's at query positions 2 (M), 7 (I), 12 (M)
+  # MM "C+m,0,0,0;" picks all 3; ML = 200, 100, 50
+  result <- ggmethylation:::parse_mm_ml(
+    seq      = "ACAAAACAAAACA",
+    mm_tag   = "C+m,0,0,0;",
+    ml_tag   = as.integer(c(200, 100, 50)),
+    mod_code = "m",
+    strand   = "+",
+    cigar    = "5M3I5M",
+    pos      = 100L
+  )
+  expect_equal(result$sites$position, c(101L, 108L))
+  expect_equal(result$sites$mod_prob, c(200 / 255, 50 / 255))
+  expect_equal(result$insertion_sites$query_pos, 7L)
+  expect_equal(result$insertion_sites$mod_prob, 100 / 255)
+})
+
+test_that("parse_mm_ml drops mods that fall in soft clips", {
+  # seq: 8 bases, CIGAR 3S5M from pos 100
+  #   query 1-3 -> NA (soft clip)
+  #   query 4-8 -> ref 100-104
+  # C's at query 2 (soft clip) and query 6 (M -> ref 102)
+  # MM "C+m,0,0;" picks both; ML = 200, 100
+  result <- ggmethylation:::parse_mm_ml(
+    seq      = "ACAAACAA",
+    mm_tag   = "C+m,0,0;",
+    ml_tag   = as.integer(c(200, 100)),
+    mod_code = "m",
+    strand   = "+",
+    cigar    = "3S5M",
+    pos      = 100L
+  )
+  expect_equal(result$sites$position, 102L)
+  expect_equal(nrow(result$insertion_sites), 0L)
 })
