@@ -74,9 +74,9 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
         if (nchar(base) == 0L || base == "") {
           next  # q_pos out of sequence length — skip
         }
-        variant_class <- if (base == variants$ref[v]) {
+        variant_class <- if (toupper(base) == toupper(variants$ref[v])) {
           "ref"
-        } else if (base == variants$alt[v]) {
+        } else if (toupper(base) == toupper(variants$alt[v])) {
           "alt"
         } else {
           "other"
@@ -135,7 +135,11 @@ build_variant_overlay <- function(data, variants, bnd_match_tol = 50L) {
   vdf <- variants$variants
 
   # Partition by type
-  snv_rows <- vdf[vdf$type %in% c("SNV", "insertion", "deletion"), , drop = FALSE]
+  # Only single-nucleotide variants are supported by the asterisk overlay.
+  # Insertions and deletions cannot be resolved to a single reference base, so
+  # routing them through extract_variant_bases() would classify every spanning
+  # read as "other" and mark all reads (issue #20).
+  snv_rows <- vdf[vdf$type == "SNV", , drop = FALSE]
   sv_rows  <- vdf[vdf$type %in% c("DEL", "DUP", "INV"),           , drop = FALSE]
   bnd_rows <- vdf[vdf$type == "BND",                               , drop = FALSE]
 

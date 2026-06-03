@@ -13,16 +13,16 @@
 #'   zero-row.
 #'
 #' @return A list with one ggplot2 `geom_point` layer that can be appended to a
-#'   ggplot with `+`, or `NULL` when there are no non-ref calls to draw. All
-#'   variant classes are drawn as a small red asterisk (shape 8).
+#'   ggplot with `+`, or `NULL` when there are no carrier calls to draw. Only
+#'   reads classified `"alt"` are drawn as a small black asterisk (shape 8).
 #'
 #' @keywords internal
 build_snv_layer <- function(variant_bases) {
   # Return NULL for empty/NULL input
   if (is.null(variant_bases) || nrow(variant_bases) == 0L) return(NULL)
 
-  # Filter to non-ref only
-  non_ref <- variant_bases[variant_bases$variant_class != "ref", , drop = FALSE]
+  # Filter to true carriers only (alt). "ref", "other", and "del" are not marked.
+  non_ref <- variant_bases[variant_bases$variant_class == "alt", , drop = FALSE]
 
   if (nrow(non_ref) == 0L) return(NULL)
 

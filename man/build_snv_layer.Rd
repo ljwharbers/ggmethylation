@@ -14,8 +14,8 @@ zero-row.}
 }
 \value{
 A list with one ggplot2 \code{geom_point} layer that can be appended to a
-ggplot with \code{+}, or \code{NULL} when there are no non-ref calls to draw. All
-variant classes are drawn as a small red asterisk (shape 8).
+ggplot with \code{+}, or \code{NULL} when there are no carrier calls to draw. Only
+reads classified \code{"alt"} are drawn as a small black asterisk (shape 8).
 }
 \description{
 Takes pre-extracted per-read base calls (from \code{\link[=extract_variant_bases]{extract_variant_bases()}}) and
