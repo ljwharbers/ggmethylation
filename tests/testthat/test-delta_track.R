@@ -73,7 +73,15 @@ test_that("build_delta_panel returns a ggplot", {
 # test-build_read_panel.R::make_test_data; not shared via a helper-*.R file,
 # so duplicated here per testthat edition-3 auto-sourcing rules).
 make_test_data <- function(reads_df, sites_df,
-                            region_start = 1000L, region_end = 2000L) {
+                            region_start = 1000L, region_end = 2000L,
+                            cigar_features = data.frame(
+                              read_name  = character(0),
+                              type       = character(0),
+                              ref_start  = integer(0),
+                              ref_end    = integer(0),
+                              length     = integer(0),
+                              stringsAsFactors = FALSE
+                            )) {
   gr <- GenomicRanges::GRanges(
     seqnames = "chr1",
     ranges   = IRanges::IRanges(start = region_start, end = region_end)
@@ -85,14 +93,7 @@ make_test_data <- function(reads_df, sites_df,
       region       = gr,
       mod_code     = "m",
       group_tag    = NULL,
-      cigar_features = data.frame(
-        read_name  = character(0),
-        type       = character(0),
-        ref_start  = integer(0),
-        ref_end    = integer(0),
-        length     = integer(0),
-        stringsAsFactors = FALSE
-      )
+      cigar_features = cigar_features
     ),
     class = "methylation_data"
   )
@@ -114,4 +115,65 @@ test_that("plot_methylation adds delta panel for 2 groups when show_delta", {
   p_no  <- ggmethylation::plot_methylation(md, show_delta = FALSE, show_supplementary = FALSE)
   p_yes <- ggmethylation::plot_methylation(md, show_delta = TRUE,  show_supplementary = FALSE)
   expect_gt(length(p_yes$patches$plots), length(p_no$patches$plots))
+})
+
+test_that("plot_methylation delta panel breaks over consensus deletions using real group values", {
+  # Regression test for the fix where .consensus_deletion_ranges() must be
+  # computed against the REAL per-read group values ("1"/"2" from
+  # data$reads) *before* the resulting ranges' `group` column is relabeled
+  # to the delta line's placeholder identity "delta". A naive (buggy)
+  # rewrite that relabels the delta frame's group to "delta" first and then
+  # feeds the *unrelabeled* ranges (keyed by "1"/"2") into
+  # .insert_deletion_breaks() would compare "delta" == "1"/"2" (always
+  # FALSE), silently never masking anything - the delta line would look
+  # identical whether or not show_cigar masking applied.
+  reads <- data.frame(
+    read_name = c("r1", "r2"), start = 1000L, end = 2000L, strand = "+",
+    lane = 0L, mean_mod_prob = 0.5, group = c("1", "2"),
+    clip_side = NA_character_, sa_chrom = NA_character_, stringsAsFactors = FALSE
+  )
+  sites <- data.frame(
+    read_name = rep(c("r1", "r2"), each = 6),
+    position = rep(seq(1100, 1900, length.out = 6), 2),
+    mod_prob = c(rep(0.2, 6), rep(0.8, 6)), mod_code = "m",
+    group = rep(c("1", "2"), each = 6), stringsAsFactors = FALSE
+  )
+  # Read r1 (group "1") carries a 100bp consensus deletion at [1400, 1500],
+  # well above the default min_indel_size = 50L.
+  cigar_features <- data.frame(
+    read_name = "r1", type = "D", ref_start = 1400L, ref_end = 1500L,
+    length = 100L, stringsAsFactors = FALSE
+  )
+  md <- make_test_data(reads, sites, cigar_features = cigar_features)
+  md$group_tag <- "HP"
+
+  # patchwork::wrap_plots() builds the composite by folding the panel list
+  # with `+`; the LAST panel supplied (the delta panel, per the ordering
+  # comment above `panels <- c(panels, list(p_delta))`) ends up as the
+  # top-level ggplot object itself, with the earlier panels tucked away in
+  # `$patches$plots`. So the delta panel's own data is simply `p$data`.
+  extract_delta_data <- function(p) p$data
+
+  p_cigar_off <- ggmethylation::plot_methylation(
+    md, show_delta = TRUE, show_cigar = FALSE, show_supplementary = FALSE
+  )
+  p_cigar_on <- ggmethylation::plot_methylation(
+    md, show_delta = TRUE, show_cigar = TRUE, show_supplementary = FALSE
+  )
+
+  d_off <- extract_delta_data(p_cigar_off)
+  d_on  <- extract_delta_data(p_cigar_on)
+
+  in_del_off <- d_off$position >= 1400 & d_off$position <= 1500
+  in_del_on  <- d_on$position  >= 1400 & d_on$position  <= 1500
+
+  # Sanity: without cigar masking, the grid actually covers the deletion
+  # interval (otherwise the assertions below would be vacuously true).
+  expect_true(any(in_del_off))
+
+  # With the fix, show_cigar = TRUE must remove/blank all delta points
+  # inside the consensus-deletion interval, and thus emit strictly fewer
+  # rows than the unmasked (show_cigar = FALSE) delta data.
+  expect_false(any(in_del_on))
+  expect_lt(nrow(d_on), nrow(d_off))
 })
