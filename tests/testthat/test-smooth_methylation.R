@@ -161,3 +161,35 @@ test_that("smooth_methylation explicit numeric span overrides adaptive default",
   valid_adapt <- result_adapt$mean_prob[!is.na(result_adapt$mean_prob)]
   expect_false(isTRUE(all.equal(valid_fixed, valid_adapt[seq_along(valid_fixed)])))
 })
+
+test_that("smooth_methylation returns clamped lower/upper on loess path", {
+  sites <- data.frame(
+    position = 1:5 * 100,
+    mod_prob = c(0.1, 0.2, 0.3, 0.4, 0.5),
+    group = "A",
+    stringsAsFactors = FALSE
+  )
+  result <- ggmethylation:::smooth_methylation(sites)
+  expect_true(all(c("lower", "upper") %in% names(result)))
+  ok <- !is.na(result$lower)
+  expect_true(all(result$lower[ok] >= 0 & result$lower[ok] <= 1))
+  expect_true(all(result$upper[ok] >= 0 & result$upper[ok] <= 1))
+  expect_true(all(result$upper[ok] >= result$lower[ok]))
+})
+
+test_that("smooth_methylation sets NA CI on raw-means fallback", {
+  sites <- data.frame(
+    position = c(1, 1, 2, 3),
+    mod_prob = c(0.8, 0.6, 0.5, 0.2),
+    group = "A",
+    stringsAsFactors = FALSE
+  )
+  result <- ggmethylation:::smooth_methylation(sites)
+  expect_true(all(is.na(result$lower)))
+  expect_true(all(is.na(result$upper)))
+})
+
+test_that("smooth_methylation empty input includes lower/upper cols", {
+  result <- ggmethylation:::smooth_methylation(NULL)
+  expect_true(all(c("lower", "upper") %in% names(result)))
+})

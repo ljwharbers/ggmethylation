@@ -13,10 +13,12 @@
 #'   approximately 15 data points per local fit regardless of region size or CpG
 #'   density. Pass an explicit numeric value (e.g. `0.3`) to use a fixed span.
 #'
-#' @return A data.frame with columns `position`, `mean_prob`, and the
-#'   grouping column. Positions are a regular grid of 200 points with
-#'   loess-predicted values. Groups with fewer than 4 unique positions
-#'   return raw per-site means instead.
+#' @return A data.frame with columns `position`, `mean_prob`, `lower`,
+#'   `upper`, and the grouping column. Positions are a regular grid of 200
+#'   points with loess-predicted values. `lower`/`upper` are the loess fit
+#'   `± 1.96 * se.fit`, clamped to `[0, 1]`. Groups with fewer than 4 unique
+#'   positions return raw per-site means instead, with `lower`/`upper` set
+#'   to `NA_real_`.
 #'
 #' @keywords internal
 smooth_methylation <- function(sites, group_col = "group",
@@ -28,16 +30,18 @@ smooth_methylation <- function(sites, group_col = "group",
     effective_group_col <- group_col
   }
 
-  out_cols <- c("position", "mean_prob", effective_group_col)
+  out_cols <- c("position", "mean_prob", "lower", "upper", effective_group_col)
 
   if (is.null(sites) || nrow(sites) == 0L) {
     out <- data.frame(
       position  = numeric(0L),
       mean_prob = numeric(0L),
+      lower     = numeric(0L),
+      upper     = numeric(0L),
       group     = character(0L),
       stringsAsFactors = FALSE
     )
-    names(out)[3L] <- effective_group_col
+    names(out)[5L] <- effective_group_col
     return(out)
   }
 
@@ -64,8 +68,10 @@ smooth_methylation <- function(sites, group_col = "group",
     }
 
     if (nrow(agg) < 4L) {
-      # Too few unique positions for loess; return raw means
+      # Too few unique positions for loess; return raw means, no CI
       df <- agg
+      df$lower <- NA_real_
+      df$upper <- NA_real_
     } else {
       df <- tryCatch(
         suppressWarnings({
@@ -73,10 +79,17 @@ smooth_methylation <- function(sites, group_col = "group",
           grid <- seq(min(agg$position, na.rm = TRUE),
                       max(agg$position, na.rm = TRUE),
                       length.out = 200L)
-          pred <- stats::predict(fit, newdata = data.frame(position = grid))
-          data.frame(position = grid, mean_prob = pred)
+          pr   <- stats::predict(fit, newdata = data.frame(position = grid), se = TRUE)
+          lower <- pmin(pmax(pr$fit - 1.96 * pr$se.fit, 0), 1)
+          upper <- pmin(pmax(pr$fit + 1.96 * pr$se.fit, 0), 1)
+          data.frame(position = grid, mean_prob = pr$fit,
+                     lower = lower, upper = upper)
         }),
-        error = function(e) agg
+        error = function(e) {
+          agg$lower <- NA_real_
+          agg$upper <- NA_real_
+          agg
+        }
       )
     }
 

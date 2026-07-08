@@ -23,10 +23,12 @@ approximately 15 data points per local fit regardless of region size or CpG
 density. Pass an explicit numeric value (e.g. \code{0.3}) to use a fixed span.}
 }
 \value{
-A data.frame with columns \code{position}, \code{mean_prob}, and the
-grouping column. Positions are a regular grid of 200 points with
-loess-predicted values. Groups with fewer than 4 unique positions
-return raw per-site means instead.
+A data.frame with columns \code{position}, \code{mean_prob}, \code{lower},
+\code{upper}, and the grouping column. Positions are a regular grid of 200
+points with loess-predicted values. \code{lower}/\code{upper} are the loess fit
+\verb{± 1.96 * se.fit}, clamped to \verb{[0, 1]}. Groups with fewer than 4 unique
+positions return raw per-site means instead, with \code{lower}/\code{upper} set
+to \code{NA_real_}.
 }
 \description{
 Computes loess-smoothed mean modification probability per group across
