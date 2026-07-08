@@ -21,7 +21,10 @@ build_read_panel(
   show_cigar = FALSE,
   cigar_features = NULL,
   min_indel_size = 50L,
-  show_supplementary = FALSE
+  show_supplementary = FALSE,
+  call_mode = "continuous",
+  call_threshold = 0.5,
+  call_ambiguous = NULL
 )
 }
 \arguments{

@@ -22,7 +22,10 @@ plot_methylation(
   min_indel_size = 50L,
   show_supplementary = TRUE,
   bnd_match_tol = 50L,
-  show_ci = TRUE
+  show_ci = TRUE,
+  call_mode = c("continuous", "binary"),
+  call_threshold = 0.5,
+  call_ambiguous = NULL
 )
 }
 \arguments{
@@ -112,6 +115,23 @@ loess confidence interval (\code{lower}/\code{upper} from \code{\link[=smooth_me
 is drawn behind each smooth line in the bottom panel. Has no effect when
 fewer than 4 unique positions are available for a group/code (no CI is
 computed in that case). Set to \code{FALSE} to hide the ribbon.}
+
+\item{call_mode}{Character. \code{"continuous"} (default) colours modification
+sites by a continuous probability gradient (\code{colour_low} to
+\code{colour_high}). \code{"binary"} classifies each site as methylated,
+unmethylated, or ambiguous (see \code{call_threshold}/\code{call_ambiguous}) and
+colours them with a discrete scale instead.}
+
+\item{call_threshold}{Numeric in \verb{[0, 1]}. Modification probability at or
+above which a site is classified as methylated when
+\code{call_mode = "binary"}. Default \code{0.5}. Ignored when
+\code{call_mode = "continuous"}.}
+
+\item{call_ambiguous}{\code{NULL} (default) for a hard threshold, or a numeric
+half-width defining a band \verb{[call_threshold - w, call_threshold + w)}
+around \code{call_threshold} within which sites are labelled "ambiguous"
+rather than methylated/unmethylated. Ignored when
+\code{call_mode = "continuous"}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a

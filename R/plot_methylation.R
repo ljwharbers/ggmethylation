@@ -316,6 +316,20 @@
 #'   is drawn behind each smooth line in the bottom panel. Has no effect when
 #'   fewer than 4 unique positions are available for a group/code (no CI is
 #'   computed in that case). Set to `FALSE` to hide the ribbon.
+#' @param call_mode Character. `"continuous"` (default) colours modification
+#'   sites by a continuous probability gradient (`colour_low` to
+#'   `colour_high`). `"binary"` classifies each site as methylated,
+#'   unmethylated, or ambiguous (see `call_threshold`/`call_ambiguous`) and
+#'   colours them with a discrete scale instead.
+#' @param call_threshold Numeric in `[0, 1]`. Modification probability at or
+#'   above which a site is classified as methylated when
+#'   `call_mode = "binary"`. Default `0.5`. Ignored when
+#'   `call_mode = "continuous"`.
+#' @param call_ambiguous `NULL` (default) for a hard threshold, or a numeric
+#'   half-width defining a band `[call_threshold - w, call_threshold + w)`
+#'   around `call_threshold` within which sites are labelled "ambiguous"
+#'   rather than methylated/unmethylated. Ignored when
+#'   `call_mode = "continuous"`.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -346,7 +360,12 @@ plot_methylation <- function(data, sort_by = NULL,
                              min_indel_size = 50L,
                              show_supplementary = TRUE,
                              bnd_match_tol = 50L,
-                             show_ci = TRUE) {
+                             show_ci = TRUE,
+                             call_mode = c("continuous", "binary"),
+                             call_threshold = 0.5,
+                             call_ambiguous = NULL) {
+  call_mode <- match.arg(call_mode)
+
   # --- 1. Validate input ---
   if (inherits(data, "multi_methylation_data")) {
     return(.plot_multi_methylation(
@@ -367,7 +386,10 @@ plot_methylation <- function(data, sort_by = NULL,
       min_indel_size     = min_indel_size,
       show_supplementary = show_supplementary,
       bnd_match_tol      = bnd_match_tol,
-      show_ci            = show_ci
+      show_ci            = show_ci,
+      call_mode          = call_mode,
+      call_threshold     = call_threshold,
+      call_ambiguous     = call_ambiguous
     ))
   }
 
@@ -478,7 +500,10 @@ plot_methylation <- function(data, sort_by = NULL,
     show_cigar         = show_cigar,
     cigar_features     = if (isTRUE(show_cigar)) data$cigar_features else NULL,
     min_indel_size     = min_indel_size,
-    show_supplementary = show_supplementary
+    show_supplementary = show_supplementary,
+    call_mode          = call_mode,
+    call_threshold     = call_threshold,
+    call_ambiguous     = call_ambiguous
   )
 
   # --- 7. Build bottom panel ---
@@ -676,7 +701,10 @@ plot_methylation <- function(data, sort_by = NULL,
                                     min_indel_size = 50L,
                                     show_supplementary = FALSE,
                                     bnd_match_tol = 50L,
-                                    show_ci = TRUE) {
+                                    show_ci = TRUE,
+                                    call_mode = "continuous",
+                                    call_threshold = 0.5,
+                                    call_ambiguous = NULL) {
 
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
@@ -781,7 +809,10 @@ plot_methylation <- function(data, sort_by = NULL,
       show_cigar         = show_cigar,
       cigar_features     = if (isTRUE(show_cigar)) s$cigar_features else NULL,
       min_indel_size     = min_indel_size,
-      show_supplementary = show_supplementary
+      show_supplementary = show_supplementary,
+      call_mode          = call_mode,
+      call_threshold     = call_threshold,
+      call_ambiguous     = call_ambiguous
     )
     p_reads <- p_reads + ggplot2::labs(title = nm)
     sample_panels[[i]] <- p_reads
