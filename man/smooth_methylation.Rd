@@ -8,7 +8,8 @@ smooth_methylation(
   sites,
   group_col = "group",
   mod_code_col = NULL,
-  span = NULL
+  span = NULL,
+  grid = NULL
 )
 }
 \arguments{
@@ -21,14 +22,28 @@ grouping column (specified by \code{group_col}).}
 computed per group as \code{max(0.15, min(0.75, 15 / n_unique_sites))}, targeting
 approximately 15 data points per local fit regardless of region size or CpG
 density. Pass an explicit numeric value (e.g. \code{0.3}) to use a fixed span.}
+
+\item{grid}{Optional numeric vector of shared evaluation positions. When
+\code{NULL} (default), each group is evaluated on its own 200-point grid
+spanning that group's own position range (the original behavior). When
+supplied, every group is instead evaluated at exactly these positions
+(in this order), which is required to compare/subtract groups index-wise
+(e.g. for a delta track). Predicted \code{mean_prob}/\code{lower}/\code{upper} values
+are set to \code{NA_real_} wherever a grid position falls outside that
+group's own position range, since loess \code{predict()} would otherwise
+extrapolate. Groups with fewer than 4 unique positions are interpolated
+via \code{stats::approx(..., rule = 1)} instead (also \code{NA} outside range),
+with \code{lower}/\code{upper} set to \code{NA_real_}.}
 }
 \value{
 A data.frame with columns \code{position}, \code{mean_prob}, \code{lower},
-\code{upper}, and the grouping column. Positions are a regular grid of 200
-points with loess-predicted values. \code{lower}/\code{upper} are the loess fit
+\code{upper}, and the grouping column. When \code{grid} is \code{NULL}, positions are a
+regular grid of 200 points per group, spanning that group's own position
+range, with loess-predicted values. \code{lower}/\code{upper} are the loess fit
 \verb{± 1.96 * se.fit}, clamped to \verb{[0, 1]}. Groups with fewer than 4 unique
 positions return raw per-site means instead, with \code{lower}/\code{upper} set
-to \code{NA_real_}.
+to \code{NA_real_}. When \code{grid} is supplied, positions are the shared \code{grid}
+values for every group instead (see \code{grid} above).
 }
 \description{
 Computes loess-smoothed mean modification probability per group across

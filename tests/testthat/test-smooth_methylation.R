@@ -193,3 +193,63 @@ test_that("smooth_methylation empty input includes lower/upper cols", {
   result <- ggmethylation:::smooth_methylation(NULL)
   expect_true(all(c("lower", "upper") %in% names(result)))
 })
+
+test_that("smooth_methylation grid path: >= 4 points evaluates on shared grid and masks out-of-support", {
+  sites <- data.frame(
+    position = 1:5 * 100,  # 100, 200, 300, 400, 500
+    mod_prob = c(0.1, 0.2, 0.3, 0.4, 0.5),
+    group = "A",
+    stringsAsFactors = FALSE
+  )
+  grid <- c(0, 100, 300, 500, 600)
+  result <- ggmethylation:::smooth_methylation(sites, grid = grid)
+  # Output must align row-for-row with the supplied grid
+  expect_equal(nrow(result), length(grid))
+  expect_equal(result$position, grid)
+  # Outside this group's own position range (100-500): NA in mean_prob/lower/upper
+  expect_true(is.na(result$mean_prob[result$position == 0]))
+  expect_true(is.na(result$mean_prob[result$position == 600]))
+  expect_true(is.na(result$lower[result$position == 0]))
+  expect_true(is.na(result$upper[result$position == 600]))
+  # Inside the range: not NA
+  inside <- result$position %in% c(100, 300, 500)
+  expect_false(any(is.na(result$mean_prob[inside])))
+})
+
+test_that("smooth_methylation grid path: < 4 unique positions interpolates via approx(rule = 1)", {
+  sites <- data.frame(
+    position = c(1, 2, 3),
+    mod_prob = c(0.8, 0.5, 0.2),
+    group = "A",
+    stringsAsFactors = FALSE
+  )
+  grid <- c(0, 1, 1.5, 2, 3, 4)
+  result <- ggmethylation:::smooth_methylation(sites, grid = grid)
+
+  expect_equal(nrow(result), length(grid))
+  expect_equal(result$position, grid)
+
+  # Hand-computed stats::approx(x = c(1,2,3), y = c(0.8,0.5,0.2), rule = 1) values
+  expected <- c(NA, 0.8, 0.65, 0.5, 0.2, NA)
+  expect_equal(result$mean_prob, expected, tolerance = 1e-8)
+
+  # lower/upper are always NA on the fallback path
+  expect_true(all(is.na(result$lower)))
+  expect_true(all(is.na(result$upper)))
+})
+
+test_that("smooth_methylation grid path: two groups produce row-aligned output on the same grid", {
+  sites <- data.frame(
+    position = c(rep(1:5 * 100, 2)),
+    mod_prob = c(0.1, 0.2, 0.3, 0.4, 0.5, 0.9, 0.8, 0.7, 0.6, 0.5),
+    group    = rep(c("A", "B"), each = 5),
+    stringsAsFactors = FALSE
+  )
+  grid <- seq(100, 500, length.out = 7)
+  result <- ggmethylation:::smooth_methylation(sites, grid = grid)
+
+  pos_a <- result$position[result$group == "A"]
+  pos_b <- result$position[result$group == "B"]
+  expect_equal(pos_a, grid)
+  expect_equal(pos_b, grid)
+})
