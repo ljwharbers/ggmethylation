@@ -25,7 +25,8 @@ plot_methylation(
   show_ci = TRUE,
   call_mode = c("continuous", "binary"),
   call_threshold = 0.5,
-  call_ambiguous = NULL
+  call_ambiguous = NULL,
+  show_delta = FALSE
 )
 }
 \arguments{
@@ -73,8 +74,10 @@ numeric value (e.g. \code{0.3}) to use a fixed span.}
 When \code{annotations = NULL}, expects length 2 (\code{reads}, \code{smooth}); when
 annotations are provided, expects length 3 (\verb{gene track}, \code{reads},
 \code{smooth}) — the gene panel is placed at the top, reads in the middle, and
-the smoothed probability curve at the bottom. Pass \code{NULL} to use the
-built-in defaults.}
+the smoothed probability curve at the bottom. When \code{show_delta = TRUE}
+and grouping yields exactly two groups, an additional delta panel is
+appended last, adding one to the expected length in each case above.
+Pass \code{NULL} to use the built-in defaults.}
 
 \item{annotations}{A \code{gene_annotations} object returned by
 \code{\link[=read_annotations]{read_annotations()}}, or \code{NULL} (default). When provided, a gene
@@ -132,6 +135,15 @@ half-width defining a band \verb{[call_threshold - w, call_threshold + w)}
 around \code{call_threshold} within which sites are labelled "ambiguous"
 rather than methylated/unmethylated. Ignored when
 \code{call_mode = "continuous"}.}
+
+\item{show_delta}{Logical. When \code{TRUE}, and grouping yields exactly two
+groups, an additional panel is appended below the smooth panel showing
+the signed difference in loess-smoothed modification probability between
+the two groups (group2 - group1), coloured by sign. Requires \code{data} to be
+grouped (\code{data$group_tag} non-\code{NULL}) with exactly two distinct group
+values; otherwise the panel is silently skipped (with a message). Not
+supported for multi-sample data (\code{multi_methylation_data}); the argument
+is accepted there but ignored (with a message). Default \code{FALSE}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a

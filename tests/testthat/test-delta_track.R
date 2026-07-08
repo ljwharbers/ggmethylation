@@ -59,3 +59,59 @@ test_that("compute_group_delta handles both groups with < 4 unique positions (ap
   expect_false(any(is.na(res$delta[inside])))
   expect_true(all(res$sign[inside] == "pos"))
 })
+
+test_that("build_delta_panel returns a ggplot", {
+  df <- data.frame(position = seq(1000, 2000, length.out = 50),
+                   delta = sin(seq(0, 3, length.out = 50)) * 0.4,
+                   stringsAsFactors = FALSE)
+  df$sign <- ifelse(df$delta >= 0, "pos", "neg")
+  p <- ggmethylation:::.build_delta_panel(df, 1000, 2000)
+  expect_s3_class(p, "ggplot")
+})
+
+# Local minimal methylation_data constructor (mirrors
+# test-build_read_panel.R::make_test_data; not shared via a helper-*.R file,
+# so duplicated here per testthat edition-3 auto-sourcing rules).
+make_test_data <- function(reads_df, sites_df,
+                            region_start = 1000L, region_end = 2000L) {
+  gr <- GenomicRanges::GRanges(
+    seqnames = "chr1",
+    ranges   = IRanges::IRanges(start = region_start, end = region_end)
+  )
+  structure(
+    list(
+      reads        = reads_df,
+      sites        = sites_df,
+      region       = gr,
+      mod_code     = "m",
+      group_tag    = NULL,
+      cigar_features = data.frame(
+        read_name  = character(0),
+        type       = character(0),
+        ref_start  = integer(0),
+        ref_end    = integer(0),
+        length     = integer(0),
+        stringsAsFactors = FALSE
+      )
+    ),
+    class = "methylation_data"
+  )
+}
+
+test_that("plot_methylation adds delta panel for 2 groups when show_delta", {
+  reads <- data.frame(
+    read_name = c("r1","r2"), start = 1000L, end = 2000L, strand = "+",
+    lane = 0L, mean_mod_prob = 0.5, group = c("1","2"),
+    clip_side = NA_character_, sa_chrom = NA_character_, stringsAsFactors = FALSE
+  )
+  sites <- data.frame(
+    read_name = rep(c("r1","r2"), each = 6),
+    position = rep(seq(1100, 1900, length.out = 6), 2),
+    mod_prob = c(rep(0.2,6), rep(0.8,6)), mod_code = "m",
+    group = rep(c("1","2"), each = 6), stringsAsFactors = FALSE
+  )
+  md <- make_test_data(reads, sites); md$group_tag <- "HP"
+  p_no  <- ggmethylation::plot_methylation(md, show_delta = FALSE, show_supplementary = FALSE)
+  p_yes <- ggmethylation::plot_methylation(md, show_delta = TRUE,  show_supplementary = FALSE)
+  expect_gt(length(p_yes$patches$plots), length(p_no$patches$plots))
+})

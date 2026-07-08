@@ -19,3 +19,24 @@
                  ifelse(delta > 0, "pos", ifelse(delta < 0, "neg", "zero")))
   data.frame(position = grid, delta = delta, sign = sign, stringsAsFactors = FALSE)
 }
+
+# Render the signed delta as a diverging area around a zero baseline.
+.build_delta_panel <- function(delta_df, region_start, region_end) {
+  df <- delta_df[!is.na(delta_df$delta), , drop = FALSE]
+  ggplot2::ggplot(df, ggplot2::aes(x = .data$position, y = .data$delta)) +
+    ggplot2::geom_area(
+      ggplot2::aes(fill = .data$sign),
+      alpha = 0.85, na.rm = TRUE
+    ) +
+    ggplot2::geom_hline(yintercept = 0, colour = .DELTA_DIVERGING$zero,
+                        linewidth = 0.4) +
+    ggplot2::scale_fill_manual(
+      values = c(pos = .DELTA_DIVERGING$pos, neg = .DELTA_DIVERGING$neg,
+                 zero = .DELTA_DIVERGING$zero),
+      guide = "none"
+    ) +
+    ggplot2::scale_x_continuous(labels = scales::comma_format()) +
+    ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
+    ggplot2::labs(x = "Genomic position (bp)", y = "Δ methylation\n(group2 - group1)") +
+    theme_ggmethylation()
+}

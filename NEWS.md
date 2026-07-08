@@ -11,6 +11,11 @@
   (default `NULL`) to render read-panel modification sites as discrete
   methylated/unmethylated/ambiguous calls instead of a continuous
   probability gradient.
+* `plot_methylation()` gains `show_delta` (default `FALSE`). When grouping
+  yields exactly two groups, setting `show_delta = TRUE` appends a bottom
+  panel showing the signed difference in loess-smoothed modification
+  probability between the two groups (group2 - group1), rendered as a
+  diverging area coloured by sign. Not supported for multi-sample data.
 
 ## Bug fixes
 * `.insert_deletion_breaks()` (internal) now also nulls the `lower`/`upper`

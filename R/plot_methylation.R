@@ -276,8 +276,10 @@
 #'   When `annotations = NULL`, expects length 2 (`reads`, `smooth`); when
 #'   annotations are provided, expects length 3 (`gene track`, `reads`,
 #'   `smooth`) — the gene panel is placed at the top, reads in the middle, and
-#'   the smoothed probability curve at the bottom. Pass `NULL` to use the
-#'   built-in defaults.
+#'   the smoothed probability curve at the bottom. When `show_delta = TRUE`
+#'   and grouping yields exactly two groups, an additional delta panel is
+#'   appended last, adding one to the expected length in each case above.
+#'   Pass `NULL` to use the built-in defaults.
 #' @param annotations A `gene_annotations` object returned by
 #'   [read_annotations()], or `NULL` (default). When provided, a gene
 #'   annotation track is placed at the top of the composite figure (above the
@@ -330,6 +332,14 @@
 #'   around `call_threshold` within which sites are labelled "ambiguous"
 #'   rather than methylated/unmethylated. Ignored when
 #'   `call_mode = "continuous"`.
+#' @param show_delta Logical. When `TRUE`, and grouping yields exactly two
+#'   groups, an additional panel is appended below the smooth panel showing
+#'   the signed difference in loess-smoothed modification probability between
+#'   the two groups (group2 - group1), coloured by sign. Requires `data` to be
+#'   grouped (`data$group_tag` non-`NULL`) with exactly two distinct group
+#'   values; otherwise the panel is silently skipped (with a message). Not
+#'   supported for multi-sample data (`multi_methylation_data`); the argument
+#'   is accepted there but ignored (with a message). Default `FALSE`.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -363,7 +373,8 @@ plot_methylation <- function(data, sort_by = NULL,
                              show_ci = TRUE,
                              call_mode = c("continuous", "binary"),
                              call_threshold = 0.5,
-                             call_ambiguous = NULL) {
+                             call_ambiguous = NULL,
+                             show_delta = FALSE) {
   call_mode <- match.arg(call_mode)
 
   # --- 1. Validate input ---
@@ -389,7 +400,8 @@ plot_methylation <- function(data, sort_by = NULL,
       show_ci            = show_ci,
       call_mode          = call_mode,
       call_threshold     = call_threshold,
-      call_ambiguous     = call_ambiguous
+      call_ambiguous     = call_ambiguous,
+      show_delta         = show_delta
     ))
   }
 
@@ -659,20 +671,77 @@ plot_methylation <- function(data, sort_by = NULL,
     )
   }
 
-  # --- 9. Combine with patchwork ---
-  # Panel order (when gene panel present): gene (top), reads, smooth (bottom
-  # with genomic coordinates). When no gene panel: reads, smooth.
-  panels   <- list(p_top, p_bottom)
-  n_panels <- 2L
-
-  if (!is.null(p_gene)) {
-    panels   <- c(list(p_gene), panels)
-    n_panels <- 3L
+  # --- 8c. Build delta panel (optional; requires exactly 2 groups) ---
+  p_delta <- NULL
+  if (isTRUE(show_delta) && !is.null(data$group_tag)) {
+    delta_df <- .compute_group_delta(data$sites, "group", span = smooth_span)
+    if (!is.null(delta_df)) {
+      # Break the delta over consensus deletions too, for visual consistency.
+      # NOTE: .apply_deletion_breaks()/.consensus_deletion_ranges() key
+      # deletion ranges by the *real* per-read group values ("1"/"2", from
+      # `data$reads`), not by an arbitrary single-line identity. A naive
+      # rename-and-call-through (tagging delta_df$group <- "delta" and
+      # passing it straight to .apply_deletion_breaks()) would silently never
+      # match any range's group value, so no breaks would ever be applied.
+      # Instead, compute the ranges directly (per real group) and then
+      # relabel their `group` column to "delta" so .insert_deletion_breaks()
+      # matches them against the single delta line. This applies a break
+      # wherever *either* group has a consensus deletion.
+      if (isTRUE(show_cigar) && !is.null(data$cigar_features) &&
+          nrow(data$cigar_features) > 0L) {
+        dels <- data$cigar_features[
+          data$cigar_features$type == "D" &
+            data$cigar_features$length >= min_indel_size,
+          , drop = FALSE
+        ]
+        if (nrow(dels) > 0L) {
+          ranges <- .consensus_deletion_ranges(dels, data$reads, "group")
+          if (nrow(ranges) > 0L) {
+            ranges$group <- "delta"
+            delta_for_break <- stats::setNames(
+              delta_df[c("position", "delta")], c("position", "mean_prob")
+            )
+            delta_for_break$group <- "delta"
+            delta_for_break <- .insert_deletion_breaks(
+              delta_for_break, ranges, "group"
+            )
+            delta_df <- data.frame(
+              position = delta_for_break$position,
+              delta    = delta_for_break$mean_prob,
+              stringsAsFactors = FALSE
+            )
+            delta_df$sign <- ifelse(
+              is.na(delta_df$delta), NA_character_,
+              ifelse(delta_df$delta > 0, "pos",
+                     ifelse(delta_df$delta < 0, "neg", "zero"))
+            )
+          }
+        }
+      }
+      p_delta <- .build_delta_panel(delta_df, region_start, region_end)
+      # The smooth panel is no longer the bottom-most; hide its x-axis title/labels
+      p_bottom <- p_bottom +
+        ggplot2::theme(axis.title.x = ggplot2::element_blank())
+    }
   }
+
+  # --- 9. Combine with patchwork ---
+  # Panel order (when gene panel present): gene (top), reads, smooth, delta
+  # (bottom with genomic coordinates, when show_delta applies). When no gene
+  # panel: reads, smooth, delta.
+  panels <- list(p_top, p_bottom)
+  if (!is.null(p_gene))  panels <- c(list(p_gene), panels)
+  if (!is.null(p_delta)) panels <- c(panels, list(p_delta))
+  n_panels <- length(panels)
 
   # Compute heights
   if (is.null(panel_heights)) {
-    heights <- c(if (!is.null(p_gene)) 0.08 else NULL, 1, 0.25)
+    heights <- c(
+      if (!is.null(p_gene)) 0.08 else NULL,
+      1,                       # reads
+      0.25,                    # smooth
+      if (!is.null(p_delta)) 0.2 else NULL
+    )
   } else {
     if (length(panel_heights) != n_panels) {
       stop(sprintf(
@@ -704,7 +773,12 @@ plot_methylation <- function(data, sort_by = NULL,
                                     show_ci = TRUE,
                                     call_mode = "continuous",
                                     call_threshold = 0.5,
-                                    call_ambiguous = NULL) {
+                                    call_ambiguous = NULL,
+                                    show_delta = FALSE) {
+
+  if (isTRUE(show_delta)) {
+    message("`show_delta` is not supported for multi-sample data; ignoring.")
+  }
 
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
