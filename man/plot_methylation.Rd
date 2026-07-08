@@ -12,7 +12,7 @@ plot_methylation(
   line_width = 0.2,
   colour_strand = FALSE,
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
-  group_colours = c(`1` = "#95babc", `2` = "#efbb76"),
+  group_colours = .GROUP_PALETTE_DEFAULT,
   mod_code_shapes = NULL,
   smooth_span = NULL,
   panel_heights = NULL,
@@ -48,7 +48,8 @@ giving bar colours for each strand. Only used when \code{colour_strand = TRUE}
 and data is ungrouped. Default \code{c("+" = "#4393C3", "-" = "#D6604D")}.}
 
 \item{group_colours}{Named character vector of colours per group. Defaults
-to \code{c("1" = "#95babc", "2" = "#efbb76")}, matching the typical HP
+to \code{c("1" = "#0072B2", "2" = "#E69F00")} (the Okabe-Ito colorblind-safe
+blue/orange pair, see \code{.GROUP_PALETTE_DEFAULT}), matching the typical HP
 haplotype tag output. Pass \code{NULL} to use ggplot2 defaults, or supply a
 fully named vector for other group names.}
 

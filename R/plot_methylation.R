@@ -226,7 +226,8 @@
 #'   giving bar colours for each strand. Only used when `colour_strand = TRUE`
 #'   and data is ungrouped. Default `c("+" = "#4393C3", "-" = "#D6604D")`.
 #' @param group_colours Named character vector of colours per group. Defaults
-#'   to `c("1" = "#95babc", "2" = "#efbb76")`, matching the typical HP
+#'   to `c("1" = "#0072B2", "2" = "#E69F00")` (the Okabe-Ito colorblind-safe
+#'   blue/orange pair, see `.GROUP_PALETTE_DEFAULT`), matching the typical HP
 #'   haplotype tag output. Pass `NULL` to use ggplot2 defaults, or supply a
 #'   fully named vector for other group names.
 #' @param smooth_span Loess smoothing span for the bottom panel. When `NULL`
