@@ -21,7 +21,8 @@ plot_methylation(
   show_cigar = TRUE,
   min_indel_size = 50L,
   show_supplementary = TRUE,
-  bnd_match_tol = 50L
+  bnd_match_tol = 50L,
+  show_ci = TRUE
 )
 }
 \arguments{
@@ -105,6 +106,12 @@ no supplementary alignment have no halo.}
 supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
 whenever \code{variants} is supplied and reads carry SA tags; the visual border
 marking requires \code{show_supplementary = TRUE}. Default 50.}
+
+\item{show_ci}{Logical. When \code{TRUE} (default), a shaded ribbon showing the
+loess confidence interval (\code{lower}/\code{upper} from \code{\link[=smooth_methylation]{smooth_methylation()}})
+is drawn behind each smooth line in the bottom panel. Has no effect when
+fewer than 4 unique positions are available for a group/code (no CI is
+computed in that case). Set to \code{FALSE} to hide the ribbon.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a

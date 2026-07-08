@@ -109,7 +109,7 @@
 .insert_deletion_breaks <- function(smoothed, deletion_ranges, group_col) {
   if (nrow(deletion_ranges) == 0L) return(smoothed)
 
-  id_cols <- setdiff(names(smoothed), c("position", "mean_prob"))
+  id_cols <- setdiff(names(smoothed), c("position", "mean_prob", "lower", "upper"))
   sentinel_list <- vector("list", nrow(deletion_ranges))
 
   for (i in seq_len(nrow(deletion_ranges))) {
@@ -121,6 +121,8 @@
     in_grp <- smoothed[[group_col]] == grp_val
     in_del <- smoothed$position >= del_start & smoothed$position <= del_end
     smoothed$mean_prob[in_grp & in_del] <- NA_real_
+    if ("lower" %in% names(smoothed)) smoothed$lower[in_grp & in_del] <- NA_real_
+    if ("upper" %in% names(smoothed)) smoothed$upper[in_grp & in_del] <- NA_real_
 
     # Build sentinel rows — one pair per unique line-identity combo in this group
     grp_rows  <- smoothed[in_grp, id_cols, drop = FALSE]
@@ -133,9 +135,16 @@
       s1 <- templates[j, , drop = FALSE]
       s1$position  <- del_start - 0.5
       s1$mean_prob <- NA_real_
+      # NOTE: `templates` is derived from `id_cols`, which now excludes
+      # lower/upper, so s1/s2 never carry those columns yet at this point.
+      # Check against `smoothed` (the source of truth for which columns
+      # exist) rather than `s1`/`s2`, then add the columns as NA so the
+      # final rbind()/column-select against names(smoothed) succeeds.
+      if ("lower" %in% names(smoothed)) { s1$lower <- NA_real_; s1$upper <- NA_real_ }
       s2 <- templates[j, , drop = FALSE]
       s2$position  <- del_end + 0.5
       s2$mean_prob <- NA_real_
+      if ("lower" %in% names(smoothed)) { s2$lower <- NA_real_; s2$upper <- NA_real_ }
       sentinels[[2L * j - 1L]] <- s1
       sentinels[[2L * j]]      <- s2
     }
@@ -189,6 +198,34 @@
     mod_code_shapes <- c(mod_code_shapes, extras)
   }
   mod_code_shapes
+}
+
+# Add a CI ribbon behind the smooth line(s) when requested and columns exist.
+# `fill_aes` controls the visual fill colour (tracking the matching line
+# colour aesthetic). `group_aes` controls polygon separation and defaults to
+# `fill_aes`; pass an explicit interaction() when a branch has more than one
+# identity variable (e.g. group + mod_code) so overlapping CI bands don't
+# collapse into a single self-crossing polygon.
+.add_ci_ribbon <- function(p, smoothed, show_ci, fill_aes = NULL, group_aes = NULL) {
+  if (!isTRUE(show_ci)) return(p)
+  if (!all(c("lower", "upper") %in% names(smoothed))) return(p)
+  rib <- smoothed[!is.na(smoothed$lower) & !is.na(smoothed$upper), , drop = FALSE]
+  if (nrow(rib) == 0L) return(p)
+  aes_args <- list(x = quote(.data$position),
+                   ymin = quote(.data$lower),
+                   ymax = quote(.data$upper))
+  if (!is.null(fill_aes)) aes_args$fill <- fill_aes
+  if (!is.null(group_aes)) aes_args$group <- group_aes
+  ribbon <- ggplot2::geom_ribbon(
+    data = rib,
+    mapping = do.call(ggplot2::aes, aes_args),
+    alpha = 0.2, colour = NA,
+    inherit.aes = FALSE,
+    show.legend = FALSE
+  )
+  # Insert ribbon *before* existing line layers so it renders behind them.
+  p$layers <- c(list(ribbon), p$layers)
+  p
 }
 
 # Common ggplot2 layers for the smoothed modification probability panel.
@@ -274,6 +311,11 @@
 #'   supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
 #'   whenever `variants` is supplied and reads carry SA tags; the visual border
 #'   marking requires `show_supplementary = TRUE`. Default 50.
+#' @param show_ci Logical. When `TRUE` (default), a shaded ribbon showing the
+#'   loess confidence interval (`lower`/`upper` from [smooth_methylation()])
+#'   is drawn behind each smooth line in the bottom panel. Has no effect when
+#'   fewer than 4 unique positions are available for a group/code (no CI is
+#'   computed in that case). Set to `FALSE` to hide the ribbon.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -303,7 +345,8 @@ plot_methylation <- function(data, sort_by = NULL,
                              show_cigar = TRUE,
                              min_indel_size = 50L,
                              show_supplementary = TRUE,
-                             bnd_match_tol = 50L) {
+                             bnd_match_tol = 50L,
+                             show_ci = TRUE) {
   # --- 1. Validate input ---
   if (inherits(data, "multi_methylation_data")) {
     return(.plot_multi_methylation(
@@ -323,7 +366,8 @@ plot_methylation <- function(data, sort_by = NULL,
       show_cigar         = show_cigar,
       min_indel_size     = min_indel_size,
       show_supplementary = show_supplementary,
-      bnd_match_tol      = bnd_match_tol
+      bnd_match_tol      = bnd_match_tol,
+      show_ci            = show_ci
     ))
   }
 
@@ -463,6 +507,7 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::geom_line(linewidth = 1, colour = "#C62828") +
         .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)")
+      p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci)
     } else {
       # Multi-code: one line per code, colour by mod_code
       smoothed <- smooth_methylation(sites_smooth, group_col = "group",
@@ -482,6 +527,8 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::geom_line(linewidth = 1) +
         .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Modification")
+      p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci,
+                                 fill_aes = quote(.data$mod_code))
     }
   } else {
     # Grouped smooth panel
@@ -510,6 +557,13 @@ plot_methylation <- function(data, sort_by = NULL,
       if (!is.null(group_colours)) {
         p_bottom <- p_bottom +
           ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50")
+      }
+      p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci,
+                                 fill_aes = quote(.data$group))
+      if (!is.null(group_colours)) {
+        p_bottom <- p_bottom +
+          ggplot2::scale_fill_manual(values = group_colours, na.value = "grey50",
+                                     guide = "none")
       }
     } else {
       # Multi-code + grouped: colour by group, linetype by mod_code
@@ -543,6 +597,16 @@ plot_methylation <- function(data, sort_by = NULL,
       if (!is.null(group_colours)) {
         p_bottom <- p_bottom +
           ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50")
+      }
+      p_bottom <- .add_ci_ribbon(
+        p_bottom, smoothed, show_ci,
+        fill_aes  = quote(.data$group),
+        group_aes = quote(interaction(.data$group, .data$mod_code))
+      )
+      if (!is.null(group_colours)) {
+        p_bottom <- p_bottom +
+          ggplot2::scale_fill_manual(values = group_colours, na.value = "grey50",
+                                     guide = "none")
       }
     }
   }
@@ -599,6 +663,10 @@ plot_methylation <- function(data, sort_by = NULL,
 
 # Internal multi-sample renderer
 # Not exported — called by plot_methylation() when data is multi_methylation_data.
+# NOTE: `show_ci` is accepted here only for signature compatibility with the
+# call from plot_methylation(); wiring the CI ribbon into the shared
+# multi-sample smooth panel is out of scope for this change (see task-3
+# brief's file scope) and is left for a follow-up.
 
 .plot_multi_methylation <- function(data, sort_by, colour_low, colour_high,
                                     line_width, colour_strand, strand_colours,
@@ -607,7 +675,8 @@ plot_methylation <- function(data, sort_by = NULL,
                                     variants, show_cigar = FALSE,
                                     min_indel_size = 50L,
                                     show_supplementary = FALSE,
-                                    bnd_match_tol = 50L) {
+                                    bnd_match_tol = 50L,
+                                    show_ci = TRUE) {
 
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
