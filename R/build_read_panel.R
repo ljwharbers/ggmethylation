@@ -537,16 +537,12 @@ build_read_panel <- function(data,
   p <- p +
     ggplot2::scale_y_reverse() +
     ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
-    ggplot2::theme_minimal() +
+    theme_ggmethylation() +
     ggplot2::theme(
       axis.text.y        = ggplot2::element_blank(),
       axis.ticks.y       = ggplot2::element_blank(),
       axis.title.y       = ggplot2::element_blank(),
-      panel.grid.minor   = ggplot2::element_blank(),
-      panel.grid.major.y = ggplot2::element_blank(),
-      legend.text        = ggplot2::element_text(size = ggplot2::rel(0.75)),
-      legend.title       = ggplot2::element_text(size = ggplot2::rel(0.75)),
-      legend.key.size    = ggplot2::unit(0.4, "cm")
+      panel.grid.major.y = ggplot2::element_blank()
     ) +
     ggplot2::labs(x = NULL)
 

@@ -198,13 +198,7 @@
     ggplot2::scale_y_continuous(limits = c(0, 1), name = "Mean modification\nprobability"),
     ggplot2::scale_x_continuous(labels = scales::comma_format()),
     ggplot2::coord_cartesian(xlim = c(region_start, region_end)),
-    ggplot2::theme_minimal(),
-    ggplot2::theme(
-      panel.grid.minor = ggplot2::element_blank(),
-      legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
-      legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
-      legend.key.size  = ggplot2::unit(0.4, "cm")
-    )
+    theme_ggmethylation()
   )
 }
 
@@ -299,7 +293,7 @@ plot_methylation <- function(data, sort_by = NULL,
                              line_width = 0.2,
                              colour_strand = FALSE,
                              strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
-                             group_colours = c("1" = "#95babc", "2" = "#efbb76"),
+                             group_colours = .GROUP_PALETTE_DEFAULT,
                              mod_code_shapes = NULL,
                              smooth_span = NULL,
                              panel_heights = NULL,
