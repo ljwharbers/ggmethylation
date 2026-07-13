@@ -12,7 +12,7 @@ plot_methylation(
   line_width = 0.2,
   colour_strand = FALSE,
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
-  group_colours = c(`1` = "#95babc", `2` = "#efbb76"),
+  group_colours = .GROUP_PALETTE_DEFAULT,
   mod_code_shapes = NULL,
   smooth_span = NULL,
   panel_heights = NULL,
@@ -21,7 +21,12 @@ plot_methylation(
   show_cigar = TRUE,
   min_indel_size = 50L,
   show_supplementary = TRUE,
-  bnd_match_tol = 50L
+  bnd_match_tol = 50L,
+  show_ci = TRUE,
+  call_mode = c("continuous", "binary"),
+  call_threshold = 0.5,
+  call_ambiguous = NULL,
+  show_delta = FALSE
 )
 }
 \arguments{
@@ -48,7 +53,8 @@ giving bar colours for each strand. Only used when \code{colour_strand = TRUE}
 and data is ungrouped. Default \code{c("+" = "#4393C3", "-" = "#D6604D")}.}
 
 \item{group_colours}{Named character vector of colours per group. Defaults
-to \code{c("1" = "#95babc", "2" = "#efbb76")}, matching the typical HP
+to \code{c("1" = "#0072B2", "2" = "#E69F00")} (the Okabe-Ito colorblind-safe
+blue/orange pair, see \code{.GROUP_PALETTE_DEFAULT}), matching the typical HP
 haplotype tag output. Pass \code{NULL} to use ggplot2 defaults, or supply a
 fully named vector for other group names.}
 
@@ -68,8 +74,10 @@ numeric value (e.g. \code{0.3}) to use a fixed span.}
 When \code{annotations = NULL}, expects length 2 (\code{reads}, \code{smooth}); when
 annotations are provided, expects length 3 (\verb{gene track}, \code{reads},
 \code{smooth}) — the gene panel is placed at the top, reads in the middle, and
-the smoothed probability curve at the bottom. Pass \code{NULL} to use the
-built-in defaults.}
+the smoothed probability curve at the bottom. When \code{show_delta = TRUE}
+and grouping yields exactly two groups, an additional delta panel is
+appended last, adding one to the expected length in each case above.
+Pass \code{NULL} to use the built-in defaults.}
 
 \item{annotations}{A \code{gene_annotations} object returned by
 \code{\link[=read_annotations]{read_annotations()}}, or \code{NULL} (default). When provided, a gene
@@ -104,6 +112,38 @@ no supplementary alignment have no halo.}
 supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
 whenever \code{variants} is supplied and reads carry SA tags; the visual border
 marking requires \code{show_supplementary = TRUE}. Default 50.}
+
+\item{show_ci}{Logical. When \code{TRUE} (default), a shaded ribbon showing the
+loess confidence interval (\code{lower}/\code{upper} from \code{\link[=smooth_methylation]{smooth_methylation()}})
+is drawn behind each smooth line in the bottom panel. Has no effect when
+fewer than 4 unique positions are available for a group/code (no CI is
+computed in that case). Set to \code{FALSE} to hide the ribbon.}
+
+\item{call_mode}{Character. \code{"continuous"} (default) colours modification
+sites by a continuous probability gradient (\code{colour_low} to
+\code{colour_high}). \code{"binary"} classifies each site as methylated,
+unmethylated, or ambiguous (see \code{call_threshold}/\code{call_ambiguous}) and
+colours them with a discrete scale instead.}
+
+\item{call_threshold}{Numeric in \verb{[0, 1]}. Modification probability at or
+above which a site is classified as methylated when
+\code{call_mode = "binary"}. Default \code{0.5}. Ignored when
+\code{call_mode = "continuous"}.}
+
+\item{call_ambiguous}{\code{NULL} (default) for a hard threshold, or a numeric
+half-width defining a band \verb{[call_threshold - w, call_threshold + w)}
+around \code{call_threshold} within which sites are labelled "ambiguous"
+rather than methylated/unmethylated. Ignored when
+\code{call_mode = "continuous"}.}
+
+\item{show_delta}{Logical. When \code{TRUE}, and grouping yields exactly two
+groups, an additional panel is appended below the smooth panel showing
+the signed difference in loess-smoothed modification probability between
+the two groups (group2 - group1), coloured by sign. Requires \code{data} to be
+grouped (\code{data$group_tag} non-\code{NULL}) with exactly two distinct group
+values; otherwise the panel is silently skipped (with a message). Not
+supported for multi-sample data (\code{multi_methylation_data}); the argument
+is accepted there but ignored (with a message). Default \code{FALSE}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a

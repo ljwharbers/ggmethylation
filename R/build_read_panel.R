@@ -281,7 +281,10 @@ build_read_panel <- function(data,
                              show_cigar         = FALSE,
                              cigar_features     = NULL,
                              min_indel_size     = 50L,
-                             show_supplementary = FALSE) {
+                             show_supplementary = FALSE,
+                             call_mode          = "continuous",
+                             call_threshold     = 0.5,
+                             call_ambiguous     = NULL) {
   codes      <- unique(data$sites$mod_code)
   multi_code <- length(codes) > 1L
 
@@ -410,7 +413,9 @@ build_read_panel <- function(data,
                            region_start, region_end, variant_overlay,
                            needs_new_scale = TRUE)
     }
-    p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width, colour_low, colour_high)
+    p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
+                                colour_low, colour_high,
+                                call_mode, call_threshold, call_ambiguous)
 
     if (length(separator_lanes) > 0L) {
       p <- p +
@@ -441,7 +446,9 @@ build_read_panel <- function(data,
                              region_start, region_end, variant_overlay,
                              needs_new_scale = TRUE)
       }
-      p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width, colour_low, colour_high)
+      p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
+                                colour_low, colour_high,
+                                call_mode, call_threshold, call_ambiguous)
     } else {
       # Plain (no grouping, no strand colouring)
       p <- p +
@@ -461,7 +468,9 @@ build_read_panel <- function(data,
                              region_start, region_end, variant_overlay,
                              needs_new_scale = FALSE)
       }
-      p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width, colour_low, colour_high)
+      p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
+                                colour_low, colour_high,
+                                call_mode, call_threshold, call_ambiguous)
     }
   }
 
@@ -537,16 +546,12 @@ build_read_panel <- function(data,
   p <- p +
     ggplot2::scale_y_reverse() +
     ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
-    ggplot2::theme_minimal() +
+    theme_ggmethylation() +
     ggplot2::theme(
       axis.text.y        = ggplot2::element_blank(),
       axis.ticks.y       = ggplot2::element_blank(),
       axis.title.y       = ggplot2::element_blank(),
-      panel.grid.minor   = ggplot2::element_blank(),
-      panel.grid.major.y = ggplot2::element_blank(),
-      legend.text        = ggplot2::element_text(size = ggplot2::rel(0.75)),
-      legend.title       = ggplot2::element_text(size = ggplot2::rel(0.75)),
-      legend.key.size    = ggplot2::unit(0.4, "cm")
+      panel.grid.major.y = ggplot2::element_blank()
     ) +
     ggplot2::labs(x = NULL)
 
@@ -607,9 +612,53 @@ build_read_panel <- function(data,
   p
 }
 
+# Classify continuous modification probabilities into discrete calls.
+# ambiguous: NULL for a hard threshold, or a numeric half-width; probs within
+# (threshold - w, threshold + w), excluding the threshold value itself, are
+# labelled "ambiguous". A prob exactly equal to threshold is always
+# "methylated" (the >= threshold-only case); everything else at/above
+# threshold and outside the band is also "methylated".
+.classify_calls <- function(probs, threshold = 0.5, ambiguous = NULL) {
+  cls <- ifelse(probs >= threshold, "methylated", "unmethylated")
+  if (!is.null(ambiguous) && ambiguous > 0) {
+    band <- abs(probs - threshold) < ambiguous & probs != threshold
+    cls[band] <- "ambiguous"
+  }
+  cls
+}
+
 # Add mod-prob segment layer and colour scale to an existing ggplot.
+#
+# When `call_mode = "binary"`, sites are classified into discrete calls
+# (methylated/unmethylated/ambiguous) via .classify_calls() and coloured with
+# a manual discrete scale instead of the continuous gradient.
 .add_mod_prob_segments <- function(p, sites_plot, half_height, line_width,
-                                    colour_low, colour_high) {
+                                    colour_low, colour_high,
+                                    call_mode = "continuous",
+                                    call_threshold = 0.5,
+                                    call_ambiguous = NULL) {
+  if (identical(call_mode, "binary") && nrow(sites_plot) > 0L) {
+    sites_plot$.call <- .classify_calls(sites_plot$mod_prob,
+                                        call_threshold, call_ambiguous)
+    vals <- c(unmethylated = colour_low, methylated = colour_high,
+              ambiguous = "grey75")
+    return(
+      p +
+        ggplot2::geom_segment(
+          data = sites_plot,
+          ggplot2::aes(
+            x = .data$position, xend = .data$position,
+            y = .data$lane - half_height, yend = .data$lane + half_height,
+            colour = .data$.call
+          ),
+          linewidth = line_width
+        ) +
+        ggplot2::scale_colour_manual(
+          values = vals, name = "Call",
+          breaks = c("unmethylated", "methylated", "ambiguous")
+        )
+    )
+  }
   p +
     ggplot2::geom_segment(
       data = sites_plot,

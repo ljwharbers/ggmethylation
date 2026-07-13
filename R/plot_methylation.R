@@ -109,7 +109,7 @@
 .insert_deletion_breaks <- function(smoothed, deletion_ranges, group_col) {
   if (nrow(deletion_ranges) == 0L) return(smoothed)
 
-  id_cols <- setdiff(names(smoothed), c("position", "mean_prob"))
+  id_cols <- setdiff(names(smoothed), c("position", "mean_prob", "lower", "upper"))
   sentinel_list <- vector("list", nrow(deletion_ranges))
 
   for (i in seq_len(nrow(deletion_ranges))) {
@@ -121,6 +121,8 @@
     in_grp <- smoothed[[group_col]] == grp_val
     in_del <- smoothed$position >= del_start & smoothed$position <= del_end
     smoothed$mean_prob[in_grp & in_del] <- NA_real_
+    if ("lower" %in% names(smoothed)) smoothed$lower[in_grp & in_del] <- NA_real_
+    if ("upper" %in% names(smoothed)) smoothed$upper[in_grp & in_del] <- NA_real_
 
     # Build sentinel rows — one pair per unique line-identity combo in this group
     grp_rows  <- smoothed[in_grp, id_cols, drop = FALSE]
@@ -133,9 +135,16 @@
       s1 <- templates[j, , drop = FALSE]
       s1$position  <- del_start - 0.5
       s1$mean_prob <- NA_real_
+      # NOTE: `templates` is derived from `id_cols`, which now excludes
+      # lower/upper, so s1/s2 never carry those columns yet at this point.
+      # Check against `smoothed` (the source of truth for which columns
+      # exist) rather than `s1`/`s2`, then add the columns as NA so the
+      # final rbind()/column-select against names(smoothed) succeeds.
+      if ("lower" %in% names(smoothed)) { s1$lower <- NA_real_; s1$upper <- NA_real_ }
       s2 <- templates[j, , drop = FALSE]
       s2$position  <- del_end + 0.5
       s2$mean_prob <- NA_real_
+      if ("lower" %in% names(smoothed)) { s2$lower <- NA_real_; s2$upper <- NA_real_ }
       sentinels[[2L * j - 1L]] <- s1
       sentinels[[2L * j]]      <- s2
     }
@@ -191,6 +200,34 @@
   mod_code_shapes
 }
 
+# Add a CI ribbon behind the smooth line(s) when requested and columns exist.
+# `fill_aes` controls the visual fill colour (tracking the matching line
+# colour aesthetic). `group_aes` controls polygon separation and defaults to
+# `fill_aes`; pass an explicit interaction() when a branch has more than one
+# identity variable (e.g. group + mod_code) so overlapping CI bands don't
+# collapse into a single self-crossing polygon.
+.add_ci_ribbon <- function(p, smoothed, show_ci, fill_aes = NULL, group_aes = NULL) {
+  if (!isTRUE(show_ci)) return(p)
+  if (!all(c("lower", "upper") %in% names(smoothed))) return(p)
+  rib <- smoothed[!is.na(smoothed$lower) & !is.na(smoothed$upper), , drop = FALSE]
+  if (nrow(rib) == 0L) return(p)
+  aes_args <- list(x = quote(.data$position),
+                   ymin = quote(.data$lower),
+                   ymax = quote(.data$upper))
+  if (!is.null(fill_aes)) aes_args$fill <- fill_aes
+  if (!is.null(group_aes)) aes_args$group <- group_aes
+  ribbon <- ggplot2::geom_ribbon(
+    data = rib,
+    mapping = do.call(ggplot2::aes, aes_args),
+    alpha = 0.2, colour = NA,
+    inherit.aes = FALSE,
+    show.legend = FALSE
+  )
+  # Insert ribbon *before* existing line layers so it renders behind them.
+  p$layers <- c(list(ribbon), p$layers)
+  p
+}
+
 # Common ggplot2 layers for the smoothed modification probability panel.
 # Returns a list of scales/coords/theme components shared by every branch.
 .smooth_panel_base <- function(region_start, region_end) {
@@ -198,13 +235,7 @@
     ggplot2::scale_y_continuous(limits = c(0, 1), name = "Mean modification\nprobability"),
     ggplot2::scale_x_continuous(labels = scales::comma_format()),
     ggplot2::coord_cartesian(xlim = c(region_start, region_end)),
-    ggplot2::theme_minimal(),
-    ggplot2::theme(
-      panel.grid.minor = ggplot2::element_blank(),
-      legend.text      = ggplot2::element_text(size = ggplot2::rel(0.75)),
-      legend.title     = ggplot2::element_text(size = ggplot2::rel(0.75)),
-      legend.key.size  = ggplot2::unit(0.4, "cm")
-    )
+    theme_ggmethylation()
   )
 }
 
@@ -232,7 +263,8 @@
 #'   giving bar colours for each strand. Only used when `colour_strand = TRUE`
 #'   and data is ungrouped. Default `c("+" = "#4393C3", "-" = "#D6604D")`.
 #' @param group_colours Named character vector of colours per group. Defaults
-#'   to `c("1" = "#95babc", "2" = "#efbb76")`, matching the typical HP
+#'   to `c("1" = "#0072B2", "2" = "#E69F00")` (the Okabe-Ito colorblind-safe
+#'   blue/orange pair, see `.GROUP_PALETTE_DEFAULT`), matching the typical HP
 #'   haplotype tag output. Pass `NULL` to use ggplot2 defaults, or supply a
 #'   fully named vector for other group names.
 #' @param smooth_span Loess smoothing span for the bottom panel. When `NULL`
@@ -244,8 +276,10 @@
 #'   When `annotations = NULL`, expects length 2 (`reads`, `smooth`); when
 #'   annotations are provided, expects length 3 (`gene track`, `reads`,
 #'   `smooth`) — the gene panel is placed at the top, reads in the middle, and
-#'   the smoothed probability curve at the bottom. Pass `NULL` to use the
-#'   built-in defaults.
+#'   the smoothed probability curve at the bottom. When `show_delta = TRUE`
+#'   and grouping yields exactly two groups, an additional delta panel is
+#'   appended last, adding one to the expected length in each case above.
+#'   Pass `NULL` to use the built-in defaults.
 #' @param annotations A `gene_annotations` object returned by
 #'   [read_annotations()], or `NULL` (default). When provided, a gene
 #'   annotation track is placed at the top of the composite figure (above the
@@ -279,6 +313,33 @@
 #'   supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
 #'   whenever `variants` is supplied and reads carry SA tags; the visual border
 #'   marking requires `show_supplementary = TRUE`. Default 50.
+#' @param show_ci Logical. When `TRUE` (default), a shaded ribbon showing the
+#'   loess confidence interval (`lower`/`upper` from [smooth_methylation()])
+#'   is drawn behind each smooth line in the bottom panel. Has no effect when
+#'   fewer than 4 unique positions are available for a group/code (no CI is
+#'   computed in that case). Set to `FALSE` to hide the ribbon.
+#' @param call_mode Character. `"continuous"` (default) colours modification
+#'   sites by a continuous probability gradient (`colour_low` to
+#'   `colour_high`). `"binary"` classifies each site as methylated,
+#'   unmethylated, or ambiguous (see `call_threshold`/`call_ambiguous`) and
+#'   colours them with a discrete scale instead.
+#' @param call_threshold Numeric in `[0, 1]`. Modification probability at or
+#'   above which a site is classified as methylated when
+#'   `call_mode = "binary"`. Default `0.5`. Ignored when
+#'   `call_mode = "continuous"`.
+#' @param call_ambiguous `NULL` (default) for a hard threshold, or a numeric
+#'   half-width defining a band `[call_threshold - w, call_threshold + w)`
+#'   around `call_threshold` within which sites are labelled "ambiguous"
+#'   rather than methylated/unmethylated. Ignored when
+#'   `call_mode = "continuous"`.
+#' @param show_delta Logical. When `TRUE`, and grouping yields exactly two
+#'   groups, an additional panel is appended below the smooth panel showing
+#'   the signed difference in loess-smoothed modification probability between
+#'   the two groups (group2 - group1), coloured by sign. Requires `data` to be
+#'   grouped (`data$group_tag` non-`NULL`) with exactly two distinct group
+#'   values; otherwise the panel is silently skipped (with a message). Not
+#'   supported for multi-sample data (`multi_methylation_data`); the argument
+#'   is accepted there but ignored (with a message). Default `FALSE`.
 #'
 #' @return A [ggplot2::ggplot] object (ungrouped) or a
 #'   [patchwork::patchwork] composite (grouped).
@@ -299,7 +360,7 @@ plot_methylation <- function(data, sort_by = NULL,
                              line_width = 0.2,
                              colour_strand = FALSE,
                              strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
-                             group_colours = c("1" = "#95babc", "2" = "#efbb76"),
+                             group_colours = .GROUP_PALETTE_DEFAULT,
                              mod_code_shapes = NULL,
                              smooth_span = NULL,
                              panel_heights = NULL,
@@ -308,7 +369,14 @@ plot_methylation <- function(data, sort_by = NULL,
                              show_cigar = TRUE,
                              min_indel_size = 50L,
                              show_supplementary = TRUE,
-                             bnd_match_tol = 50L) {
+                             bnd_match_tol = 50L,
+                             show_ci = TRUE,
+                             call_mode = c("continuous", "binary"),
+                             call_threshold = 0.5,
+                             call_ambiguous = NULL,
+                             show_delta = FALSE) {
+  call_mode <- match.arg(call_mode)
+
   # --- 1. Validate input ---
   if (inherits(data, "multi_methylation_data")) {
     return(.plot_multi_methylation(
@@ -328,7 +396,12 @@ plot_methylation <- function(data, sort_by = NULL,
       show_cigar         = show_cigar,
       min_indel_size     = min_indel_size,
       show_supplementary = show_supplementary,
-      bnd_match_tol      = bnd_match_tol
+      bnd_match_tol      = bnd_match_tol,
+      show_ci            = show_ci,
+      call_mode          = call_mode,
+      call_threshold     = call_threshold,
+      call_ambiguous     = call_ambiguous,
+      show_delta         = show_delta
     ))
   }
 
@@ -439,7 +512,10 @@ plot_methylation <- function(data, sort_by = NULL,
     show_cigar         = show_cigar,
     cigar_features     = if (isTRUE(show_cigar)) data$cigar_features else NULL,
     min_indel_size     = min_indel_size,
-    show_supplementary = show_supplementary
+    show_supplementary = show_supplementary,
+    call_mode          = call_mode,
+    call_threshold     = call_threshold,
+    call_ambiguous     = call_ambiguous
   )
 
   # --- 7. Build bottom panel ---
@@ -468,6 +544,7 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::geom_line(linewidth = 1, colour = "#C62828") +
         .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)")
+      p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci)
     } else {
       # Multi-code: one line per code, colour by mod_code
       smoothed <- smooth_methylation(sites_smooth, group_col = "group",
@@ -487,6 +564,8 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::geom_line(linewidth = 1) +
         .smooth_panel_base(region_start, region_end) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Modification")
+      p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci,
+                                 fill_aes = quote(.data$mod_code))
     }
   } else {
     # Grouped smooth panel
@@ -515,6 +594,13 @@ plot_methylation <- function(data, sort_by = NULL,
       if (!is.null(group_colours)) {
         p_bottom <- p_bottom +
           ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50")
+      }
+      p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci,
+                                 fill_aes = quote(.data$group))
+      if (!is.null(group_colours)) {
+        p_bottom <- p_bottom +
+          ggplot2::scale_fill_manual(values = group_colours, na.value = "grey50",
+                                     guide = "none")
       }
     } else {
       # Multi-code + grouped: colour by group, linetype by mod_code
@@ -549,6 +635,16 @@ plot_methylation <- function(data, sort_by = NULL,
         p_bottom <- p_bottom +
           ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50")
       }
+      p_bottom <- .add_ci_ribbon(
+        p_bottom, smoothed, show_ci,
+        fill_aes  = quote(.data$group),
+        group_aes = quote(interaction(.data$group, .data$mod_code))
+      )
+      if (!is.null(group_colours)) {
+        p_bottom <- p_bottom +
+          ggplot2::scale_fill_manual(values = group_colours, na.value = "grey50",
+                                     guide = "none")
+      }
     }
   }
 
@@ -575,20 +671,77 @@ plot_methylation <- function(data, sort_by = NULL,
     )
   }
 
-  # --- 9. Combine with patchwork ---
-  # Panel order (when gene panel present): gene (top), reads, smooth (bottom
-  # with genomic coordinates). When no gene panel: reads, smooth.
-  panels   <- list(p_top, p_bottom)
-  n_panels <- 2L
-
-  if (!is.null(p_gene)) {
-    panels   <- c(list(p_gene), panels)
-    n_panels <- 3L
+  # --- 8c. Build delta panel (optional; requires exactly 2 groups) ---
+  p_delta <- NULL
+  if (isTRUE(show_delta) && !is.null(data$group_tag)) {
+    delta_df <- .compute_group_delta(data$sites, "group", span = smooth_span)
+    if (!is.null(delta_df)) {
+      # Break the delta over consensus deletions too, for visual consistency.
+      # NOTE: .apply_deletion_breaks()/.consensus_deletion_ranges() key
+      # deletion ranges by the *real* per-read group values ("1"/"2", from
+      # `data$reads`), not by an arbitrary single-line identity. A naive
+      # rename-and-call-through (tagging delta_df$group <- "delta" and
+      # passing it straight to .apply_deletion_breaks()) would silently never
+      # match any range's group value, so no breaks would ever be applied.
+      # Instead, compute the ranges directly (per real group) and then
+      # relabel their `group` column to "delta" so .insert_deletion_breaks()
+      # matches them against the single delta line. This applies a break
+      # wherever *either* group has a consensus deletion.
+      if (isTRUE(show_cigar) && !is.null(data$cigar_features) &&
+          nrow(data$cigar_features) > 0L) {
+        dels <- data$cigar_features[
+          data$cigar_features$type == "D" &
+            data$cigar_features$length >= min_indel_size,
+          , drop = FALSE
+        ]
+        if (nrow(dels) > 0L) {
+          ranges <- .consensus_deletion_ranges(dels, data$reads, "group")
+          if (nrow(ranges) > 0L) {
+            ranges$group <- "delta"
+            delta_for_break <- stats::setNames(
+              delta_df[c("position", "delta")], c("position", "mean_prob")
+            )
+            delta_for_break$group <- "delta"
+            delta_for_break <- .insert_deletion_breaks(
+              delta_for_break, ranges, "group"
+            )
+            delta_df <- data.frame(
+              position = delta_for_break$position,
+              delta    = delta_for_break$mean_prob,
+              stringsAsFactors = FALSE
+            )
+            delta_df$sign <- ifelse(
+              is.na(delta_df$delta), NA_character_,
+              ifelse(delta_df$delta > 0, "pos",
+                     ifelse(delta_df$delta < 0, "neg", "zero"))
+            )
+          }
+        }
+      }
+      p_delta <- .build_delta_panel(delta_df, region_start, region_end)
+      # The smooth panel is no longer the bottom-most; hide its x-axis title/labels
+      p_bottom <- p_bottom +
+        ggplot2::theme(axis.title.x = ggplot2::element_blank())
+    }
   }
+
+  # --- 9. Combine with patchwork ---
+  # Panel order (when gene panel present): gene (top), reads, smooth, delta
+  # (bottom with genomic coordinates, when show_delta applies). When no gene
+  # panel: reads, smooth, delta.
+  panels <- list(p_top, p_bottom)
+  if (!is.null(p_gene))  panels <- c(list(p_gene), panels)
+  if (!is.null(p_delta)) panels <- c(panels, list(p_delta))
+  n_panels <- length(panels)
 
   # Compute heights
   if (is.null(panel_heights)) {
-    heights <- c(if (!is.null(p_gene)) 0.08 else NULL, 1, 0.25)
+    heights <- c(
+      if (!is.null(p_gene)) 0.08 else NULL,
+      1,                       # reads
+      0.25,                    # smooth
+      if (!is.null(p_delta)) 0.2 else NULL
+    )
   } else {
     if (length(panel_heights) != n_panels) {
       stop(sprintf(
@@ -604,6 +757,10 @@ plot_methylation <- function(data, sort_by = NULL,
 
 # Internal multi-sample renderer
 # Not exported — called by plot_methylation() when data is multi_methylation_data.
+# NOTE: `show_ci` is accepted here only for signature compatibility with the
+# call from plot_methylation(); wiring the CI ribbon into the shared
+# multi-sample smooth panel is out of scope for this change (see task-3
+# brief's file scope) and is left for a follow-up.
 
 .plot_multi_methylation <- function(data, sort_by, colour_low, colour_high,
                                     line_width, colour_strand, strand_colours,
@@ -612,7 +769,16 @@ plot_methylation <- function(data, sort_by = NULL,
                                     variants, show_cigar = FALSE,
                                     min_indel_size = 50L,
                                     show_supplementary = FALSE,
-                                    bnd_match_tol = 50L) {
+                                    bnd_match_tol = 50L,
+                                    show_ci = TRUE,
+                                    call_mode = "continuous",
+                                    call_threshold = 0.5,
+                                    call_ambiguous = NULL,
+                                    show_delta = FALSE) {
+
+  if (isTRUE(show_delta)) {
+    message("`show_delta` is not supported for multi-sample data; ignoring.")
+  }
 
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
@@ -717,7 +883,10 @@ plot_methylation <- function(data, sort_by = NULL,
       show_cigar         = show_cigar,
       cigar_features     = if (isTRUE(show_cigar)) s$cigar_features else NULL,
       min_indel_size     = min_indel_size,
-      show_supplementary = show_supplementary
+      show_supplementary = show_supplementary,
+      call_mode          = call_mode,
+      call_threshold     = call_threshold,
+      call_ambiguous     = call_ambiguous
     )
     p_reads <- p_reads + ggplot2::labs(title = nm)
     sample_panels[[i]] <- p_reads
