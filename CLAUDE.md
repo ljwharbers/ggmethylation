@@ -55,6 +55,16 @@ The package has three layers:
 - `$mod_code`: character vector of modification codes
 - `$group_tag`: BAM tag name or `NULL`
 
+### Per-read site presence
+
+`$sites` does **not** contain every canonical base in the region for every read. Five mechanisms explain why a reference position may be absent for a given read:
+
+1. **MM tag flag** — the basecaller's MM entry may use `?` (or no flag), meaning unlisted canonical bases carry no information; only listed bases are emitted. When the entry uses `.`, unlisted canonical bases are emitted with `mod_prob = 0` (implicit-unmodified). `parse_mm_ml()` now honours the flag: `.` → emit zeros, `?` / none → omit.
+2. **Basecaller convention** — dorado 5mC typically lists all CpGs (high and low ML values); 6mA basecallers typically only list modified adenines.
+3. **Sequence differences** — a SNV or sequencing error makes the base non-canonical at that position in a specific read; the MM delta walk never reaches it.
+4. **CIGAR effects** — positions inside `D`/`N` have no query base; positions inside `I` have no reference coordinate (appear in `$insertion_sites` instead).
+5. **Different alignment span** — a read simply does not cover that reference position.
+
 ## Test Data
 
 Integration tests require a real BAM file at:

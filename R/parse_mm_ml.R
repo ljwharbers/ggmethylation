@@ -79,11 +79,14 @@ seq_to_ref <- function(cigar, pos, query_positions) {
 #'   \describe{
 #'     \item{sites}{Reference-aligned modifications. Columns `position`
 #'       (integer, 1-based genomic position) and `mod_prob` (numeric,
-#'       ML value / 255).}
+#'       ML value / 255). When the MM entry uses the `.` implicit-unmodified
+#'       flag, also includes rows for unlisted canonical positions with
+#'       `mod_prob = 0`.}
 #'     \item{insertion_sites}{Modifications whose query base falls inside
 #'       a CIGAR `I` interval (no reference position). Columns `query_pos`
 #'       (integer, 1-based position in the read sequence) and `mod_prob`
-#'       (numeric). Modifications inside soft/hard clips are still dropped.}
+#'       (numeric). Modifications inside soft/hard clips are still dropped.
+#'       Implicit-zero positions (`.` flag) inside insertions are not emitted.}
 #'   }
 #'   Returns both frames empty (zero rows, same columns) when the
 #'   requested modification is not present.
@@ -124,13 +127,19 @@ parse_mm_ml <- function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos) {
 
   for (j in seq_along(entries)) {
     entry <- entries[j]
-    # Strip '?' and '.' flags (implicit unmodified bases indicators)
-    entry <- gsub("[?.]", "", entry)
 
-    # Split on comma: first element is like "C+m", rest are deltas
-    parts <- strsplit(entry, ",")[[1]]
-    spec <- parts[1]
+    # Split on comma: first element is the spec (e.g. "C+m", "C+m?", "C+m."),
+    # rest are skip-count deltas.
+    parts  <- strsplit(entry, ",")[[1]]
+    spec   <- parts[1]
     deltas <- if (length(parts) > 1) as.integer(parts[2:length(parts)]) else integer(0)
+
+    # Extract the optional implicit-base flag ('?' or '.') from the end of the
+    # spec. Per SAM spec: '.' means unlisted canonical bases are implicitly
+    # unmodified (mod_prob = 0); '?' or absent means no information.
+    last_char <- if (nchar(spec) > 0L) substr(spec, nchar(spec), nchar(spec)) else ""
+    flag_char <- if (last_char %in% c("?", ".")) last_char else ""
+    if (nzchar(flag_char)) spec <- substr(spec, 1L, nchar(spec) - 1L)
 
     # Parse the spec: canonical_base + strand_char + code
     # e.g., "C+m" -> base="C", mm_strand="+", code="m"
@@ -142,6 +151,7 @@ parse_mm_ml <- function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos) {
       canonical_base = canonical_base,
       mm_strand = mm_strand,
       code = code,
+      flag = flag_char,
       deltas = deltas,
       n_values = length(deltas)
     )
@@ -158,7 +168,9 @@ parse_mm_ml <- function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos) {
   target <- parsed_entries[[target_idx]]
   deltas <- target$deltas
 
-  if (length(deltas) == 0) {
+  # With '.' flag an empty delta list means every canonical base is implicitly
+  # unmodified; we still need to emit them. Only bail out early for '?' / none.
+  if (length(deltas) == 0 && !identical(target$flag, ".")) {
     return(empty_result)
   }
 
@@ -223,17 +235,40 @@ parse_mm_ml <- function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos) {
   # Guard against out-of-bounds indices
   valid <- modified_indices >= 1L & modified_indices <= length(canonical_positions)
   if (!any(valid)) {
-    return(empty_result)
+    # With '.' flag, even if no listed modifications are in-bounds we can still
+    # emit implicit-zero rows for all canonical positions.
+    if (!identical(target$flag, ".") || length(canonical_positions) == 0L) {
+      return(empty_result)
+    }
+    modified_indices <- integer(0L)
+    ml_values        <- integer(0L)
+  } else {
+    modified_indices <- modified_indices[valid]
+    ml_values        <- ml_values[valid]
   }
-
-  modified_indices <- modified_indices[valid]
-  ml_values <- ml_values[valid]
 
   modified_seq_positions <- canonical_positions[modified_indices]
 
+  # --- 4b. Unwalked canonical positions for '.' (implicit-unmodified) flag ---
+  # When the MM entry uses '.', any canonical base NOT listed in the delta walk
+  # is implicitly unmodified (mod_prob = 0). Compute those indices now; they
+  # will be emitted as explicit zeros in Section 6.
+  target_flag <- target$flag
+  unwalked_indices <- if (identical(target_flag, ".") && length(canonical_positions) > 0L) {
+    setdiff(seq_along(canonical_positions), modified_indices)
+  } else {
+    integer(0L)
+  }
 
   # --- 5. Convert sequence positions to genomic positions ---
   ref_positions <- seq_to_ref(cigar, pos, modified_seq_positions)
+
+  # Map implicit-zero positions to reference coordinates (NA for I/S positions)
+  zero_ref_positions <- if (length(unwalked_indices) > 0L) {
+    seq_to_ref(cigar, pos, canonical_positions[unwalked_indices])
+  } else {
+    integer(0L)
+  }
 
 
   # --- 6. Build result: ref-aligned sites and insertion sites ---
@@ -247,6 +282,20 @@ parse_mm_ml <- function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos) {
     )
   } else {
     empty_sites
+  }
+
+  # Append implicit-zero rows for '.' flag positions that map to reference.
+  # Positions inside insertions/clips return NA from seq_to_ref and are dropped.
+  if (length(zero_ref_positions) > 0L) {
+    zero_ref_mask <- !is.na(zero_ref_positions)
+    if (any(zero_ref_mask)) {
+      zero_df <- data.frame(
+        position = zero_ref_positions[zero_ref_mask],
+        mod_prob = 0,
+        stringsAsFactors = FALSE
+      )
+      sites_df <- if (nrow(sites_df) > 0L) rbind(sites_df, zero_df) else zero_df
+    }
   }
 
   # Classify NA positions: insertion (CIGAR I) vs soft/hard clip (dropped)

@@ -193,3 +193,79 @@ test_that("parse_mm_ml routes insertion mods to $insertion_sites on minus strand
   expect_equal(result$insertion_sites$query_pos, 7L)
   expect_equal(result$insertion_sites$mod_prob, 50 / 255)
 })
+
+# --- MM tag flag semantics ('.' vs '?' vs absent) ---
+
+test_that("parse_mm_ml '.' flag emits unlisted CpGs as mod_prob = 0 (forward strand)", {
+  # seq = "ACGACGACG": C's at query positions 2, 5, 8 -> ref 1001, 1004, 1007
+  # "C+m.,0;" flag='.', delta=0 -> first C (pos 2, ref 1001) is listed/modified
+  # Unlisted C's at pos 5 and 8 are implicitly unmodified -> mod_prob = 0
+  result <- ggmethylation:::parse_mm_ml(
+    seq      = "ACGACGACG",
+    mm_tag   = "C+m.,0;",
+    ml_tag   = as.integer(200),
+    mod_code = "m",
+    strand   = "+",
+    cigar    = "9M",
+    pos      = 1000L
+  )
+  expect_equal(sort(result$sites$position), c(1001L, 1004L, 1007L))
+  listed_row <- result$sites[result$sites$position == 1001L, ]
+  expect_equal(listed_row$mod_prob, 200 / 255)
+  zero_rows <- result$sites[result$sites$position %in% c(1004L, 1007L), ]
+  expect_true(all(zero_rows$mod_prob == 0))
+  expect_equal(nrow(result$sites), 3L)
+})
+
+test_that("parse_mm_ml '?' flag does NOT emit unlisted CpGs", {
+  # Same setup but flag='?' -> only the listed C is emitted
+  result <- ggmethylation:::parse_mm_ml(
+    seq      = "ACGACGACG",
+    mm_tag   = "C+m?,0;",
+    ml_tag   = as.integer(200),
+    mod_code = "m",
+    strand   = "+",
+    cigar    = "9M",
+    pos      = 1000L
+  )
+  expect_equal(result$sites$position, 1001L)
+  expect_equal(result$sites$mod_prob, 200 / 255)
+  expect_equal(nrow(result$sites), 1L)
+})
+
+test_that("parse_mm_ml no flag is treated conservatively (like '?')", {
+  # "C+m,0;" has no flag -> only the listed C is emitted
+  result <- ggmethylation:::parse_mm_ml(
+    seq      = "ACGACGACG",
+    mm_tag   = "C+m,0;",
+    ml_tag   = as.integer(200),
+    mod_code = "m",
+    strand   = "+",
+    cigar    = "9M",
+    pos      = 1000L
+  )
+  expect_equal(result$sites$position, 1001L)
+  expect_equal(nrow(result$sites), 1L)
+})
+
+test_that("parse_mm_ml '.' flag emits implicit zeros on reverse strand", {
+  # seq = "AGCAGCAGC" (BAM sequence for a '-' strand read)
+  # G's at query positions 2, 5, 8
+  # strand="-", "C+m.,0;" -> search_base="G", reverse_scan=TRUE
+  # canonical_positions reversed: c(8, 5, 2)
+  # delta=0 -> first in reversed order -> query 8 (listed, ref 1007)
+  # unwalked -> query 5 (ref 1004), query 2 (ref 1001) -> mod_prob = 0
+  result <- ggmethylation:::parse_mm_ml(
+    seq      = "AGCAGCAGC",
+    mm_tag   = "C+m.,0;",
+    ml_tag   = as.integer(200),
+    mod_code = "m",
+    strand   = "-",
+    cigar    = "9M",
+    pos      = 1000L
+  )
+  expect_equal(sort(result$sites$position), c(1001L, 1004L, 1007L))
+  expect_equal(result$sites$mod_prob[result$sites$position == 1007L], 200 / 255)
+  expect_true(all(result$sites$mod_prob[result$sites$position %in% c(1001L, 1004L)] == 0))
+  expect_equal(nrow(result$sites), 3L)
+})

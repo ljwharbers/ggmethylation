@@ -4,3 +4,4 @@
 ^LICENSE\.md$
 ^.*\.Rproj$
 ^data-raw$
+^tools$
