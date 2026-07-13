@@ -28,11 +28,14 @@ A named \code{list} with two \code{data.frame} elements:
 \describe{
 \item{sites}{Reference-aligned modifications. Columns \code{position}
 (integer, 1-based genomic position) and \code{mod_prob} (numeric,
-ML value / 255).}
+ML value / 255). When the MM entry uses the \code{.} implicit-unmodified
+flag, also includes rows for unlisted canonical positions with
+\code{mod_prob = 0}.}
 \item{insertion_sites}{Modifications whose query base falls inside
 a CIGAR \code{I} interval (no reference position). Columns \code{query_pos}
 (integer, 1-based position in the read sequence) and \code{mod_prob}
-(numeric). Modifications inside soft/hard clips are still dropped.}
+(numeric). Modifications inside soft/hard clips are still dropped.
+Implicit-zero positions (\code{.} flag) inside insertions are not emitted.}
 }
 Returns both frames empty (zero rows, same columns) when the
 requested modification is not present.
