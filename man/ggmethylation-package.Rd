@@ -6,7 +6,7 @@
 \alias{ggmethylation-package}
 \title{ggmethylation: Read-Level Methylation Visualisation from Long-Read Sequencing}
 \description{
-Visualise read-level base modification data from long-read sequencing (Oxford Nanopore, PacBio). Parses MM/ML tags from modBAM files and produces ggplot2 read-level methylation plots with optional group summary panels.
+Visualise read-level base modification data from long-read sequencing (Oxford Nanopore, PacBio). Parses MM/ML tags from modBAM files and produces ggplot2 read-level methylation plots with optional group summary panels. Supports insertion-aware modification calls: retains modification probabilities on inserted bases, discovers insertion loci across reads, and visualises per-locus modification patterns in a stitched coordinate system.
 }
 \author{
 \strong{Maintainer}: Luuk Harbers \email{l.j.w.harbers@gmail.com}

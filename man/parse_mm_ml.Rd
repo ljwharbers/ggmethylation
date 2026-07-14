@@ -24,13 +24,20 @@ for 5mC, \code{"h"} for 5hmC).}
 \item{pos}{Integer. 1-based leftmost alignment position (BAM POS field).}
 }
 \value{
-A \code{data.frame} with columns:
+A named \code{list} with two \code{data.frame} elements:
 \describe{
-\item{position}{Integer. 1-based genomic position of the modification.}
-\item{mod_prob}{Numeric. Probability of modification (0--1), computed
-as ML value / 255.}
+\item{sites}{Reference-aligned modifications. Columns \code{position}
+(integer, 1-based genomic position) and \code{mod_prob} (numeric,
+ML value / 255). When the MM entry uses the \code{.} implicit-unmodified
+flag, also includes rows for unlisted canonical positions with
+\code{mod_prob = 0}.}
+\item{insertion_sites}{Modifications whose query base falls inside
+a CIGAR \code{I} interval (no reference position). Columns \code{query_pos}
+(integer, 1-based position in the read sequence) and \code{mod_prob}
+(numeric). Modifications inside soft/hard clips are still dropped.
+Implicit-zero positions (\code{.} flag) inside insertions are not emitted.}
 }
-Returns an empty data.frame (zero rows, same columns) when the
+Returns both frames empty (zero rows, same columns) when the
 requested modification is not present.
 }
 \description{

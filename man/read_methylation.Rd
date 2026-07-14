@@ -80,6 +80,13 @@ overlay.}
 \item{cigar_features}{Data.frame of structural CIGAR features (type,
 ref_start, ref_end, query_start, query_end, length, read_name) for
 insertions (\code{"I"}), deletions (\code{"D"}), and skipped regions (\code{"N"}).}
+\item{insertion_sites}{Data.frame of modification calls that fall on
+inserted bases (no reference coordinate). Columns: \code{read_name},
+\code{ref_anchor} (reference position the insertion sits before),
+\code{query_pos} (1-based position in the read sequence), \code{ins_offset}
+(1-based position within the insertion), \code{ins_length}, \code{mod_prob},
+\code{mod_code}, and optionally \code{group}. Zero rows when no insertions
+carry modification calls.}
 }
 }
 \description{

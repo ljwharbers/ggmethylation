@@ -1,3 +1,45 @@
+#' Fit a loess curve to x/y data and predict on a 200-point grid
+#'
+#' Core smoothing primitive used by [smooth_methylation()] and
+#' [plot_insertion_locus()]. Aggregates y values per unique x by mean, fits a
+#' loess curve, and returns predictions on a regular 200-point grid.
+#'
+#' @param x Numeric vector of positions.
+#' @param y Numeric vector of values (same length as `x`).
+#' @param span Numeric or NULL. Loess span. When NULL, uses adaptive rule
+#'   `max(0.15, min(0.75, 15 / n_unique_x))`.
+#'
+#' @return A data.frame with columns `position` and `mean_prob`. Returns
+#'   raw per-x means when fewer than 4 unique x values are present.
+#'
+#' @keywords internal
+.smooth_xy <- function(x, y, span = NULL) {
+  agg <- stats::aggregate(y ~ x, FUN = mean)
+  names(agg) <- c("position", "mean_prob")
+
+  effective_span <- if (is.null(span)) {
+    max(0.15, min(0.75, 15 / nrow(agg)))
+  } else {
+    span
+  }
+
+  if (nrow(agg) < 4L) {
+    return(agg)
+  }
+
+  tryCatch(
+    suppressWarnings({
+      fit  <- stats::loess(mean_prob ~ position, data = agg, span = effective_span)
+      grid <- seq(min(agg$position, na.rm = TRUE),
+                  max(agg$position, na.rm = TRUE),
+                  length.out = 200L)
+      pred <- stats::predict(fit, newdata = data.frame(position = grid))
+      data.frame(position = grid, mean_prob = pred)
+    }),
+    error = function(e) agg
+  )
+}
+
 #' Smooth methylation probabilities per group using loess
 #'
 #' Computes loess-smoothed mean modification probability per group across
