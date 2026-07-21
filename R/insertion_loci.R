@@ -56,6 +56,13 @@ insertion_sites <- function(m) {
 #'   Sorted by `anchor_pos`. Returns a zero-row data.frame when no insertions
 #'   pass the `min_reads` threshold.
 #'
+#' @examples
+#' \dontrun{
+#' md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
+#' loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
+#' loci$locus_id
+#' }
+#'
 #' @export
 list_insertion_loci <- function(m, tol_pos = 10L, tol_len = 0.20,
                                 min_reads = 2L) {

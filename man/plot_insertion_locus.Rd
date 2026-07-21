@@ -12,8 +12,8 @@ plot_insertion_locus(
   include_noncarriers = TRUE,
   tol_pos = 10L,
   tol_len = 0.2,
-  colour_low = "#313695",
-  colour_high = "#A50026"
+  colour_low = "#BDBDBD",
+  colour_high = "#C62828"
 )
 }
 \arguments{
@@ -37,10 +37,10 @@ the value used when calling \code{\link[=list_insertion_loci]{list_insertion_loc
 \item{tol_len}{Numeric. Length tolerance used for re-clustering (default 0.20).}
 
 \item{colour_low}{Character. Colour for low modification probability
-(default \code{"#313695"}).}
+(default \code{"#BDBDBD"}).}
 
 \item{colour_high}{Character. Colour for high modification probability
-(default \code{"#A50026"}).}
+(default \code{"#C62828"}).}
 }
 \value{
 A \code{patchwork} object (or a single ggplot when \code{show_smoothed = FALSE}).
@@ -53,4 +53,12 @@ with an optional loess-smoothed comparison panel below.
 }
 \details{
 Use \code{\link[=list_insertion_loci]{list_insertion_loci()}} to discover available \code{locus_id} values.
+}
+\examples{
+\dontrun{
+md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
+loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
+plot_insertion_locus(md, loci$locus_id[1L])
+}
+
 }

@@ -225,3 +225,48 @@ test_that("plot_insertion_locus() respects include_noncarriers = FALSE", {
                                             include_noncarriers = FALSE)
   expect_true(inherits(p, c("gg", "patchwork")))
 })
+
+test_that("plot_insertion_locus() uses the shared package colour palette", {
+  # Defaults should match plot_methylation()'s shared grey -> red gradient.
+  fun_args <- formals(ggmethylation::plot_insertion_locus)
+  expect_equal(eval(fun_args$colour_low), "#BDBDBD")
+  expect_equal(eval(fun_args$colour_high), "#C62828")
+
+  # Enough per-read sites (>= 4 per group/region) are needed for the smoothed
+  # panel to actually build a patchwork (rather than falling back to the read
+  # panel alone) -- see .add_smooth()'s `length(x_vals) < 4L` guard.
+  ins_sites <- data.frame(
+    read_name  = c("r1", "r2"),
+    ref_anchor = c(100L, 103L),
+    query_pos  = c(55L, 55L),
+    ins_offset = c(1L, 1L),
+    ins_length = c(50L, 50L),
+    mod_prob   = c(0.8, 0.6),
+    mod_code   = c("m", "m"),
+    stringsAsFactors = FALSE
+  )
+  sites <- data.frame(
+    read_name = rep(c("r1", "r2"), each = 4L),
+    position  = c(60L, 65L, 70L, 75L, 62L, 67L, 72L, 77L),
+    mod_prob  = c(0.1, 0.3, 0.5, 0.7, 0.2, 0.4, 0.6, 0.8),
+    mod_code  = "m",
+    stringsAsFactors = FALSE
+  )
+  reads <- make_reads(c("r1", "r2", "r3"), c(1L, 1L, 1L), c(300L, 300L, 300L))
+  cf    <- make_cf(c("r1", "r2"), c(100L, 103L), c(50L, 50L))
+  md    <- make_test_md(reads, cf, ins_sites_df = ins_sites)
+  md$sites <- sites
+
+  loci <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
+  p <- ggmethylation::plot_insertion_locus(md, loci$locus_id[1L], show_smoothed = TRUE)
+  expect_true(inherits(p, "patchwork"))
+
+  # Read-panel carrier fill should be the Okabe-Ito blue, non-carrier neutral grey.
+  poly_layer_data <- ggplot2::layer_data(p[[1]], 1L)
+  expect_true("#0072B2" %in% poly_layer_data$fill)
+  expect_true("#999999" %in% poly_layer_data$fill)
+
+  # Smooth-panel line colours should match the same palette.
+  smooth_layer_data <- ggplot2::layer_data(p[[2]], 1L)
+  expect_true(all(smooth_layer_data$colour %in% c("#0072B2", "#999999")))
+})

@@ -48,3 +48,11 @@ lengths are within the specified tolerances of each other. Returns a summary
 tibble sorted by anchor position; pass a \code{locus_id} value to
 \code{\link[=plot_insertion_locus]{plot_insertion_locus()}} to visualise a specific locus.
 }
+\examples{
+\dontrun{
+md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
+loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
+loci$locus_id
+}
+
+}
