@@ -22,11 +22,18 @@
 #'   the value used when calling [list_insertion_loci()]; default 10).
 #' @param tol_len Numeric. Length tolerance used for re-clustering (default 0.20).
 #' @param colour_low Character. Colour for low modification probability
-#'   (default `"#313695"`).
+#'   (default `"#BDBDBD"`).
 #' @param colour_high Character. Colour for high modification probability
-#'   (default `"#A50026"`).
+#'   (default `"#C62828"`).
 #'
 #' @return A `patchwork` object (or a single ggplot when `show_smoothed = FALSE`).
+#'
+#' @examples
+#' \dontrun{
+#' md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
+#' loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
+#' plot_insertion_locus(md, loci$locus_id[1L])
+#' }
 #'
 #' @export
 plot_insertion_locus <- function(m, locus_id,
@@ -35,8 +42,8 @@ plot_insertion_locus <- function(m, locus_id,
                                   include_noncarriers = TRUE,
                                   tol_pos            = 10L,
                                   tol_len            = 0.20,
-                                  colour_low         = "#313695",
-                                  colour_high        = "#A50026") {
+                                  colour_low         = "#BDBDBD",
+                                  colour_high        = "#C62828") {
   if (!inherits(m, "methylation_data")) {
     stop("'m' must be a methylation_data object.", call. = FALSE)
   }
@@ -185,8 +192,8 @@ plot_insertion_locus <- function(m, locus_id,
   poly_data   <- .make_read_polygons(segs_all, arrow_w, half_height)
 
   # Fill colour by carrier_status
-  carrier_fill    <- "#5E81AC"
-  noncarrier_fill <- "#AAAAAA"
+  carrier_fill    <- "#0072B2"
+  noncarrier_fill <- "#999999"
   poly_data$fill_col <- ifelse(
     poly_data$carrier_status == "carrier", carrier_fill, noncarrier_fill
   )
@@ -259,7 +266,7 @@ plot_insertion_locus <- function(m, locus_id,
     ggplot2::geom_vline(xintercept = c(sep1, sep2),
                         linetype = "dashed", colour = "grey50", linewidth = 0.5) +
     ggplot2::coord_cartesian(ylim = y_limits, expand = FALSE) +
-    ggplot2::theme_minimal() +
+    theme_ggmethylation() +
     ggplot2::theme(
       axis.title  = ggplot2::element_blank(),
       axis.text.x = ggplot2::element_blank(),
@@ -378,7 +385,7 @@ plot_insertion_locus <- function(m, locus_id,
   smooth_df <- rbind(smooth_df, do.call(rbind, breaks_list))
   smooth_df <- smooth_df[order(smooth_df$group, smooth_df$position), , drop = FALSE]
 
-  group_colours <- c("carrier" = "#5E81AC", "non-carrier" = "#AAAAAA")
+  group_colours <- c("carrier" = "#0072B2", "non-carrier" = "#999999")
 
   p_smooth <- ggplot2::ggplot(
     smooth_df,
@@ -390,7 +397,7 @@ plot_insertion_locus <- function(m, locus_id,
                         linetype = "dashed", colour = "grey50", linewidth = 0.5) +
     ggplot2::scale_colour_manual(values = group_colours, name = NULL) +
     ggplot2::scale_y_continuous(limits = c(0, 1), name = "Mean mod. prob.") +
-    ggplot2::theme_minimal() +
+    theme_ggmethylation() +
     ggplot2::theme(
       axis.title.x  = ggplot2::element_blank(),
       axis.text.x   = ggplot2::element_blank(),
