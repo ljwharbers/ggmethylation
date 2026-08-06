@@ -40,9 +40,21 @@
   panel showing the signed difference in loess-smoothed modification
   probability between the two groups (group2 - group1), rendered as a
   diverging area coloured by sign. Not supported for multi-sample data.
+- `plot_methylation()` gains `colour_ambiguous` (default `"#78909C"`) to set
+  the read-panel colour of ambiguous calls, alongside the existing
+  `colour_low`/`colour_high`. Only used when `call_mode = "binary"` and
+  `call_ambiguous` is non-`NULL`.
 
 ## Bug fixes
 
+- The delta panel's y-axis title was long enough to overflow its (short) panel
+  and collide with the smooth panel's y-axis title above it. It is now
+  `"Δ fraction methylated"` / `"Δ methylation"`; the `"(group2 - group1)"` line
+  is dropped, since the fill colour now identifies which group is higher.
+- Ambiguous calls were drawn in `grey75`, which is indistinguishable from the
+  default `colour_low` (`"#BDBDBD"`) — setting `call_ambiguous` therefore did
+  not actually make low-confidence calls visible. They now use a slate
+  blue-grey deliberately off the `colour_low`/`colour_high` ramp.
 - `.insert_deletion_breaks()` (internal) now also nulls the `lower`/`upper`
   confidence-interval columns inside consensus deletion gaps, matching the
   existing `mean_prob` masking, so the CI ribbon does not bridge across
@@ -52,6 +64,11 @@
 
 - Default `group_colours` updated to a colorblind-safe Okabe-Ito blue/orange
   pair. Pass an explicit `group_colours` vector to restore prior colours.
+- The `show_delta` panel now takes its fills from `group_colours` rather than
+  a fixed diverging pair: the area is coloured by whichever group is higher at
+  each position (positive = group 2, negative = group 1), so all panels agree
+  on which colour means which group. Falls back to the previous diverging
+  palette when `group_colours` is `NULL` or does not name both groups.
 
 ## Internal changes
 

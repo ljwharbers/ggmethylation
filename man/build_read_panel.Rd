@@ -11,6 +11,7 @@ build_read_panel(
   region_end,
   colour_low,
   colour_high,
+  colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
   line_width,
   colour_strand,
   strand_colours,
@@ -42,6 +43,9 @@ dashed separator lines should be drawn (between groups). Pass
 \item{colour_low}{Colour for low modification probability.}
 
 \item{colour_high}{Colour for high modification probability.}
+
+\item{colour_ambiguous}{Colour for ambiguous calls. Only used when
+\code{call_mode = "binary"} and \code{call_ambiguous} is non-\code{NULL}.}
 
 \item{line_width}{Linewidth of modification site markers.}
 

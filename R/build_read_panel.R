@@ -243,6 +243,8 @@
 #' @param region_end Integer. Right boundary of the x-axis.
 #' @param colour_low Colour for low modification probability.
 #' @param colour_high Colour for high modification probability.
+#' @param colour_ambiguous Colour for ambiguous calls. Only used when
+#'   `call_mode = "binary"` and `call_ambiguous` is non-`NULL`.
 #' @param line_width Linewidth of modification site markers.
 #' @param colour_strand Logical. Colour read bars by strand when ungrouped.
 #' @param strand_colours Named character vector with `"+"` and `"-"` entries.
@@ -271,6 +273,7 @@ build_read_panel <- function(data,
                              region_end,
                              colour_low,
                              colour_high,
+                             colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
                              line_width,
                              colour_strand,
                              strand_colours,
@@ -414,7 +417,7 @@ build_read_panel <- function(data,
                            needs_new_scale = TRUE)
     }
     p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
-                                colour_low, colour_high,
+                                colour_low, colour_high, colour_ambiguous,
                                 call_mode, call_threshold, call_ambiguous)
 
     if (length(separator_lanes) > 0L) {
@@ -447,7 +450,7 @@ build_read_panel <- function(data,
                              needs_new_scale = TRUE)
       }
       p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
-                                colour_low, colour_high,
+                                colour_low, colour_high, colour_ambiguous,
                                 call_mode, call_threshold, call_ambiguous)
     } else {
       # Plain (no grouping, no strand colouring)
@@ -469,7 +472,7 @@ build_read_panel <- function(data,
                              needs_new_scale = FALSE)
       }
       p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
-                                colour_low, colour_high,
+                                colour_low, colour_high, colour_ambiguous,
                                 call_mode, call_threshold, call_ambiguous)
     }
   }
@@ -634,6 +637,7 @@ build_read_panel <- function(data,
 # a manual discrete scale instead of the continuous gradient.
 .add_mod_prob_segments <- function(p, sites_plot, half_height, line_width,
                                     colour_low, colour_high,
+                                    colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
                                     call_mode = "continuous",
                                     call_threshold = 0.5,
                                     call_ambiguous = NULL) {
@@ -641,7 +645,7 @@ build_read_panel <- function(data,
     sites_plot$.call <- .classify_calls(sites_plot$mod_prob,
                                         call_threshold, call_ambiguous)
     vals <- c(unmethylated = colour_low, methylated = colour_high,
-              ambiguous = "grey75")
+              ambiguous = colour_ambiguous)
     return(
       p +
         ggplot2::geom_segment(

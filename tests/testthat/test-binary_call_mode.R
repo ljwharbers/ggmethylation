@@ -61,6 +61,67 @@ test_that("plot_methylation renders in binary mode", {
 })
 
 
+# --- Ambiguous call colour --------------------------------------------------
+
+# Colours actually rendered onto the read panel's modification-site segments,
+# keyed by call class. The read panel is the first patchwork panel.
+call_colours <- function(p, sites) {
+  built <- ggplot2::ggplot_build(p[[1]])
+  # The segment layer carrying the calls is the one whose data row count
+  # matches the number of sites.
+  for (d in built$data) {
+    if (nrow(d) == nrow(sites) && "colour" %in% names(d)) return(d$colour)
+  }
+  character(0)
+}
+
+test_that("ambiguous calls render in a colour distinct from unmethylated", {
+  # 0.45 falls inside a +/-0.1 band around 0.5 -> ambiguous; 0.05 -> unmethylated;
+  # 0.95 -> methylated. All three classes must be visually separable.
+  reads <- data.frame(
+    read_name = "r1", start = 1000L, end = 2000L, strand = "+",
+    lane = 0L, mean_mod_prob = 0.5, clip_side = NA_character_,
+    sa_chrom = NA_character_, stringsAsFactors = FALSE
+  )
+  sites <- data.frame(
+    read_name = "r1", position = c(1200, 1500, 1800),
+    mod_prob = c(0.05, 0.45, 0.95), mod_code = "m",
+    stringsAsFactors = FALSE
+  )
+  md <- make_test_data(reads, sites)
+
+  p <- ggmethylation::plot_methylation(
+    md, call_mode = "binary", call_ambiguous = 0.1,
+    show_supplementary = FALSE
+  )
+  cols <- call_colours(p, sites)
+  expect_length(unique(cols), 3L)
+  expect_true(ggmethylation:::.CALL_AMBIGUOUS_DEFAULT %in% cols)
+  # The original defect: ambiguous was indistinguishable from colour_low.
+  expect_false(ggmethylation:::.CALL_AMBIGUOUS_DEFAULT %in% c("#BDBDBD", "#C62828"))
+})
+
+test_that("colour_ambiguous overrides the default ambiguous colour", {
+  reads <- data.frame(
+    read_name = "r1", start = 1000L, end = 2000L, strand = "+",
+    lane = 0L, mean_mod_prob = 0.5, clip_side = NA_character_,
+    sa_chrom = NA_character_, stringsAsFactors = FALSE
+  )
+  sites <- data.frame(
+    read_name = "r1", position = c(1200, 1500, 1800),
+    mod_prob = c(0.05, 0.45, 0.95), mod_code = "m",
+    stringsAsFactors = FALSE
+  )
+  md <- make_test_data(reads, sites)
+
+  p <- ggmethylation::plot_methylation(
+    md, call_mode = "binary", call_ambiguous = 0.1,
+    colour_ambiguous = "purple", show_supplementary = FALSE
+  )
+  expect_true("purple" %in% call_colours(p, sites))
+})
+
+
 # --- .binarize_sites() ------------------------------------------------------
 
 test_that("binarize_sites maps probabilities to 0/1 at the threshold", {
@@ -303,7 +364,10 @@ test_that("binary mode grouped delta panel builds and is relabelled", {
                                        show_delta = TRUE,
                                        show_supplementary = FALSE)
   expect_s3_class(p, "patchwork")
-  expect_match(p[[3]]$labels$y, "fraction methylated")
+  expect_match(p[[3]]$labels$y, "fraction")
+  # Short enough to fit the delta panel's height without colliding with the
+  # smooth panel's y-axis title above it.
+  expect_true(all(nchar(strsplit(p[[3]]$labels$y, "\n")[[1]]) <= 12L))
   # Group "1" is fully methylated, group "2" fully unmethylated -> delta = -1
   expect_equal(mean(p[[3]]$data$delta, na.rm = TRUE), -1, tolerance = 1e-6)
 })
