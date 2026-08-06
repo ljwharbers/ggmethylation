@@ -17,12 +17,23 @@
   delta <- v2 - v1
   sign <- ifelse(is.na(delta), NA_character_,
                  ifelse(delta > 0, "pos", ifelse(delta < 0, "neg", "zero")))
-  data.frame(position = grid, delta = delta, sign = sign, stringsAsFactors = FALSE)
+  out <- data.frame(position = grid, delta = delta, sign = sign,
+                    stringsAsFactors = FALSE)
+  # The sorted group names, so callers can colour "pos"/"neg" by the group each
+  # sign belongs to (delta = groups[2] - groups[1]).
+  attr(out, "groups") <- groups
+  out
 }
 
 # Render the signed delta as a diverging area around a zero baseline.
+#
+# `fill_pos`/`fill_neg` default to the standalone diverging palette; callers
+# with a group palette in hand pass the two group colours instead, so the delta
+# area matches the groups in the panels above (pos = group 2, neg = group 1).
 .build_delta_panel <- function(delta_df, region_start, region_end,
-                               y_label = "Δ methylation\n(group2 - group1)") {
+                               y_label = "Δ methylation",
+                               fill_pos = .DELTA_DIVERGING$pos,
+                               fill_neg = .DELTA_DIVERGING$neg) {
   df <- delta_df[!is.na(delta_df$delta), , drop = FALSE]
   ggplot2::ggplot(df, ggplot2::aes(x = .data$position, y = .data$delta)) +
     ggplot2::geom_area(
@@ -32,7 +43,7 @@
     ggplot2::geom_hline(yintercept = 0, colour = .DELTA_DIVERGING$zero,
                         linewidth = 0.4) +
     ggplot2::scale_fill_manual(
-      values = c(pos = .DELTA_DIVERGING$pos, neg = .DELTA_DIVERGING$neg,
+      values = c(pos = fill_pos, neg = fill_neg,
                  zero = .DELTA_DIVERGING$zero),
       guide = "none"
     ) +

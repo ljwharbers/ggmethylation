@@ -9,6 +9,7 @@ plot_methylation(
   sort_by = NULL,
   colour_low = "#BDBDBD",
   colour_high = "#C62828",
+  colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
   line_width = 0.2,
   colour_strand = FALSE,
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
@@ -43,6 +44,11 @@ per-read fraction of methylated calls when \code{call_mode = "binary"}.}
 
 \item{colour_high}{Colour for high modification probability (default
 \code{"#C62828"}).}
+
+\item{colour_ambiguous}{Colour for ambiguous calls (default \code{"#78909C"}, a
+slate blue-grey deliberately off the \code{colour_low}/\code{colour_high} ramp so it
+reads as "no confident call" rather than "intermediate methylation"). Only
+used when \code{call_mode = "binary"} and \code{call_ambiguous} is non-\code{NULL}.}
 
 \item{line_width}{Linewidth of modification site lines (default 0.2).}
 

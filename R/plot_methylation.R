@@ -253,11 +253,16 @@
   }
 }
 
+# The delta panel is the shortest in the stack, so this label has to stay short
+# enough to fit its height - a longer one overflows vertically and collides with
+# the smooth panel's y-axis title. The "(group2 - group1)" line it used to carry
+# is now redundant: the area is filled with the colour of whichever group is
+# higher, so the sign is readable off the plot itself.
 .delta_y_label = function(call_mode) {
   if (identical(call_mode, "binary")) {
-    "Δ fraction methylated\n(group2 - group1)"
+    "Δ fraction\nmethylated"
   } else {
-    "Δ methylation\n(group2 - group1)"
+    "Δ methylation"
   }
 }
 
@@ -280,6 +285,10 @@
 #'   `"#BDBDBD"`).
 #' @param colour_high Colour for high modification probability (default
 #'   `"#C62828"`).
+#' @param colour_ambiguous Colour for ambiguous calls (default `"#78909C"`, a
+#'   slate blue-grey deliberately off the `colour_low`/`colour_high` ramp so it
+#'   reads as "no confident call" rather than "intermediate methylation"). Only
+#'   used when `call_mode = "binary"` and `call_ambiguous` is non-`NULL`.
 #' @param line_width Linewidth of modification site lines (default 0.2).
 #' @param colour_strand Logical. When `TRUE`, read bars are coloured by strand
 #'   (`"+"` = forward, `"-"` = reverse). Ignored when data is grouped; group
@@ -403,6 +412,7 @@
 plot_methylation <- function(data, sort_by = NULL,
                              colour_low = "#BDBDBD",
                              colour_high = "#C62828",
+                             colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
                              line_width = 0.2,
                              colour_strand = FALSE,
                              strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
@@ -430,6 +440,7 @@ plot_methylation <- function(data, sort_by = NULL,
       sort_by            = sort_by,
       colour_low         = colour_low,
       colour_high        = colour_high,
+      colour_ambiguous   = colour_ambiguous,
       line_width         = line_width,
       colour_strand      = colour_strand,
       strand_colours     = strand_colours,
@@ -559,6 +570,7 @@ plot_methylation <- function(data, sort_by = NULL,
     region_end         = region_end,
     colour_low         = colour_low,
     colour_high        = colour_high,
+    colour_ambiguous   = colour_ambiguous,
     line_width         = line_width,
     colour_strand      = colour_strand,
     strand_colours     = strand_colours,
@@ -735,6 +747,9 @@ plot_methylation <- function(data, sort_by = NULL,
   p_delta <- NULL
   if (isTRUE(show_delta) && !is.null(data$group_tag)) {
     delta_df <- .compute_group_delta(sites_agg, "group", span = smooth_span)
+    # Read the group names off the attribute *now*: the show_cigar branch below
+    # rebuilds delta_df with data.frame(), which drops attributes.
+    delta_groups <- attr(delta_df, "groups")
     if (!is.null(delta_df)) {
       # Break the delta over consensus deletions too, for visual consistency.
       # NOTE: .apply_deletion_breaks()/.consensus_deletion_ranges() key
@@ -778,8 +793,19 @@ plot_methylation <- function(data, sort_by = NULL,
           }
         }
       }
+      # Colour the delta area by whichever group is higher, so it reads against
+      # the group colours in the panels above. Fall back to the standalone
+      # diverging pair only if *both* groups can't be resolved — a partial
+      # fallback would leave one half matching and one half not.
+      fill_neg <- .DELTA_DIVERGING$neg
+      fill_pos <- .DELTA_DIVERGING$pos
+      if (!is.null(group_colours) && all(delta_groups %in% names(group_colours))) {
+        fill_neg <- group_colours[[delta_groups[1L]]]
+        fill_pos <- group_colours[[delta_groups[2L]]]
+      }
       p_delta <- .build_delta_panel(delta_df, region_start, region_end,
-                                    .delta_y_label(call_mode))
+                                    .delta_y_label(call_mode),
+                                    fill_pos = fill_pos, fill_neg = fill_neg)
       # The smooth panel is no longer the bottom-most; hide its x-axis title/labels
       p_bottom <- p_bottom +
         ggplot2::theme(axis.title.x = ggplot2::element_blank())
@@ -824,6 +850,7 @@ plot_methylation <- function(data, sort_by = NULL,
 # brief's file scope) and is left for a follow-up.
 
 .plot_multi_methylation <- function(data, sort_by, colour_low, colour_high,
+                                    colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
                                     line_width, colour_strand, strand_colours,
                                     group_colours, mod_code_shapes,
                                     smooth_span, panel_heights, annotations,
@@ -942,6 +969,7 @@ plot_methylation <- function(data, sort_by = NULL,
       region_end         = region_end,
       colour_low         = colour_low,
       colour_high        = colour_high,
+      colour_ambiguous   = colour_ambiguous,
       line_width         = line_width,
       colour_strand      = colour_strand,
       strand_colours     = strand_colours,
