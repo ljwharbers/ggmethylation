@@ -21,7 +21,8 @@
 }
 
 # Render the signed delta as a diverging area around a zero baseline.
-.build_delta_panel <- function(delta_df, region_start, region_end) {
+.build_delta_panel <- function(delta_df, region_start, region_end,
+                               y_label = "Δ methylation\n(group2 - group1)") {
   df <- delta_df[!is.na(delta_df$delta), , drop = FALSE]
   ggplot2::ggplot(df, ggplot2::aes(x = .data$position, y = .data$delta)) +
     ggplot2::geom_area(
@@ -37,6 +38,6 @@
     ) +
     ggplot2::scale_x_continuous(labels = scales::comma_format()) +
     ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
-    ggplot2::labs(x = "Genomic position (bp)", y = "Δ methylation\n(group2 - group1)") +
+    ggplot2::labs(x = "Genomic position (bp)", y = y_label) +
     theme_ggmethylation()
 }

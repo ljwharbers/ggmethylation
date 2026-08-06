@@ -1,3 +1,23 @@
+# Convert continuous mod_prob values to 0/1 calls for binary-mode aggregation.
+#
+# Reuses .classify_calls() so the threshold semantics are defined in exactly one
+# place (notably: a probability exactly equal to `threshold` is "methylated").
+# Ambiguous sites and NA probabilities are dropped, so a downstream per-position
+# mean() becomes "fraction methylated among confident calls".
+#
+# With `ambiguous = NULL` (the default, matching `call_ambiguous`) no site is
+# ever labelled ambiguous, so nothing is dropped and the denominator equals
+# full coverage — a pure hard threshold.
+.binarize_sites = function(sites, threshold = 0.5, ambiguous = NULL) {
+  if (is.null(sites) || nrow(sites) == 0L) return(sites)
+  cls = .classify_calls(sites$mod_prob, threshold, ambiguous)
+  keep = !is.na(cls) & cls != "ambiguous"
+  sites = sites[keep, , drop = FALSE]
+  sites$mod_prob = as.numeric(cls[keep] == "methylated")
+  rownames(sites) = NULL
+  sites
+}
+
 #' Fit a loess curve to x/y data and predict on a 200-point grid
 #'
 #' Core smoothing primitive used by [smooth_methylation()] and
