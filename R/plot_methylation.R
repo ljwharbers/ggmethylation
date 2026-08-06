@@ -230,13 +230,35 @@
 
 # Common ggplot2 layers for the smoothed modification probability panel.
 # Returns a list of scales/coords/theme components shared by every branch.
-.smooth_panel_base <- function(region_start, region_end) {
+# `y_label` differs between call modes: continuous mode plots a mean probability,
+# binary mode plots a fraction of methylated calls (see .smooth_y_label()).
+.smooth_panel_base <- function(region_start, region_end,
+                               y_label = "Mean modification\nprobability") {
   list(
-    ggplot2::scale_y_continuous(limits = c(0, 1), name = "Mean modification\nprobability"),
+    ggplot2::scale_y_continuous(limits = c(0, 1), name = y_label),
     ggplot2::scale_x_continuous(labels = scales::comma_format()),
     ggplot2::coord_cartesian(xlim = c(region_start, region_end)),
     theme_ggmethylation()
   )
+}
+
+# y-axis label for the smooth panel, and for the delta panel below it. In binary
+# mode the panel aggregates 0/1 calls, so the quantity is a fraction of
+# methylated calls rather than a mean probability.
+.smooth_y_label = function(call_mode) {
+  if (identical(call_mode, "binary")) {
+    "Fraction\nmethylated"
+  } else {
+    "Mean modification\nprobability"
+  }
+}
+
+.delta_y_label = function(call_mode) {
+  if (identical(call_mode, "binary")) {
+    "Δ fraction methylated\n(group2 - group1)"
+  } else {
+    "Δ methylation\n(group2 - group1)"
+  }
 }
 
 #' Plot read-level methylation data
@@ -245,12 +267,15 @@
 #' no grouping is present, produces a single panel showing reads as grey bars
 #' with coloured modification dots. When groups are present, adds a bottom
 #' panel with loess-smoothed mean modification probability per group and
-#' combines the panels using patchwork.
+#' combines the panels using patchwork. With `call_mode = "binary"` the smooth
+#' panel plots the fraction of methylated calls instead of the mean probability.
 #'
 #' @param data A `methylation_data` object returned by [read_methylation()].
 #' @param sort_by Character vector of column names from `data$reads` used
 #'   to sort reads before packing into lanes. Default NULL uses `c("start")`
 #'   when ungrouped or `c("group", "start", "mean_mod_prob")` when grouped.
+#'   `mean_mod_prob` is the per-read mean modification probability, or the
+#'   per-read fraction of methylated calls when `call_mode = "binary"`.
 #' @param colour_low Colour for low modification probability (default
 #'   `"#BDBDBD"`).
 #' @param colour_high Colour for high modification probability (default
@@ -320,18 +345,39 @@
 #'   computed in that case). Set to `FALSE` to hide the ribbon.
 #' @param call_mode Character. `"continuous"` (default) colours modification
 #'   sites by a continuous probability gradient (`colour_low` to
-#'   `colour_high`). `"binary"` classifies each site as methylated,
+#'   `colour_high`), and the smooth panel plots the mean modification
+#'   probability per position. `"binary"` classifies each site as methylated,
 #'   unmethylated, or ambiguous (see `call_threshold`/`call_ambiguous`) and
 #'   colours them with a discrete scale instead.
+#'
+#'   `"binary"` also changes what every aggregate reports: the smooth panel, the
+#'   delta panel (`show_delta`) and the per-read `mean_mod_prob` used for
+#'   sorting all aggregate 0/1 calls rather than raw probabilities, so the
+#'   smooth panel plots the **fraction of calls that are methylated** and its
+#'   y-axis is relabelled accordingly. The two quantities genuinely differ: a
+#'   position where every read reports probability 0.8 has a mean probability of
+#'   0.8 but a methylated fraction of 1.0. The fraction is the conventional
+#'   percent-methylation / beta value; the continuous mean is systematically
+#'   pulled toward 0.5 by basecaller uncertainty.
+#'
+#'   Because binarised values are 0 or 1, positions with thin coverage
+#'   contribute coarser values than in continuous mode, so the binary curve is
+#'   noisier where few reads overlap. The loess span still averages over
+#'   neighbouring positions and the confidence ribbon (`show_ci`) widens where
+#'   evidence is sparse.
 #' @param call_threshold Numeric in `[0, 1]`. Modification probability at or
 #'   above which a site is classified as methylated when
-#'   `call_mode = "binary"`. Default `0.5`. Ignored when
-#'   `call_mode = "continuous"`.
+#'   `call_mode = "binary"`. Used for both the read panel colours and the
+#'   binarised aggregates, so the two panels always split at the same value.
+#'   Default `0.5`. Ignored when `call_mode = "continuous"`.
 #' @param call_ambiguous `NULL` (default) for a hard threshold, or a numeric
 #'   half-width defining a band `[call_threshold - w, call_threshold + w)`
 #'   around `call_threshold` within which sites are labelled "ambiguous"
-#'   rather than methylated/unmethylated. Ignored when
-#'   `call_mode = "continuous"`.
+#'   rather than methylated/unmethylated. Ambiguous sites are excluded from
+#'   both the numerator and the denominator of the methylated fraction, so the
+#'   smooth panel reports the fraction methylated *among confident calls*. The
+#'   default `NULL` discards nothing — every site is called at
+#'   `call_threshold`. Ignored when `call_mode = "continuous"`.
 #' @param show_delta Logical. When `TRUE`, and grouping yields exactly two
 #'   groups, an additional panel is appended below the smooth panel showing
 #'   the signed difference in loess-smoothed modification probability between
@@ -440,11 +486,22 @@ plot_methylation <- function(data, sort_by = NULL,
     return(p)
   }
 
+  # --- 2b. Resolve the site frame used for every aggregate ---
+  # In binary mode the smooth panel, the delta panel and the per-read means all
+  # aggregate 0/1 calls instead of raw probabilities, so they report a fraction
+  # of methylated calls. `data$sites` itself is left untouched: build_read_panel()
+  # needs the raw probabilities to do its own classification (which keeps the
+  # ambiguous category for colouring).
+  sites_agg <- if (identical(call_mode, "binary")) {
+    .binarize_sites(data$sites, call_threshold, call_ambiguous)
+  } else {
+    data$sites
+  }
+  smooth_y_label <- .smooth_y_label(call_mode)
+
   # --- 3. Compute mean mod prob per read (for sorting) ---
-  read_means <- stats::setNames(
-    tapply(data$sites$mod_prob, data$sites$read_name, mean),
-    NULL
-  )
+  # NB: indexed by read_name, so the tapply() names must be preserved.
+  read_means <- tapply(sites_agg$mod_prob, sites_agg$read_name, mean)
   data$reads$mean_mod_prob <- as.numeric(
     read_means[data$reads$read_name]
   )
@@ -523,8 +580,11 @@ plot_methylation <- function(data, sort_by = NULL,
 
   if (is.null(data$group_tag)) {
     # Ungrouped smooth panel
-    sites_smooth <- data$sites
-    sites_smooth$group <- "all"
+    sites_smooth <- sites_agg
+    # `sites_agg` can be empty even though reads are present: in binary mode
+    # every site may fall inside the ambiguous band and be dropped. Recycling a
+    # length-1 value into a 0-row data.frame is an error, hence the guard.
+    sites_smooth$group <- if (nrow(sites_smooth) > 0L) "all" else character(0L)
 
     reads_grouped <- data$reads
     reads_grouped$group <- "all"
@@ -542,7 +602,7 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::aes(x = .data$position, y = .data$mean_prob)
       ) +
         ggplot2::geom_line(linewidth = 1, colour = "#C62828") +
-        .smooth_panel_base(region_start, region_end) +
+        .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)")
       p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci)
     } else {
@@ -562,7 +622,7 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        .smooth_panel_base(region_start, region_end) +
+        .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Modification")
       p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci,
                                  fill_aes = quote(.data$mod_code))
@@ -572,7 +632,7 @@ plot_methylation <- function(data, sort_by = NULL,
     if (!multi_code) {
       # Single code: one line per group, colour by group
       smoothed <- smooth_methylation(
-        data$sites,
+        sites_agg,
         group_col = "group",
         span = smooth_span
       )
@@ -588,7 +648,7 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        .smooth_panel_base(region_start, region_end) +
+        .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
 
       if (!is.null(group_colours)) {
@@ -605,7 +665,7 @@ plot_methylation <- function(data, sort_by = NULL,
     } else {
       # Multi-code + grouped: colour by group, linetype by mod_code
       smoothed <- smooth_methylation(
-        data$sites,
+        sites_agg,
         group_col    = "group",
         mod_code_col = "mod_code",
         span         = smooth_span
@@ -628,7 +688,7 @@ plot_methylation <- function(data, sort_by = NULL,
           values = stats::setNames(default_linetypes[seq_along(codes)], codes),
           name = "Modification"
         ) +
-        .smooth_panel_base(region_start, region_end) +
+        .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group")
 
       if (!is.null(group_colours)) {
@@ -674,7 +734,7 @@ plot_methylation <- function(data, sort_by = NULL,
   # --- 8c. Build delta panel (optional; requires exactly 2 groups) ---
   p_delta <- NULL
   if (isTRUE(show_delta) && !is.null(data$group_tag)) {
-    delta_df <- .compute_group_delta(data$sites, "group", span = smooth_span)
+    delta_df <- .compute_group_delta(sites_agg, "group", span = smooth_span)
     if (!is.null(delta_df)) {
       # Break the delta over consensus deletions too, for visual consistency.
       # NOTE: .apply_deletion_breaks()/.consensus_deletion_ranges() key
@@ -718,7 +778,8 @@ plot_methylation <- function(data, sort_by = NULL,
           }
         }
       }
-      p_delta <- .build_delta_panel(delta_df, region_start, region_end)
+      p_delta <- .build_delta_panel(delta_df, region_start, region_end,
+                                    .delta_y_label(call_mode))
       # The smooth panel is no longer the bottom-most; hide its x-axis title/labels
       p_bottom <- p_bottom +
         ggplot2::theme(axis.title.x = ggplot2::element_blank())
@@ -782,6 +843,7 @@ plot_methylation <- function(data, sort_by = NULL,
 
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
+  smooth_y_label <- .smooth_y_label(call_mode)
 
   # Resolve mod_code shapes from combined codes across all samples
   all_codes       <- unique(unlist(lapply(data$samples, function(s) unique(s$sites$mod_code))))
@@ -812,11 +874,18 @@ plot_methylation <- function(data, sort_by = NULL,
       next
     }
 
+    # Site frame used for this sample's aggregates (see plot_methylation()
+    # step 2b): binary mode aggregates 0/1 calls, `s$sites` stays raw for the
+    # read panel below.
+    s_sites_agg <- if (identical(call_mode, "binary")) {
+      .binarize_sites(s$sites, call_threshold, call_ambiguous)
+    } else {
+      s$sites
+    }
+
     # Compute mean_mod_prob per read
-    read_means <- stats::setNames(
-      tapply(s$sites$mod_prob, s$sites$read_name, mean),
-      NULL
-    )
+    # NB: indexed by read_name, so the tapply() names must be preserved.
+    read_means <- tapply(s_sites_agg$mod_prob, s_sites_agg$read_name, mean)
     s$reads$mean_mod_prob <- as.numeric(read_means[s$reads$read_name])
     s$reads$mean_mod_prob[is.na(s$reads$mean_mod_prob)] <- 0
 
@@ -892,7 +961,7 @@ plot_methylation <- function(data, sort_by = NULL,
     sample_panels[[i]] <- p_reads
 
     # Collect sites for shared smooth panel, tagged with sample name
-    sites_tagged <- s$sites
+    sites_tagged <- s_sites_agg
     n_sites <- nrow(sites_tagged)
     sites_tagged$sample <- if (n_sites > 0L) rep(nm, n_sites) else character(0L)
     if (!is.null(s$group_tag) && "group" %in% names(sites_tagged) && n_sites > 0L) {
@@ -967,7 +1036,7 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        .smooth_panel_base(region_start, region_end) +
+        .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group", linetype = "Sample")
 
       if (!is.null(group_colours)) {
@@ -985,7 +1054,7 @@ plot_methylation <- function(data, sort_by = NULL,
         )
       ) +
         ggplot2::geom_line(linewidth = 1) +
-        .smooth_panel_base(region_start, region_end) +
+        .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Sample")
     }
 
