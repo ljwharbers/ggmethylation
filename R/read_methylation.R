@@ -30,6 +30,14 @@
 #'   where the tag is absent (i.e. group is `NA`) are removed before
 #'   downsampling. Default `FALSE` preserves the existing behaviour of keeping
 #'   unphased reads in the data.
+#' @param snv_position Integer or NULL. Reference position of a heterozygous
+#'   SNV to group reads by. Mutually exclusive with `group_tag`. When set,
+#'   `ref_base` and `alt_base` are required and reads are labelled `"REF"` or
+#'   `"ALT"` by the base they carry; reads matching neither are dropped.
+#' @param ref_base Character or NULL. Reference allele at `snv_position`,
+#'   a single base. Required when `snv_position` is set.
+#' @param alt_base Character or NULL. Alternate allele at `snv_position`,
+#'   a single base. Required when `snv_position` is set.
 #'
 #' @return A `methylation_data` object (S3 list) with elements:
 #'   \describe{

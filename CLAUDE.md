@@ -27,19 +27,34 @@ devtools::check()
 
 ## Architecture
 
-The package has three layers:
+The package has five layers:
 
 **Layer 1 — Input** (`R/read_methylation.R`)
 `read_methylation()` is the main entry point. It queries a BAM file via Rsamtools, applies filters (MAPQ, strand, read length, downsampling), and calls `parse_mm_ml()` to extract per-base modification probabilities from MM/ML tags. It also handles optional grouping by BAM tag (e.g., HP for haplotype) or by SNV genotype. Returns an S3 object of class `methylation_data` with data frames for reference-aligned sites (`$sites`), insertion-based sites (`$insertion_sites`), and per-read summaries (`$reads`).
 
 **Layer 2 — Processing**
-- `parse_mm_ml.R`: Parses MM/ML SAM auxiliary tags. `seq_to_ref()` maps query positions to reference coordinates by walking the CIGAR string; positions inside CIGAR `I` operations return `NA` and are classified as insertion sites. `parse_mm_ml()` now returns a named list with `$sites` and `$insertion_sites`.
+- `parse_mm_ml.R`: Parses MM/ML SAM auxiliary tags. `seq_to_ref()` maps query positions to reference coordinates by walking the CIGAR string; positions inside CIGAR `I` operations return `NA` and are classified as insertion sites. `parse_mm_ml()` returns a named list with `$sites` and `$insertion_sites`.
 - `pack_reads.R`: Greedy interval scheduling algorithm that assigns reads to horizontal display lanes (like a genome browser). Used internally by `plot_methylation()` and `plot_insertion_locus()`.
-- `smooth_methylation.R`: Aggregates per-site modification probabilities and fits a loess curve on a 200-point grid for the smoothed lower panel. The shared `.smooth_xy(x, y)` helper is used by both `plot_methylation()` and `plot_insertion_locus()`.
+- `smooth_methylation.R`: Aggregates per-site modification probabilities and fits a loess curve on a 200-point grid for the smoothed lower panel, with `lower`/`upper` confidence columns. The shared `.smooth_xy(x, y)` helper is used by both `plot_methylation()` and `plot_insertion_locus()`.
 - `insertion_loci.R`: `list_insertion_loci()` clusters insertion events across reads into loci using a greedy single-pass algorithm. `insertion_sites()` is a convenience accessor for `$insertion_sites`.
+- `merge_methylation.R`: `merge_methylation()` combines several `methylation_data` objects covering the same region into a `multi_methylation_data` object, with `print`/`summary` methods.
+- `utils.R`: region parsing, CIGAR decomposition, and shared validation helpers such as `.validate_sort_by()`.
 
-**Layer 3 — Visualization**
-- `plot_methylation()` (`R/plot_methylation.R`): takes a `methylation_data` object and returns a `patchwork` composite. Reads are drawn as horizontal bars; modification sites as coloured dots. When data is grouped, panels are produced per group and combined. Supports sorting by position, group, or mean modification probability; multi-modification codes via shape aesthetics; and custom colour gradients.
+**Layer 3 — Annotation and variant ingestion**
+- `read_annotations.R`: `read_annotations()` builds a gene model for the region from a UCSC ncbiRefSeq GTF (downloaded and cached per `genome`, `"hg38"` or `"chm13"`), a user-supplied `gtf`, or a `TxDb`. Returns a `gene_annotations` object. `clear_annotation_cache()` drops the cached TxDb.
+- `read_variants.R`: `read_variants()` reads a VCF via VariantAnnotation and classifies each record as SNV, insertion, deletion, or a structural variant (`DEL`/`DUP`/`INV`/`BND`). Returns a `variant_data` object. `parse_bnd_alt()` decodes BND ALT syntax.
+
+**Layer 4 — Panel builders**
+These do the actual drawing; `plot_methylation()` orchestrates them.
+- `build_read_panel.R`: the read panel — read bars, per-site modification segments, CIGAR indels, supplementary-alignment arrowheads. `.classify_calls()` implements `call_mode = "binary"`.
+- `build_gene_panel.R`: the gene annotation track.
+- `delta_track.R`: `.compute_group_delta()` fits both groups on a shared position grid; `.build_delta_panel()` renders the signed difference as a diverging area.
+- `variant_overlay.R` plus `variant_overlay_snv.R`, `variant_overlay_sv.R`, `variant_overlay_bnd.R`: variant layers over the read panel. SNV asterisks are drawn only on reads carrying the ALT allele, which needs the read sequences stored on the object.
+- `palettes.R`: centralised colour constants, `theme_ggmethylation()`, and `.resolve_group_colours()`, which maps a group palette onto the group values actually present.
+
+**Layer 5 — Composition** (`R/plot_methylation.R`)
+- `plot_methylation()`: assembles the panels into a `patchwork` composite — gene track (top), reads, smooth, delta (bottom) — and applies sorting, packing, and scales. Optional panels are argument-gated: `annotations`, `variants`, `show_ci`, `show_delta`, `call_mode`, `show_cigar`, `show_supplementary`.
+- `.plot_multi_methylation()`: the `multi_methylation_data` path — stacked per-sample read panels above one shared smooth panel. `show_delta` is not supported here and warns.
 - `plot_insertion_locus()` (`R/plot_insertion_locus.R`): visualises a single insertion locus in a stitched coordinate system (left flank | insertion | right flank), showing carrier and non-carrier reads with an optional loess-smoothed comparison panel.
 
 **Optional output**: `write_methylation.R` exports reads/sites to TSV or BED (with optional gzip).
@@ -51,9 +66,13 @@ The package has three layers:
 - `$sites`: data frame — `read_name`, `position`, `mod_prob`, `mod_code`, optional `group`
 - `$insertion_sites`: data frame — `read_name`, `ref_anchor`, `query_pos`, `ins_offset`, `ins_length`, `mod_prob`, `mod_code`, optional `group`. Zero rows when no insertion modifications were found.
 - `$cigar_features`: data frame — one row per CIGAR operation per read; columns `type`, `ref_start`, `ref_end`, `query_start`, `query_end`, `length`, `read_name`. Used by `list_insertion_loci()`.
+- `$sequences` / `$cigars`: per-read query sequences and CIGAR strings, keyed by read name. Required by the SNV overlay to determine which reads carry the ALT allele; objects created before these existed lose the SNV layer with a warning.
 - `$region`: `GenomicRanges` object
 - `$mod_code`: character vector of modification codes
-- `$group_tag`: BAM tag name or `NULL`
+- `$group_tag`: BAM tag name (e.g. `"HP"`), `"SNV"` for genotype grouping, or `NULL`
+- `$snv_position`: the SNV used for grouping, or `NULL`
+
+`multi_methylation_data` (from `merge_methylation()`) holds `$samples` (a named list of `methylation_data`), `$region`, and `$mod_code`.
 
 ### Per-read site presence
 

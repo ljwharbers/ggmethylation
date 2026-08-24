@@ -1,5 +1,16 @@
 # Visualization Improvements — Milestone 1 Implementation Plan
 
+> **STATUS: COMPLETE — shipped in 0.3.0. Do not re-implement.**
+>
+> Every feature below is merged: the delta track (`show_delta`), the confidence
+> ribbon (`show_ci`), binary call mode (`call_mode` / `call_threshold` /
+> `call_ambiguous`), and `R/palettes.R` with the exported
+> `theme_ggmethylation()`. The step checkboxes were never ticked off during
+> implementation, which made this file read as untouched work; this banner is
+> here so the next reader does not build it a second time.
+>
+> Milestones 2 and 3 in this directory are genuinely unimplemented.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a group-difference delta track, confidence ribbons on the smooth panel, a binarized call mode, and centralized theming/colorblind-safe palettes to `plot_methylation()`.
@@ -33,7 +44,7 @@ Foundational. Extracts the theme block duplicated in `build_read_panel()` and `.
 **Interfaces:**
 - Produces: `theme_ggmethylation()` → a ggplot2 theme object (exported). Internal constants `.OKABE_ITO`, `.GROUP_PALETTE_DEFAULT` (named char vector), `.DELTA_DIVERGING` (list with `neg`, `pos`, `zero` colours), `.PROB_GRADIENT` (list with `low`, `high`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```r
 # tests/testthat/test-palettes.R
@@ -52,12 +63,12 @@ test_that("palette constants have expected shape", {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-palettes.R")'`
 Expected: FAIL — object `theme_ggmethylation` / `.OKABE_ITO` not found.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```r
 # R/palettes.R
@@ -96,12 +107,12 @@ theme_ggmethylation <- function() {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `Rscript -e 'devtools::document(); devtools::test_file("tests/testthat/test-palettes.R")'`
 Expected: PASS.
 
-- [ ] **Step 5: Refactor call sites to use the shared theme**
+- [x] **Step 5: Refactor call sites to use the shared theme**
 
 In `R/plot_methylation.R`, replace the `theme_minimal()` + `theme(...)` portion of `.smooth_panel_base()` with `theme_ggmethylation()`:
 
@@ -132,7 +143,7 @@ In `R/build_read_panel.R`, replace the `ggplot2::theme_minimal() + ggplot2::them
     ggplot2::labs(x = NULL)
 ```
 
-- [ ] **Step 6: Update `group_colours` default to the centralized palette**
+- [x] **Step 6: Update `group_colours` default to the centralized palette**
 
 In `R/plot_methylation.R`, the `plot_methylation()` signature currently has
 `group_colours = c("1" = "#95babc", "2" = "#efbb76")`. Change the default to
@@ -144,7 +155,7 @@ reference the constant so there is one source of truth:
 
 Do the same for the `.plot_multi_methylation()` internal call path if it hard-codes a default (it inherits from the caller, so no change needed there).
 
-- [ ] **Step 7: Record the palette change in NEWS**
+- [x] **Step 7: Record the palette change in NEWS**
 
 Create/append `NEWS.md`:
 
@@ -159,12 +170,12 @@ Create/append `NEWS.md`:
   pair. Pass an explicit `group_colours` vector to restore prior colours.
 ```
 
-- [ ] **Step 8: Run the full suite to confirm no regressions**
+- [x] **Step 8: Run the full suite to confirm no regressions**
 
 Run: `Rscript -e 'devtools::test()'`
 Expected: PASS. Update any existing snapshot that legitimately changed only due to the deliberate palette default (review the diff before accepting).
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add R/palettes.R tests/testthat/test-palettes.R R/build_read_panel.R R/plot_methylation.R NEWS.md NAMESPACE man/
@@ -183,7 +194,7 @@ git commit -m "feat: add theme_ggmethylation() and centralize colorblind-safe pa
 - Consumes: nothing new.
 - Produces: `smooth_methylation()` return gains numeric columns `lower` and `upper` (present in every return path). On the loess path they equal `fit ± 1.96 * se.fit` clamped to `[0, 1]`; on the raw-means fallback and empty paths they are `NA_real_`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```r
 test_that("smooth_methylation returns clamped lower/upper on loess path", {
@@ -219,12 +230,12 @@ test_that("smooth_methylation empty input includes lower/upper cols", {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-smooth_methylation.R")'`
 Expected: FAIL — `lower`/`upper` not in names.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Edit `R/smooth_methylation.R`. Update `out_cols`, the empty-return frame, both
 per-group branches, and the composite-key split so `lower`/`upper` survive.
@@ -280,7 +291,7 @@ The final `out <- out[, out_cols, drop = FALSE]` now carries `lower`/`upper`.
 The composite-key split block (mod_code) is unaffected because it only rewrites
 the group column.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-smooth_methylation.R")'`
 Expected: PASS. Also run `test-smooth_deletion_breaks.R` to confirm the deletion-break helper still works with the wider frame.
@@ -288,7 +299,7 @@ Expected: PASS. Also run `test-smooth_deletion_breaks.R` to confirm the deletion
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-smooth_deletion_breaks.R")'`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add R/smooth_methylation.R tests/testthat/test-smooth_methylation.R
@@ -307,7 +318,7 @@ git commit -m "feat: add loess confidence-interval columns to smooth_methylation
 - Consumes: `smooth_methylation()` `lower`/`upper` columns (Task 2).
 - Produces: `plot_methylation(show_ci = TRUE)` adds a `geom_ribbon` behind each smooth line. `.insert_deletion_breaks()` nulls `lower`/`upper` alongside `mean_prob`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```r
 # tests/testthat/test-smooth_ci_ribbon.R
@@ -330,12 +341,12 @@ test_that("insert_deletion_breaks nulls CI columns inside deletions", {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-smooth_ci_ribbon.R")'`
 Expected: FAIL — `lower`/`upper` not nulled (only `mean_prob` currently masked).
 
-- [ ] **Step 3: Update `.insert_deletion_breaks()` to null CI columns**
+- [x] **Step 3: Update `.insert_deletion_breaks()` to null CI columns**
 
 In `R/plot_methylation.R`, inside `.insert_deletion_breaks()`, after the line
 `smoothed$mean_prob[in_grp & in_del] <- NA_real_`, add:
@@ -364,7 +375,7 @@ And when building sentinel rows, set `s1$lower <- NA_real_; s1$upper <- NA_real_
       if ("lower" %in% names(s2)) { s2$lower <- NA_real_; s2$upper <- NA_real_ }
 ```
 
-- [ ] **Step 4: Add `show_ci` arg and ribbon layers**
+- [x] **Step 4: Add `show_ci` arg and ribbon layers**
 
 Add `show_ci = TRUE` to the `plot_methylation()` signature (and thread it into
 `.plot_multi_methylation()` with the same default). Define a small helper near
@@ -414,7 +425,7 @@ na.value = "grey50", guide = "none")` when `group_colours` is non-NULL, using
 `ggnewscale::new_scale_fill()` is **not** needed because the line uses `colour`,
 not `fill`.
 
-- [ ] **Step 5: Add a rendering smoke test**
+- [x] **Step 5: Add a rendering smoke test**
 
 ```r
 test_that("plot_methylation smooth panel gains a ribbon layer when grouped", {
@@ -442,17 +453,17 @@ test_that("plot_methylation smooth panel gains a ribbon layer when grouped", {
 Add `make_test_data` to this test file or source it; if the helper lives only in
 `test-build_read_panel.R`, copy the minimal constructor into the new test file.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-smooth_ci_ribbon.R")'`
 Expected: PASS.
 
-- [ ] **Step 7: Update roxygen and NEWS**
+- [x] **Step 7: Update roxygen and NEWS**
 
 Add `@param show_ci` documentation to `plot_methylation()` and a NEWS bullet.
 Run `Rscript -e 'devtools::document()'`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add R/plot_methylation.R tests/testthat/test-smooth_ci_ribbon.R NEWS.md man/
@@ -472,7 +483,7 @@ git commit -m "feat: draw loess confidence ribbon on smooth panel (show_ci)"
 - Consumes: nothing new.
 - Produces: `plot_methylation(call_mode = "binary", call_threshold = 0.5, call_ambiguous = NULL)`. `.add_mod_prob_segments()` gains `call_mode`, `call_threshold`, `call_ambiguous` params and branches its colour aesthetic/scale.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```r
 # tests/testthat/test-binary_call_mode.R
@@ -489,12 +500,12 @@ test_that("ambiguous band labels near-threshold calls", {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-binary_call_mode.R")'`
 Expected: FAIL — `.classify_calls` not found.
 
-- [ ] **Step 3: Implement the classifier in `R/build_read_panel.R`**
+- [x] **Step 3: Implement the classifier in `R/build_read_panel.R`**
 
 ```r
 # Classify continuous modification probabilities into discrete calls.
@@ -511,7 +522,7 @@ Expected: FAIL — `.classify_calls` not found.
 }
 ```
 
-- [ ] **Step 4: Branch `.add_mod_prob_segments()` on call mode**
+- [x] **Step 4: Branch `.add_mod_prob_segments()` on call mode**
 
 Replace `.add_mod_prob_segments()` with a version that accepts the new params:
 
@@ -561,7 +572,7 @@ Replace `.add_mod_prob_segments()` with a version that accepts the new params:
 }
 ```
 
-- [ ] **Step 5: Thread params through `build_read_panel()`**
+- [x] **Step 5: Thread params through `build_read_panel()`**
 
 Add `call_mode = "continuous"`, `call_threshold = 0.5`, `call_ambiguous = NULL`
 to the `build_read_panel()` signature, and pass them into every
@@ -574,7 +585,7 @@ plain):
                                 call_mode, call_threshold, call_ambiguous)
 ```
 
-- [ ] **Step 6: Thread params through `plot_methylation()`**
+- [x] **Step 6: Thread params through `plot_methylation()`**
 
 Add `call_mode = c("continuous", "binary")`, `call_threshold = 0.5`,
 `call_ambiguous = NULL` to `plot_methylation()`. At the top of the body:
@@ -586,7 +597,7 @@ Add `call_mode = c("continuous", "binary")`, `call_threshold = 0.5`,
 Pass all three into both `build_read_panel()` calls in `plot_methylation()` and
 into the `.plot_multi_methylation()` signature + its `build_read_panel()` call.
 
-- [ ] **Step 7: Rendering smoke test**
+- [x] **Step 7: Rendering smoke test**
 
 ```r
 test_that("plot_methylation renders in binary mode", {
@@ -607,12 +618,12 @@ test_that("plot_methylation renders in binary mode", {
 })
 ```
 
-- [ ] **Step 8: Run tests**
+- [x] **Step 8: Run tests**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-binary_call_mode.R")'`
 Expected: PASS. Then run `test-build_read_panel.R` to confirm continuous mode unchanged.
 
-- [ ] **Step 9: Document + commit**
+- [x] **Step 9: Document + commit**
 
 Add `@param call_mode`, `@param call_threshold`, `@param call_ambiguous` to
 `plot_methylation()` roxygen; add NEWS bullet; `devtools::document()`.
@@ -634,7 +645,7 @@ git commit -m "feat: add binarized call mode to read panel (call_mode)"
 - Consumes: `smooth_methylation()` (fits per group).
 - Produces: `.compute_group_delta(sites, group_col, span, n_grid = 200)` → either `NULL` (with a `message()`) when the number of non-NA groups ≠ 2, or a data.frame with columns `position`, `delta`, `sign` (`"pos"`/`"neg"`/`"zero"`), where `delta = value(group2) - value(group1)` on a shared grid, `NA` where either group lacks support.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```r
 # tests/testthat/test-delta_track.R
@@ -666,12 +677,12 @@ test_that("compute_group_delta returns signed delta on shared grid for 2 groups"
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-delta_track.R")'`
 Expected: FAIL — `.compute_group_delta` not found.
 
-- [ ] **Step 3: Implement `.compute_group_delta()`**
+- [x] **Step 3: Implement `.compute_group_delta()`**
 
 ```r
 # R/delta_track.R
@@ -727,12 +738,12 @@ is fragile; write it as two statements instead:
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-delta_track.R")'`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add R/delta_track.R tests/testthat/test-delta_track.R
@@ -752,7 +763,7 @@ git commit -m "feat: add shared-grid group delta computation"
 - Consumes: `.compute_group_delta()` (Task 5), `.DELTA_DIVERGING` (Task 1), `theme_ggmethylation()` (Task 1).
 - Produces: `.build_delta_panel(delta_df, region_start, region_end)` → a ggplot; `plot_methylation(show_delta = FALSE)` appends the delta panel below the smooth panel when grouping yields exactly two groups.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```r
 test_that("build_delta_panel returns a ggplot", {
@@ -787,12 +798,12 @@ test_that("plot_methylation adds delta panel for 2 groups when show_delta", {
 `expect_s3_class(p_yes, "patchwork")` instead and rely on the panel-count being
 covered by the message/skip test below.)
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-delta_track.R")'`
 Expected: FAIL — `.build_delta_panel` not found / `show_delta` arg unused.
 
-- [ ] **Step 3: Implement `.build_delta_panel()`**
+- [x] **Step 3: Implement `.build_delta_panel()`**
 
 ```r
 # Render the signed delta as a diverging area around a zero baseline.
@@ -822,7 +833,7 @@ acceptable for v1. If a filled-to-zero look is required later, switch to two
 `geom_ribbon` layers (one clamped `ymin=0, ymax=pmax(delta,0)`, one
 `ymin=pmin(delta,0), ymax=0`).
 
-- [ ] **Step 4: Wire `show_delta` into `plot_methylation()`**
+- [x] **Step 4: Wire `show_delta` into `plot_methylation()`**
 
 Add `show_delta = FALSE` to the signature (and to `.plot_multi_methylation()`;
 for multi-sample, delta is out of scope — accept the arg and `message()` +
@@ -852,7 +863,7 @@ optional `p_gene` are built, before `wrap_plots`):
   }
 ```
 
-- [ ] **Step 5: Extend panel assembly and heights**
+- [x] **Step 5: Extend panel assembly and heights**
 
 Replace the panel-assembly block so the delta panel is appended last:
 
@@ -882,7 +893,7 @@ Replace the panel-assembly block so the delta panel is appended last:
   patchwork::wrap_plots(panels, ncol = 1, heights = heights)
 ```
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run: `Rscript -e 'devtools::test_file("tests/testthat/test-delta_track.R")'`
 Expected: PASS. Then run the full suite:
@@ -890,7 +901,7 @@ Expected: PASS. Then run the full suite:
 Run: `Rscript -e 'devtools::test()'`
 Expected: PASS (confirm `panel_heights` length tests elsewhere still hold; update any that hard-code panel counts).
 
-- [ ] **Step 7: Document + commit**
+- [x] **Step 7: Document + commit**
 
 Add `@param show_delta` to `plot_methylation()` roxygen (note the exactly-two-groups
 requirement and that it appends a bottom panel; update the `@param panel_heights`

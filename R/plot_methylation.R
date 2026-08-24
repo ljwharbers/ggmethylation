@@ -271,9 +271,9 @@
 # higher, so the sign is readable off the plot itself.
 .delta_y_label = function(call_mode) {
   if (identical(call_mode, "binary")) {
-    "Δ fraction\nmethylated"
+    "\u0394 fraction\nmethylated"
   } else {
-    "Δ mod.\nprobability"
+    "\u0394 mod.\nprobability"
   }
 }
 

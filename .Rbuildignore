@@ -5,3 +5,9 @@
 ^.*\.Rproj$
 ^data-raw$
 ^tools$
+^showcase\.R$
+^test.*\.R$
+^.*\.png$
+^\.claude$
+^\.worktrees$
+^CLAUDE\.md$

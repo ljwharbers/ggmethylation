@@ -31,6 +31,17 @@ for 5-methylcytosine).}
 \item{group_tag}{Character or NULL. BAM tag used to group reads (e.g.
 \code{"HP"} for haplotype, \code{"RG"} for read group). NULL disables grouping.}
 
+\item{snv_position}{Integer or NULL. Reference position of a heterozygous
+SNV to group reads by. Mutually exclusive with \code{group_tag}. When set,
+\code{ref_base} and \code{alt_base} are required and reads are labelled \code{"REF"} or
+\code{"ALT"} by the base they carry; reads matching neither are dropped.}
+
+\item{ref_base}{Character or NULL. Reference allele at \code{snv_position},
+a single base. Required when \code{snv_position} is set.}
+
+\item{alt_base}{Character or NULL. Alternate allele at \code{snv_position},
+a single base. Required when \code{snv_position} is set.}
+
 \item{max_reads}{Integer. Maximum number of reads to return (default 200).
 If more reads overlap the region, a random subset is kept.}
 
