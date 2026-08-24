@@ -274,23 +274,43 @@ test_that("delta panel takes its fills from group_colours", {
   expect_equal(delta_fills(p_neg), "darkgreen")
 })
 
-test_that("delta panel falls back to the diverging palette for unnamed groups", {
-  # Groups "A"/"B" are not named in the default group_colours, so neither half
-  # can be resolved; the panel must fall back rather than emit NA fills.
+test_that("delta panel uses group colours for non-haplotype group names", {
+  # Groups "A"/"B" are not named in the default group_colours. These used to
+  # resolve to nothing and drop the panel to the standalone diverging palette;
+  # .resolve_group_colours() now maps the default palette onto whatever groups
+  # are present, so the delta panel agrees with the panels above it instead.
   p <- ggmethylation::plot_methylation(
     make_delta_md(group_names = c("A", "B"), higher = "B"),
     show_delta = TRUE, show_supplementary = FALSE
   )
-  expect_equal(delta_fills(p), ggmethylation:::.DELTA_DIVERGING$pos)
+  # "B" is higher -> positive -> the second group's colour.
+  expect_equal(delta_fills(p),
+               unname(ggmethylation:::.GROUP_PALETTE_DEFAULT[[2L]]))
 })
 
-test_that("delta panel falls back when only one group is named", {
-  # A partial match would leave one half group-coloured and the other not -
-  # exactly the half-matching state this feature removes. Require both.
+test_that("a partially-named palette is completed rather than discarded", {
+  # Only "1" is named. The named half is honoured and the unnamed half is
+  # filled with a distinct colour -- two groups sharing one colour would make
+  # the panel unreadable.
+  expect_warning(
+    p <- ggmethylation::plot_methylation(
+      make_delta_md(group_names = c("1", "B"), higher = "1"),
+      show_delta = TRUE, show_supplementary = FALSE,
+      group_colours = c("1" = "darkgreen")
+    ),
+    "do not cover the groups present"
+  )
+  # "1" is higher and sorts first -> negative -> group 1's requested colour.
+  expect_equal(delta_fills(p), "darkgreen")
+})
+
+test_that("delta panel falls back to the diverging palette when group_colours is NULL", {
+  # With no palette at all there is nothing to resolve, so the standalone
+  # diverging pair is still the right answer.
   p <- ggmethylation::plot_methylation(
-    make_delta_md(group_names = c("1", "B"), higher = "B"),
+    make_delta_md(group_names = c("A", "B"), higher = "B"),
     show_delta = TRUE, show_supplementary = FALSE,
-    group_colours = c("1" = "darkgreen")
+    group_colours = NULL
   )
   expect_equal(delta_fills(p), ggmethylation:::.DELTA_DIVERGING$pos)
 })

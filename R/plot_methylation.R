@@ -540,6 +540,12 @@ plot_methylation <- function(data, sort_by = NULL,
 
   .validate_sort_by(sort_by, data$reads)
 
+  # Match the palette to the groups actually present (HP "1"/"2", SNV
+  # "REF"/"ALT", a custom tag, ...) rather than assuming haplotype naming.
+  if (!is.null(data$group_tag) && "group" %in% names(data$reads)) {
+    group_colours <- .resolve_group_colours(group_colours, data$reads$group)
+  }
+
   sort_args <- lapply(sort_by, function(col) data$reads[[col]])
   ord <- do.call(order, sort_args)
   data$reads <- data$reads[ord, , drop = FALSE]
