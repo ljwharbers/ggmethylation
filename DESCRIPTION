@@ -29,6 +29,7 @@ Imports:
     stats
 Suggests:
     testthat (>= 3.0.0),
+    withr,
     knitr,
     rmarkdown,
     GenomicFeatures,
