@@ -2,10 +2,14 @@
 
 Read-level base modification visualisation for long-read sequencing data (Oxford Nanopore / PacBio).
 
-Given a modBAM file and a genomic region, `ggmethylation` produces a two-panel plot:
+Given a modBAM file and a genomic region, `ggmethylation` produces a composite plot:
 
-- **Top panel:** individual reads as horizontal bars, with coloured dots at each modification site (colour encodes modification probability from the ML tag)
-- **Bottom panel:** loess-smoothed mean modification probability per group (only shown when grouping is specified)
+- **Read panel:** individual reads as horizontal bars, with coloured marks at each modification site (colour encodes modification probability from the ML tag)
+- **Smooth panel:** loess-smoothed mean modification probability per group, with an optional confidence ribbon
+
+Optional panels sit above and below these: a **gene annotation track**, and a
+**group-difference (delta) track**. Variant calls, CIGAR indels and
+supplementary alignments can be overlaid on the read panel.
 
 ## Installation
 
@@ -87,6 +91,102 @@ Override with `sort_by`:
 ```r
 plot_methylation(meth, sort_by = c("group", "start"))
 ```
+
+## Grouping and group comparison
+
+Reads can be split by a BAM tag or by genotype at an SNV, and the grouping
+drives every panel.
+
+```r
+# By haplotype tag
+meth_hp <- read_methylation("sample.bam", region, group_tag = "HP",
+                            drop_na_group = TRUE)
+
+# By genotype at a heterozygous SNV (works on unphased data)
+meth_snv <- read_methylation("sample.bam", region,
+                             snv_position = 95066012, ref_base = "C",
+                             alt_base = "T")
+```
+
+### Confidence ribbon
+
+`show_ci = TRUE` (the default) draws the loess confidence interval behind each
+smoothed curve, so you can see where the summary is well supported.
+
+### Group-difference (delta) track
+
+With exactly two groups, `show_delta = TRUE` adds a panel showing the signed
+difference between them, filled with the colour of whichever group is higher:
+
+```r
+plot_methylation(meth_hp, show_delta = TRUE)
+```
+
+### Binary call mode
+
+`call_mode = "binary"` renders discrete methylated/unmethylated calls instead
+of a continuous gradient. `call_ambiguous` adds a third state for
+low-confidence calls, which are excluded from the aggregate:
+
+```r
+plot_methylation(meth_hp, call_mode = "binary", call_threshold = 0.5,
+                 call_ambiguous = 0.2)
+```
+
+In binary mode the smooth panel switches to the *fraction of calls that are
+methylated*.
+
+## Gene annotation track
+
+`read_annotations()` fetches a gene model for the region — from a cached UCSC
+ncbiRefSeq GTF for `"hg38"` or `"chm13"`, or from your own `gtf`/`txdb`:
+
+```r
+ann <- read_annotations(genome = "chm13", region = region)
+plot_methylation(meth_hp, annotations = ann)
+```
+
+## Variant overlays
+
+`read_variants()` reads a VCF and classifies SNVs, indels and structural
+variants (`DEL`, `DUP`, `INV`, `BND`):
+
+```r
+vars <- read_variants("calls.vcf.gz", region)
+plot_methylation(meth_hp, variants = vars)
+```
+
+SNVs are marked only on the reads that actually carry the ALT allele.
+Structural variants are drawn as spanning bars and BND records are labelled
+with their mate location.
+
+## CIGAR features and supplementary alignments
+
+Large indels from the CIGAR string are shown by default (`show_cigar`,
+`min_indel_size`), and reads with supplementary alignments get arrowheads
+(`show_supplementary`). Consensus deletions also break the smoothed curve, so
+the summary is not interpolated across regions with no read sequence.
+
+## Multiple samples
+
+`merge_methylation()` combines several objects over the same region into a
+`multi_methylation_data`, plotted as stacked per-sample read panels above a
+shared smooth panel:
+
+```r
+merged <- merge_methylation(tumour = md1, normal = md2)
+plot_methylation(merged)
+```
+
+## Exporting
+
+```r
+write_methylation(meth, prefix = "out/sample")                    # TSV
+write_methylation(meth, prefix = "out/sample",
+                  format = "bed", gzip = TRUE)                    # BED + gzip
+```
+
+BED output is 0-based half-open with `mod_prob` in the score column.
 
 ## Insertion-aware modifications
 

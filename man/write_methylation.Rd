@@ -58,7 +58,7 @@ Columns: \code{position}, \code{mod_prob}, \code{read_name}, \code{mod_code}, \c
 
 6-column BED (no header). Coordinates are converted to 0-based half-open
 intervals (\code{chromStart = position - 1}, \code{chromEnd = position}). The \code{score}
-column contains \code{mod_prob} (float in \link{0, 1}).
+column contains \code{mod_prob} (float in \verb{[0, 1]}).
 }
 \examples{
 \dontrun{

@@ -110,11 +110,14 @@ deletions to be displayed when \code{show_cigar = TRUE}. Indels smaller than
 this threshold are hidden to reduce visual clutter from common small
 indels. Default \code{50}.}
 
-\item{show_supplementary}{Logical. When \code{TRUE} (default), a coloured halo
-is drawn around read bars indicating the chromosome of the supplementary
-alignment partner (from the SA BAM tag). The original bar colouring
-(group, strand, or default grey) is preserved inside the halo. Reads with
-no supplementary alignment have no halo.}
+\item{show_supplementary}{Logical. When \code{TRUE} (default), a coloured
+indicator is drawn at the end of a read where a supplementary alignment
+joins it (from the SA BAM tag), coloured by that partner's chromosome. The
+flank is taken from \verb{$reads$sa_side}, so the indicator appears only on the
+side the partner is actually on — a read spanning two breakpoints gets one
+indicator per flank, each coloured by its own partner. The original bar
+colouring (group, strand, or default grey) is preserved. Reads with no
+supplementary alignment get no indicator.}
 
 \item{bnd_match_tol}{Integer. Position tolerance (bp) for matching
 supplementary-alignment breakpoints to VCF BND calls. The SA matching runs

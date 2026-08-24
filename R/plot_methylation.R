@@ -233,13 +233,24 @@
 # `y_label` differs between call modes: continuous mode plots a mean probability,
 # binary mode plots a fraction of methylated calls (see .smooth_y_label()).
 .smooth_panel_base <- function(region_start, region_end,
-                               y_label = "Mean modification\nprobability") {
+                               y_label = "Mean mod.\nprobability") {
   list(
     ggplot2::scale_y_continuous(limits = c(0, 1), name = y_label),
     ggplot2::scale_x_continuous(labels = scales::comma_format()),
     ggplot2::coord_cartesian(xlim = c(region_start, region_end)),
-    theme_ggmethylation()
+    theme_ggmethylation(),
+    .compact_y_title()
   )
+}
+
+# The smooth and delta panels are the shortest in the stack (default relative
+# heights 0.25 and 0.2). A rotated y-axis title needs vertical room in
+# proportion to its string length, so at ordinary figure heights a full-length
+# title overflows its own panel and collides with the neighbouring panel's
+# title. Shrinking the title text keeps both readable without forcing callers
+# to pass a taller `panel_heights`.
+.compact_y_title <- function() {
+  ggplot2::theme(axis.title.y = ggplot2::element_text(size = 8))
 }
 
 # y-axis label for the smooth panel, and for the delta panel below it. In binary
@@ -249,7 +260,7 @@
   if (identical(call_mode, "binary")) {
     "Fraction\nmethylated"
   } else {
-    "Mean modification\nprobability"
+    "Mean mod.\nprobability"
   }
 }
 
@@ -260,9 +271,9 @@
 # higher, so the sign is readable off the plot itself.
 .delta_y_label = function(call_mode) {
   if (identical(call_mode, "binary")) {
-    "Δ fraction\nmethylated"
+    "\u0394 fraction\nmethylated"
   } else {
-    "Δ methylation"
+    "\u0394 mod.\nprobability"
   }
 }
 
@@ -338,11 +349,14 @@
 #'   deletions to be displayed when `show_cigar = TRUE`. Indels smaller than
 #'   this threshold are hidden to reduce visual clutter from common small
 #'   indels. Default `50`.
-#' @param show_supplementary Logical. When `TRUE` (default), a coloured halo
-#'   is drawn around read bars indicating the chromosome of the supplementary
-#'   alignment partner (from the SA BAM tag). The original bar colouring
-#'   (group, strand, or default grey) is preserved inside the halo. Reads with
-#'   no supplementary alignment have no halo.
+#' @param show_supplementary Logical. When `TRUE` (default), a coloured
+#'   indicator is drawn at the end of a read where a supplementary alignment
+#'   joins it (from the SA BAM tag), coloured by that partner's chromosome. The
+#'   flank is taken from `$reads$sa_side`, so the indicator appears only on the
+#'   side the partner is actually on — a read spanning two breakpoints gets one
+#'   indicator per flank, each coloured by its own partner. The original bar
+#'   colouring (group, strand, or default grey) is preserved. Reads with no
+#'   supplementary alignment get no indicator.
 #' @param bnd_match_tol Integer. Position tolerance (bp) for matching
 #'   supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
 #'   whenever `variants` is supplied and reads carry SA tags; the visual border
@@ -527,6 +541,14 @@ plot_methylation <- function(data, sort_by = NULL,
     }
   }
 
+  .validate_sort_by(sort_by, data$reads)
+
+  # Match the palette to the groups actually present (HP "1"/"2", SNV
+  # "REF"/"ALT", a custom tag, ...) rather than assuming haplotype naming.
+  if (!is.null(data$group_tag) && "group" %in% names(data$reads)) {
+    group_colours <- .resolve_group_colours(group_colours, data$reads$group)
+  }
+
   sort_args <- lapply(sort_by, function(col) data$reads[[col]])
   ord <- do.call(order, sort_args)
   data$reads <- data$reads[ord, , drop = FALSE]
@@ -536,19 +558,28 @@ plot_methylation <- function(data, sort_by = NULL,
   data$reads$lane <- integer(nrow(data$reads))
   separator_lanes <- numeric(0)
 
+  # The wider `clip_gap` exists solely to keep supplementary-alignment
+  # indicators from colliding, so key it on the flank that actually carries
+  # one.  `clip_side` would widen the gap for every adapter-trimmed read.
+  pack_side <- if ("sa_side" %in% names(data$reads)) {
+    data$reads$sa_side
+  } else {
+    data$reads$clip_side
+  }
+
   if (!is.null(data$group_tag)) {
     groups_ordered <- .ordered_plot_groups(data$reads$group)
     lane_offset <- 0L
     for (grp in groups_ordered) {
       idx <- which(.match_plot_group(data$reads$group, grp))
-      data$reads$lane[idx] <- pack_reads(data$reads[idx, ], clip_side = data$reads$clip_side[idx]) + lane_offset
+      data$reads$lane[idx] <- pack_reads(data$reads[idx, ], clip_side = pack_side[idx]) + lane_offset
       lane_offset <- max(data$reads$lane[idx]) + 2L
       separator_lanes <- c(separator_lanes, lane_offset - 1L)
     }
     # Drop the trailing separator (after the last group)
     separator_lanes <- separator_lanes[-length(separator_lanes)]
   } else {
-    data$reads$lane <- pack_reads(data$reads, clip_side = data$reads$clip_side)
+    data$reads$lane <- pack_reads(data$reads, clip_side = pack_side)
   }
 
   # --- 5b. Build variant overlay ---
@@ -844,10 +875,6 @@ plot_methylation <- function(data, sort_by = NULL,
 
 # Internal multi-sample renderer
 # Not exported — called by plot_methylation() when data is multi_methylation_data.
-# NOTE: `show_ci` is accepted here only for signature compatibility with the
-# call from plot_methylation(); wiring the CI ribbon into the shared
-# multi-sample smooth panel is out of scope for this change (see task-3
-# brief's file scope) and is left for a follow-up.
 
 .plot_multi_methylation <- function(data, sort_by, colour_low, colour_high,
                                     colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
@@ -865,7 +892,8 @@ plot_methylation <- function(data, sort_by = NULL,
                                     show_delta = FALSE) {
 
   if (isTRUE(show_delta)) {
-    message("`show_delta` is not supported for multi-sample data; ignoring.")
+    warning("`show_delta` is not supported for multi-sample data; ignoring.",
+            call. = FALSE)
   }
 
   region_start <- GenomicRanges::start(data$region)
@@ -925,6 +953,8 @@ plot_methylation <- function(data, sort_by = NULL,
         sort_by_s <- c("start", "group", "mean_mod_prob")
       }
     }
+    .validate_sort_by(sort_by_s, s$reads)
+
     sort_args <- lapply(sort_by_s, function(col) s$reads[[col]])
     ord <- do.call(order, sort_args)
     s$reads <- s$reads[ord, , drop = FALSE]
@@ -1067,9 +1097,19 @@ plot_methylation <- function(data, sort_by = NULL,
         .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Group", linetype = "Sample")
 
+      # Two identity variables here (sample and group), so separate the ribbon
+      # polygons on their interaction — otherwise overlapping bands collapse
+      # into one self-crossing polygon.
+      p_smooth <- .add_ci_ribbon(
+        p_smooth, smoothed, show_ci,
+        fill_aes  = quote(.data$smooth_group),
+        group_aes = quote(interaction(.data$smooth_sample, .data$smooth_group))
+      )
+
       if (!is.null(group_colours)) {
         p_smooth <- p_smooth +
-          ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50")
+          ggplot2::scale_colour_manual(values = group_colours, na.value = "grey50") +
+          ggplot2::scale_fill_manual(values = group_colours, na.value = "grey50")
       }
     } else {
       # No grouping: colour lines by sample name
@@ -1084,6 +1124,11 @@ plot_methylation <- function(data, sort_by = NULL,
         ggplot2::geom_line(linewidth = 1) +
         .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)", colour = "Sample")
+
+      p_smooth <- .add_ci_ribbon(
+        p_smooth, smoothed, show_ci,
+        fill_aes = quote(.data$smooth_key)
+      )
     }
 
   } else {

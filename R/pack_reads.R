@@ -8,11 +8,14 @@
 #'   Rows should already be sorted in the desired display order.
 #' @param gap Minimum gap in base pairs between reads on the same lane
 #'   (default 10).
-#' @param clip_side Character vector (same length as `nrow(reads)`) indicating
-#'   soft-clip status of each read: `"left"`, `"right"`, `"both"`, or `NA`.
-#'   When non-NULL, adjacent clipped reads receive a wider gap so that
-#'   supplementary-alignment indicators do not overlap. Default `NULL` (no
-#'   clip-aware packing).
+#' @param clip_side Character vector (same length as `nrow(reads)`) naming the
+#'   side(s) of each read that carry an indicator: `"left"`, `"right"`,
+#'   `"both"`, or `NA`. When non-NULL, adjacent reads with a facing indicator
+#'   receive a wider gap so the indicators do not overlap. Callers should pass
+#'   `$reads$sa_side` (the flank where a supplementary alignment actually is)
+#'   rather than `$reads$clip_side`, which is `"both"` for nearly every
+#'   adapter-trimmed long read and would widen the gap everywhere. Default
+#'   `NULL` (no clip-aware packing).
 #' @param clip_gap Minimum gap in base pairs between reads when at least one
 #'   side is clipped (default 100).
 #'

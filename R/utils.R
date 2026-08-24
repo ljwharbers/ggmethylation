@@ -322,6 +322,177 @@ detect_clip_side <- function(cigar) {
   }, character(1L), USE.NAMES = FALSE)
 }
 
+#' Query-space extent of an alignment in original read orientation
+#'
+#' Computes where an alignment sits along the read as it came off the
+#' sequencer, so that a primary alignment and the entries of its `SA` tag can
+#' be compared on a common axis.
+#'
+#' Hard-clipped bases are counted towards the full read length, which is what
+#' makes the comparison valid: a primary alignment normally soft-clips the
+#' portion aligned elsewhere while its supplementary counterpart hard-clips the
+#' portion aligned here, yet both CIGARs then describe the same total read
+#' length.  A reverse-strand alignment is stored reverse-complemented relative
+#' to the read, so its *trailing* clip is the read-5' offset.
+#'
+#' @param cigar Character. A single CIGAR string.
+#' @param strand Character. `"+"` or `"-"`.
+#'
+#' @return A named list with `start`, `end` (0-based, inclusive, in original
+#'   read orientation) and `qlen` (full read length), or `NULL` when the CIGAR
+#'   is missing, unaligned, or has no aligned query bases.
+#'
+#' @keywords internal
+.query_extent <- function(cigar, strand) {
+  if (length(cigar) != 1L || is.na(cigar) || cigar == "*") return(NULL)
+  parsed <- split_cigar(cigar)
+  ops    <- parsed$ops
+  lens   <- parsed$lens
+  n      <- length(ops)
+  if (n == 0L || n != length(lens) || anyNA(lens)) return(NULL)
+
+  lead  <- if (ops[1L] %in% c("S", "H")) lens[1L] else 0L
+  trail <- if (n > 1L && ops[n] %in% c("S", "H")) lens[n] else 0L
+  qlen  <- sum(lens[ops %in% c("M", "I", "S", "=", "X", "H")])
+  aln   <- qlen - lead - trail
+  if (aln <= 0L) return(NULL)
+
+  start <- if (identical(strand, "-")) trail else lead
+  list(start = start, end = start + aln - 1L, qlen = qlen)
+}
+
+#' Build the supplementary-alignment columns for a set of alignments
+#'
+#' Vectorised over alignments.  For each one, [sa_partner_sides()] decides which
+#' reference flank every `SA` partner joins; the best partner (by MAPQ) is then
+#' recorded overall and per flank.
+#'
+#' `sa_chrom` / `sa_pos` are populated from the best partner regardless of
+#' whether its flank could be determined, so BND matching still works for reads
+#' whose junction side is undecidable.
+#'
+#' @param cigar Character vector of CIGAR strings, one per alignment.
+#' @param strand Character vector of strands, one per alignment.
+#' @param sa_tags List or character vector of raw `SA` tag values, one per
+#'   alignment, or `NULL` when the BAM carries no `SA` tag at all.
+#'
+#' @return A data.frame with `length(cigar)` rows and columns `sa_chrom`,
+#'   `sa_pos`, `sa_side`, `sa_chrom_left`, `sa_pos_left`, `sa_chrom_right`,
+#'   `sa_pos_right`. All `NA` for alignments with no usable `SA` entry.
+#'
+#' @keywords internal
+sa_columns <- function(cigar, strand, sa_tags) {
+  n <- length(cigar)
+  out <- data.frame(
+    sa_chrom       = rep(NA_character_, n),
+    sa_pos         = rep(NA_integer_,   n),
+    sa_side        = rep(NA_character_, n),
+    sa_chrom_left  = rep(NA_character_, n),
+    sa_pos_left    = rep(NA_integer_,   n),
+    sa_chrom_right = rep(NA_character_, n),
+    sa_pos_right   = rep(NA_integer_,   n),
+    stringsAsFactors = FALSE
+  )
+  if (is.null(sa_tags) || n == 0L) return(out)
+
+  for (i in seq_len(n)) {
+    sided <- sa_partner_sides(cigar[i], strand[i], sa_tags[[i]])
+    if (nrow(sided) == 0L) next
+
+    best <- .best_by_mapq(sided)
+    out$sa_chrom[i] <- sided$rname[best]
+    out$sa_pos[i]   <- sided$pos[best]
+
+    for (side in c("left", "right")) {
+      rows <- which(!is.na(sided$side) & sided$side == side)
+      if (length(rows) == 0L) next
+      b <- rows[.best_by_mapq(sided[rows, , drop = FALSE])]
+      out[[paste0("sa_chrom_", side)]][i] <- sided$rname[b]
+      out[[paste0("sa_pos_",   side)]][i] <- sided$pos[b]
+    }
+
+    has_left  <- !is.na(out$sa_chrom_left[i])
+    has_right <- !is.na(out$sa_chrom_right[i])
+    out$sa_side[i] <- if (has_left && has_right) {
+      "both"
+    } else if (has_left) {
+      "left"
+    } else if (has_right) {
+      "right"
+    } else {
+      NA_character_
+    }
+  }
+
+  out
+}
+
+#' Index of the highest-MAPQ row of an SA entry table
+#'
+#' Ties resolve to the first row; missing MAPQ sorts last.
+#'
+#' @param entries A data.frame with a `mapq` column and at least one row.
+#'
+#' @return Integer row index.
+#'
+#' @keywords internal
+.best_by_mapq <- function(entries) {
+  which.max(ifelse(is.na(entries$mapq), -1L, entries$mapq))
+}
+
+#' Locate supplementary-alignment partners relative to a primary alignment
+#'
+#' For a chimeric read, each `SA` entry joins the primary alignment at exactly
+#' one point in read coordinates.  This helper works out, for every entry,
+#' which *reference* flank of the primary alignment that junction falls on.
+#'
+#' The clipped side of a CIGAR is not a usable proxy: long ONT/PacBio reads are
+#' routinely soft-clipped at both ends by adapter and quality trimming, so
+#' [detect_clip_side()] reports `"both"` for reads that have only a single
+#' supplementary partner.  Instead, the entry's position along the read is
+#' compared with the primary's via `.query_extent()`: an entry lying downstream
+#' of the primary in read space joins at the primary's read-3' end, which is
+#' its reference right edge on the forward strand and its left edge on the
+#' reverse strand.
+#'
+#' @param cigar Character. CIGAR of the primary (this) alignment.
+#' @param strand Character. Strand of the primary alignment, `"+"` or `"-"`.
+#' @param sa_string Character. The raw `SA` tag value, or `NA`.
+#'
+#' @return A data.frame with one row per parseable `SA` entry and columns
+#'   `rname`, `pos`, `mapq`, and `side` (`"left"`, `"right"`, or `NA` when the
+#'   junction side cannot be determined). Zero rows when there are no entries.
+#'
+#' @keywords internal
+sa_partner_sides <- function(cigar, strand, sa_string) {
+  entries <- parse_sa_tag(sa_string)
+  out <- data.frame(
+    rname = entries$rname,
+    pos   = entries$pos,
+    mapq  = entries$mapq,
+    side  = rep(NA_character_, nrow(entries)),
+    stringsAsFactors = FALSE
+  )
+  if (nrow(out) == 0L) return(out)
+
+  prim <- .query_extent(cigar, strand)
+  if (is.null(prim)) return(out)
+
+  # The primary's read-3' end maps to this reference edge.
+  three_prime_side <- if (identical(strand, "-")) "left" else "right"
+  five_prime_side  <- if (identical(three_prime_side, "right")) "left" else "right"
+
+  for (i in seq_len(nrow(entries))) {
+    ext <- .query_extent(entries$cigar[i], entries$strand[i])
+    if (is.null(ext)) next
+    # An exact tie carries no directional information.
+    if (ext$start == prim$start) next
+    out$side[i] <- if (ext$start > prim$start) three_prime_side else five_prime_side
+  }
+
+  out
+}
+
 #' Convert a region string to a GRanges object
 #'
 #' Wraps [parse_region()] and constructs a [GenomicRanges::GRanges] from the
@@ -338,4 +509,40 @@ region_to_granges <- function(region) {
     seqnames = parsed$chrom,
     ranges   = IRanges::IRanges(start = parsed$start, end = parsed$end)
   )
+}
+
+
+#' Validate `sort_by` against the available read columns
+#'
+#' `plot_methylation()` sorts reads with `order()` over columns pulled out of
+#' `$reads` by name. An unknown name yields `NULL`, and `order(NULL)` returns
+#' `integer(0)` -- which silently drops every read and produces an empty plot
+#' rather than an error. This helper turns that into an explicit failure.
+#'
+#' @param sort_by Character vector of column names to sort by.
+#' @param reads The `$reads` data frame the names must exist in.
+#'
+#' @return `sort_by`, invisibly, when every name is valid.
+#'
+#' @keywords internal
+.validate_sort_by <- function(sort_by, reads) {
+  if (is.null(sort_by)) {
+    return(invisible(sort_by))
+  }
+  if (!is.character(sort_by)) {
+    stop("`sort_by` must be a character vector of column names.", call. = FALSE)
+  }
+
+  missing <- setdiff(sort_by, names(reads))
+  if (length(missing) > 0L) {
+    stop(
+      "Unknown `sort_by` column", if (length(missing) > 1L) "s" else "", ": ",
+      paste0("\"", missing, "\"", collapse = ", "), ".\n",
+      "Available columns: ",
+      paste0("\"", names(reads), "\"", collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  invisible(sort_by)
 }

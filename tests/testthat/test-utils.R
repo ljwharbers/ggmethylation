@@ -191,6 +191,171 @@ test_that("detect_clip_side returns NA for NA input", {
   expect_equal(ggmethylation:::detect_clip_side(NA_character_), NA_character_)
 })
 
+# --- .query_extent ---
+# Extents are 0-based, in ORIGINAL read orientation, and count hard clips
+# towards the read length so a primary and its supplementary counterpart share
+# one axis.
+
+test_that(".query_extent places a forward alignment after its leading clip", {
+  expect_equal(
+    ggmethylation:::.query_extent("20S100M400S", "+"),
+    list(start = 20L, end = 119L, qlen = 520L)
+  )
+})
+
+test_that(".query_extent mirrors the offsets for a reverse alignment", {
+  # Stored reference-oriented, so the TRAILING clip is the read-5' offset.
+  expect_equal(
+    ggmethylation:::.query_extent("20S100M400S", "-"),
+    list(start = 400L, end = 499L, qlen = 520L)
+  )
+})
+
+test_that(".query_extent counts hard clips towards read length", {
+  expect_equal(
+    ggmethylation:::.query_extent("100H400M", "+"),
+    list(start = 100L, end = 499L, qlen = 500L)
+  )
+})
+
+test_that(".query_extent returns NULL for unusable CIGARs", {
+  expect_null(ggmethylation:::.query_extent("*", "+"))
+  expect_null(ggmethylation:::.query_extent(NA_character_, "+"))
+  expect_null(ggmethylation:::.query_extent("500S", "+"))
+})
+
+# --- sa_partner_sides ---
+# Which REFERENCE flank of this alignment each SA partner joins, derived from
+# read coordinates. Test CIGAR/SA pairs are kept physically consistent: the two
+# extents of a real chimeric read never overlap.
+
+test_that("sa_partner_sides puts a downstream partner on the right (+ strand)", {
+  res <- ggmethylation:::sa_partner_sides(
+    "100M400S", "+", "chr7,500,+,100H400M,60,0"
+  )
+  expect_equal(res$side, "right")
+  expect_equal(res$rname, "chr7")
+  expect_equal(res$pos, 500L)
+})
+
+test_that("sa_partner_sides mirrors the flank on the reverse strand", {
+  # Primary covers read bases 0..99, which for a reverse alignment sit at the
+  # right reference edge, so the downstream partner joins on the left.
+  res <- ggmethylation:::sa_partner_sides(
+    "400S100M", "-", "chr7,500,+,100H400M,60,0"
+  )
+  expect_equal(res$side, "left")
+})
+
+test_that("sa_partner_sides puts an upstream partner on the left (+ strand)", {
+  res <- ggmethylation:::sa_partner_sides(
+    "400S100M", "+", "chr7,500,+,400M100H,60,0"
+  )
+  expect_equal(res$side, "left")
+})
+
+test_that("sa_partner_sides handles a reverse-strand partner", {
+  # The partner is stored reverse-complemented, so its trailing hard clip is
+  # the read-5' offset: it covers read 100..499, i.e. downstream.
+  res <- ggmethylation:::sa_partner_sides(
+    "100M400S", "+", "chr7,500,-,400M100H,60,0"
+  )
+  expect_equal(res$side, "right")
+})
+
+test_that("sa_partner_sides gives one side when both ends are clipped", {
+  # The regression this helper exists for: adapter trimming clips both ends,
+  # so detect_clip_side() reports "both" for a read with a single partner.
+  cig <- "20S100M400S"
+  expect_equal(ggmethylation:::detect_clip_side(cig), "both")
+  res <- ggmethylation:::sa_partner_sides(cig, "+", "chr7,500,+,120H400M,60,0")
+  expect_equal(res$side, "right")
+})
+
+test_that("sa_partner_sides reports both flanks for two partners", {
+  res <- ggmethylation:::sa_partner_sides(
+    "200S100M200S", "+",
+    "chr7,500,+,200M300H,60,0;chr9,900,+,300H200M,55,0"
+  )
+  expect_equal(res$side, c("left", "right"))
+  expect_equal(res$rname, c("chr7", "chr9"))
+})
+
+test_that("sa_partner_sides returns zero rows when there is no SA tag", {
+  expect_equal(
+    nrow(ggmethylation:::sa_partner_sides("100M400S", "+", NA_character_)), 0L
+  )
+  expect_equal(
+    nrow(ggmethylation:::sa_partner_sides("100M400S", "+", "")), 0L
+  )
+})
+
+test_that("sa_columns records the flank and its partner", {
+  out <- ggmethylation:::sa_columns(
+    cigar   = c("100M400S", "400S100M", "500M"),
+    strand  = c("+", "+", "+"),
+    sa_tags = list("chr7,500,+,100H400M,60,0",
+                   "chr9,900,+,400M100H,60,0",
+                   NA_character_)
+  )
+  expect_equal(out$sa_side, c("right", "left", NA))
+  expect_equal(out$sa_chrom_right, c("chr7", NA, NA))
+  expect_equal(out$sa_chrom_left,  c(NA, "chr9", NA))
+  expect_equal(out$sa_pos_right,   c(500L, NA, NA))
+  # sa_chrom / sa_pos stay populated for BND matching.
+  expect_equal(out$sa_chrom, c("chr7", "chr9", NA))
+})
+
+test_that("sa_columns keeps the two partners of a double breakpoint apart", {
+  out <- ggmethylation:::sa_columns(
+    cigar   = "200S100M200S",
+    strand  = "+",
+    sa_tags = list("chr7,500,+,200M300H,60,0;chr9,900,+,300H200M,55,0")
+  )
+  expect_equal(out$sa_side, "both")
+  expect_equal(out$sa_chrom_left,  "chr7")
+  expect_equal(out$sa_chrom_right, "chr9")
+})
+
+test_that("sa_columns picks the highest-MAPQ partner on a flank", {
+  out <- ggmethylation:::sa_columns(
+    cigar   = "100M400S",
+    strand  = "+",
+    sa_tags = list("chr7,500,+,100H400M,20,0;chr9,900,+,100H400M,60,0")
+  )
+  expect_equal(out$sa_side, "right")
+  expect_equal(out$sa_chrom_right, "chr9")
+})
+
+test_that("sa_columns leaves sa_side NA but keeps sa_chrom when undecidable", {
+  out <- ggmethylation:::sa_columns(
+    cigar = "100M400S", strand = "+",
+    sa_tags = list("chr7,500,+,100M400H,60,0")   # exact tie in read space
+  )
+  expect_true(is.na(out$sa_side))
+  expect_equal(out$sa_chrom, "chr7")
+})
+
+test_that("sa_columns returns all-NA columns when the BAM has no SA tag", {
+  out <- ggmethylation:::sa_columns(c("100M", "100M"), c("+", "-"), NULL)
+  expect_equal(nrow(out), 2L)
+  expect_true(all(vapply(out, function(x) all(is.na(x)), logical(1L))))
+})
+
+test_that("sa_partner_sides keeps the entry but drops the side when undecidable", {
+  # Unparseable primary, unparseable entry, and an exact tie in read space all
+  # leave `side` as NA rather than guessing a flank.
+  expect_true(is.na(
+    ggmethylation:::sa_partner_sides("*", "+", "chr7,500,+,100H400M,60,0")$side
+  ))
+  expect_true(is.na(
+    ggmethylation:::sa_partner_sides("100M400S", "+", "chr7,500,+,*,60,0")$side
+  ))
+  expect_true(is.na(
+    ggmethylation:::sa_partner_sides("100M400S", "+", "chr7,500,+,100M400H,60,0")$side
+  ))
+})
+
 # --- region_to_granges ---
 
 test_that("region_to_granges returns GRanges with correct coordinates", {
