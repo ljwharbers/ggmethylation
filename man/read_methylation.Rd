@@ -75,8 +75,16 @@ A \code{methylation_data} object (S3 list) with elements:
 \code{bam_pos} (original unclipped alignment start, equal to the BAM POS
 field), \code{strand}, \code{is_supplementary} (logical), \code{sa_chrom} (chr or
 NA), \code{sa_pos} (int or NA), \code{clip_side} (chr: \code{"left"}, \code{"right"},
-\code{"both"}, or NA), and optionally \code{group}. \code{start} and \code{end} are
-clipped to the queried region; \code{bam_pos} retains the original start.}
+\code{"both"}, or NA), \code{sa_side} (the reference flank(s) where a
+supplementary partner joins this alignment, in read coordinates:
+\code{"left"}, \code{"right"}, \code{"both"}, or NA), \code{sa_chrom_left} / \code{sa_pos_left}
+and \code{sa_chrom_right} / \code{sa_pos_right} (the partner on each flank, NA
+when that flank has none), and optionally \code{group}. \code{start} and \code{end}
+are clipped to the queried region; \code{bam_pos} retains the original
+start. Note that \code{clip_side} merely reports whether the CIGAR begins
+or ends in \code{S}/\code{H} — for long reads that is usually \code{"both"} because
+of adapter trimming — whereas \code{sa_side} reflects where a supplementary
+alignment actually is.}
 \item{sites}{Data.frame with columns \code{position}, \code{mod_prob},
 \code{read_name}, \code{mod_code}, and optionally \code{group}.}
 \item{region}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object for the queried region.}

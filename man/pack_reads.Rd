@@ -13,11 +13,14 @@ Rows should already be sorted in the desired display order.}
 \item{gap}{Minimum gap in base pairs between reads on the same lane
 (default 10).}
 
-\item{clip_side}{Character vector (same length as \code{nrow(reads)}) indicating
-soft-clip status of each read: \code{"left"}, \code{"right"}, \code{"both"}, or \code{NA}.
-When non-NULL, adjacent clipped reads receive a wider gap so that
-supplementary-alignment indicators do not overlap. Default \code{NULL} (no
-clip-aware packing).}
+\item{clip_side}{Character vector (same length as \code{nrow(reads)}) naming the
+side(s) of each read that carry an indicator: \code{"left"}, \code{"right"},
+\code{"both"}, or \code{NA}. When non-NULL, adjacent reads with a facing indicator
+receive a wider gap so the indicators do not overlap. Callers should pass
+\verb{$reads$sa_side} (the flank where a supplementary alignment actually is)
+rather than \verb{$reads$clip_side}, which is \code{"both"} for nearly every
+adapter-trimmed long read and would widen the gap everywhere. Default
+\code{NULL} (no clip-aware packing).}
 
 \item{clip_gap}{Minimum gap in base pairs between reads when at least one
 side is clipped (default 100).}

@@ -131,13 +131,52 @@
   out
 }
 
+# Back-compatibility shim: methylation_data objects built before `sa_side`
+# existed carry only `clip_side`.  Derive the old (imprecise) sides from it so
+# such objects still render, with a warning pointing at the fix.
+.ensure_sa_side <- function(reads, warn = TRUE) {
+  if ("sa_side" %in% names(reads)) return(reads)
+  if (!all(c("clip_side", "sa_chrom", "strand") %in% names(reads))) return(reads)
+
+  if (isTRUE(warn)) {
+    warning(
+      "This methylation_data object predates per-side supplementary-alignment ",
+      "detection, so indicators fall back to clip sides and may be drawn on ",
+      "both ends of a read. Re-run read_methylation() to get precise ",
+      "breakpoint sides.", call. = FALSE
+    )
+  }
+  reads$sa_side <- ifelse(
+    is.na(reads$sa_chrom),
+    NA_character_,
+    ifelse(is.na(reads$clip_side),
+           ifelse(reads$strand == "+", "right", "left"),
+           reads$clip_side)
+  )
+  reads
+}
+
+# Partner chromosome for one flank of a read, falling back to the read's
+# overall best partner when the per-side column is absent or empty.
+.sa_partner_chrom <- function(r, side) {
+  col <- if (identical(side, "left")) "sa_chrom_left" else "sa_chrom_right"
+  if (col %in% names(r) && !is.na(r[[col]])) r[[col]] else r$sa_chrom
+}
+
 # Build colored indicator polygons at breakpoint ends of supplementary reads.
 #
-# For each read with a non-NA sa_chrom, a small indicator is placed at the
-# clipped end: a triangle (matching the arrowhead) when the clip side
-# coincides with the arrowhead direction, or a small rectangle tab otherwise.
+# One indicator per supplementary partner, placed on the flank where that
+# partner actually joins the read (`sa_side`, computed from read coordinates by
+# sa_partner_sides()).  It is drawn as a triangle matching the arrowhead when
+# the flank coincides with the arrowhead direction, and as a small rectangular
+# tab otherwise.
 #
-# @param reads data.frame with SA-annotated reads (sa_chrom, clip_side columns).
+# Reads that were split on large deletions (show_cigar = TRUE) arrive here as
+# several rows; the left indicator is emitted only on the first segment and the
+# right one only on the last, so internal deletion edges stay unmarked.
+#
+# @param reads data.frame with SA-annotated reads (sa_side plus, optionally,
+#   sa_chrom_left / sa_chrom_right and is_first_segment / is_last_segment).
 # @param arrow_w Numeric.
 # @param half_height Numeric.
 # @param region_start Integer.
@@ -146,15 +185,16 @@
 #   or a 0-row data.frame if no SA reads.
 .make_sa_overlay_polygons <- function(reads, arrow_w, half_height,
                                       region_start, region_end) {
-  sa_reads <- reads[!is.na(reads$sa_chrom), , drop = FALSE]
-  if (nrow(sa_reads) == 0L) {
-    return(data.frame(
-      x = numeric(0), y = numeric(0), polygon_id = character(0),
-      sa_chrom = character(0), lane = numeric(0),
-      vcf_validated = logical(0),
-      stringsAsFactors = FALSE
-    ))
-  }
+  empty <- data.frame(
+    x = numeric(0), y = numeric(0), polygon_id = character(0),
+    sa_chrom = character(0), lane = numeric(0),
+    vcf_validated = logical(0),
+    stringsAsFactors = FALSE
+  )
+  if (!("sa_side" %in% names(reads))) return(empty)
+
+  sa_reads <- reads[!is.na(reads$sa_side), , drop = FALSE]
+  if (nrow(sa_reads) == 0L) return(empty)
 
   poly_list <- vector("list", 2L * nrow(sa_reads))
   pid_counter <- 0L
@@ -166,20 +206,21 @@
     ln <- r$lane
     hh <- half_height
     st <- r$strand
-    cs <- r$clip_side
+    cs <- r$sa_side
 
     read_len <- e - s
     aw <- min(arrow_w, read_len)
 
     # Determine which sides to overlay
-    sides <- character(0)
-    if (is.na(cs)) {
-      if (st == "+") sides <- "right" else sides <- "left"
-    } else if (cs == "both") {
-      sides <- c("left", "right")
-    } else {
-      sides <- cs
-    }
+    sides <- if (identical(cs, "both")) c("left", "right") else cs
+
+    # On a deletion-split read, only the outer edges of the read are real ends.
+    is_first <- if ("is_first_segment" %in% names(r)) isTRUE(r$is_first_segment) else TRUE
+    is_last  <- if ("is_last_segment"  %in% names(r)) isTRUE(r$is_last_segment)  else TRUE
+    sides <- sides[vapply(sides, function(sd) {
+      if (identical(sd, "left")) is_first else is_last
+    }, logical(1L))]
+    if (length(sides) == 0L) next
 
     # Arrowhead side depends on strand
     arrow_side <- if (st == "+") "right" else "left"
@@ -212,7 +253,7 @@
         x             = xs,
         y             = ys,
         polygon_id    = pid,
-        sa_chrom      = r$sa_chrom,
+        sa_chrom      = .sa_partner_chrom(r, side),
         lane          = ln,
         vcf_validated = if ("vcf_validated" %in% names(r)) isTRUE(r$vcf_validated) else FALSE,
         stringsAsFactors = FALSE
@@ -353,15 +394,24 @@ build_read_panel <- function(data,
   sites_plot$start <- NULL
   sites_plot$end   <- NULL
 
+  # Legacy objects carry only `clip_side`; back-fill `sa_side` from it once, so
+  # the suppression zone below and the overlay polygons agree (and the
+  # deprecation warning fires a single time).
+  if (isTRUE(show_supplementary) && !("sa_side" %in% names(reads_plot))) {
+    data$reads <- .ensure_sa_side(data$reads,  warn = TRUE)
+    reads_plot <- .ensure_sa_side(reads_plot, warn = FALSE)
+  }
+
   # --- Arrow geometry parameters ---
   arrow_w     <- (region_end - region_start) * 0.003
   half_height <- 0.35
+  # SA indicator width.  Shared by the drawn polygons and the zone where
+  # modification dots are suppressed, so ticks cannot show through a marker.
+  sa_arrow_w  <- arrow_w * 1.5
 
   # --- Suppress modification dots within SA indicator regions ---
-  if (isTRUE(show_supplementary) &&
-      "sa_chrom"  %in% names(data$reads) &&
-      "clip_side" %in% names(data$reads)) {
-    sa_reads <- data$reads[!is.na(data$reads$sa_chrom), , drop = FALSE]
+  if (isTRUE(show_supplementary) && "sa_side" %in% names(data$reads)) {
+    sa_reads <- data$reads[!is.na(data$reads$sa_side), , drop = FALSE]
     if (nrow(sa_reads) > 0L) {
       keep <- rep(TRUE, nrow(sites_plot))
       for (i in seq_len(nrow(sa_reads))) {
@@ -369,10 +419,9 @@ build_read_panel <- function(data,
         rn       <- r$read_name
         s        <- r$start
         e        <- r$end
-        cs       <- r$clip_side
-        if (is.na(cs)) next
+        cs       <- r$sa_side
         read_len <- e - s
-        sa_ext   <- min(arrow_w, read_len)
+        sa_ext   <- min(sa_arrow_w, read_len)
         idx      <- sites_plot$read_name == rn
         if (cs %in% c("left",  "both")) keep <- keep & !(idx & sites_plot$position <= s + sa_ext)
         if (cs %in% c("right", "both")) keep <- keep & !(idx & sites_plot$position >= e - sa_ext)
@@ -412,7 +461,7 @@ build_read_panel <- function(data,
     }
 
     if (isTRUE(show_supplementary)) {
-      p <- .add_sa_overlay(p, reads_plot, arrow_w * 1.5, half_height,
+      p <- .add_sa_overlay(p, reads_plot, sa_arrow_w, half_height,
                            region_start, region_end, variant_overlay,
                            needs_new_scale = TRUE)
     }
@@ -445,7 +494,7 @@ build_read_panel <- function(data,
         ggplot2::scale_fill_manual(values = strand_colours, name = "Strand")
 
       if (isTRUE(show_supplementary)) {
-        p <- .add_sa_overlay(p, reads_plot, arrow_w, half_height,
+        p <- .add_sa_overlay(p, reads_plot, sa_arrow_w, half_height,
                              region_start, region_end, variant_overlay,
                              needs_new_scale = TRUE)
       }
@@ -467,7 +516,7 @@ build_read_panel <- function(data,
         )
 
       if (isTRUE(show_supplementary)) {
-        p <- .add_sa_overlay(p, reads_plot, arrow_w, half_height,
+        p <- .add_sa_overlay(p, reads_plot, sa_arrow_w, half_height,
                              region_start, region_end, variant_overlay,
                              needs_new_scale = FALSE)
       }
@@ -578,7 +627,7 @@ build_read_panel <- function(data,
 .add_sa_overlay <- function(p, reads_plot, arrow_w, half_height,
                              region_start, region_end, variant_overlay,
                              needs_new_scale = TRUE) {
-  if (!("sa_chrom" %in% names(reads_plot))) return(p)
+  if (!("sa_side" %in% names(reads_plot))) return(p)
 
   sa_polys <- .make_sa_overlay_polygons(
     reads_plot, arrow_w, half_height, region_start, region_end

@@ -38,7 +38,7 @@ The package has five layers:
 - `smooth_methylation.R`: Aggregates per-site modification probabilities and fits a loess curve on a 200-point grid for the smoothed lower panel, with `lower`/`upper` confidence columns. The shared `.smooth_xy(x, y)` helper is used by both `plot_methylation()` and `plot_insertion_locus()`.
 - `insertion_loci.R`: `list_insertion_loci()` clusters insertion events across reads into loci using a greedy single-pass algorithm. `insertion_sites()` is a convenience accessor for `$insertion_sites`.
 - `merge_methylation.R`: `merge_methylation()` combines several `methylation_data` objects covering the same region into a `multi_methylation_data` object, with `print`/`summary` methods.
-- `utils.R`: region parsing, CIGAR decomposition, and shared validation helpers such as `.validate_sort_by()`.
+- `utils.R`: region parsing, CIGAR decomposition, and shared validation helpers such as `.validate_sort_by()`. `.query_extent()` and `sa_partner_sides()` place an alignment and its `SA` entries on a common read-coordinate axis to decide which flank each supplementary partner joins.
 
 **Layer 3 — Annotation and variant ingestion**
 - `read_annotations.R`: `read_annotations()` builds a gene model for the region from a UCSC ncbiRefSeq GTF (downloaded and cached per `genome`, `"hg38"` or `"chm13"`), a user-supplied `gtf`, or a `TxDb`. Returns a `gene_annotations` object. `clear_annotation_cache()` drops the cached TxDb.
@@ -62,7 +62,7 @@ These do the actual drawing; `plot_methylation()` orchestrates them.
 ## Key Data Structure
 
 `methylation_data` (S3 list):
-- `$reads`: data frame — `read_name`, `start`, `end`, `strand`, `bam_pos`, `mean_mod_prob`, optional `group`
+- `$reads`: data frame — `read_name`, `start`, `end`, `strand`, `bam_pos`, `mean_mod_prob`, optional `group`. Supplementary-alignment columns: `is_supplementary`, `clip_side` (raw CIGAR clipping — usually `"both"` because of adapter trimming, so **not** a breakpoint indicator), `sa_side` (the reference flank(s) where an SA partner actually joins, from `sa_partner_sides()`), `sa_chrom` / `sa_pos` (best partner overall), and `sa_chrom_left` / `sa_pos_left` / `sa_chrom_right` / `sa_pos_right` (best partner per flank). The read panel and `pack_reads()` key off `sa_side`, never `clip_side`.
 - `$sites`: data frame — `read_name`, `position`, `mod_prob`, `mod_code`, optional `group`
 - `$insertion_sites`: data frame — `read_name`, `ref_anchor`, `query_pos`, `ins_offset`, `ins_length`, `mod_prob`, `mod_code`, optional `group`. Zero rows when no insertion modifications were found.
 - `$cigar_features`: data frame — one row per CIGAR operation per read; columns `type`, `ref_start`, `ref_end`, `query_start`, `query_end`, `length`, `read_name`. Used by `list_insertion_loci()`.

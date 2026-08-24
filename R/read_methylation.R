@@ -45,8 +45,16 @@
 #'       `bam_pos` (original unclipped alignment start, equal to the BAM POS
 #'       field), `strand`, `is_supplementary` (logical), `sa_chrom` (chr or
 #'       NA), `sa_pos` (int or NA), `clip_side` (chr: `"left"`, `"right"`,
-#'       `"both"`, or NA), and optionally `group`. `start` and `end` are
-#'       clipped to the queried region; `bam_pos` retains the original start.}
+#'       `"both"`, or NA), `sa_side` (the reference flank(s) where a
+#'       supplementary partner joins this alignment, in read coordinates:
+#'       `"left"`, `"right"`, `"both"`, or NA), `sa_chrom_left` / `sa_pos_left`
+#'       and `sa_chrom_right` / `sa_pos_right` (the partner on each flank, NA
+#'       when that flank has none), and optionally `group`. `start` and `end`
+#'       are clipped to the queried region; `bam_pos` retains the original
+#'       start. Note that `clip_side` merely reports whether the CIGAR begins
+#'       or ends in `S`/`H` — for long reads that is usually `"both"` because
+#'       of adapter trimming — whereas `sa_side` reflects where a supplementary
+#'       alignment actually is.}
 #'     \item{sites}{Data.frame with columns `position`, `mod_prob`,
 #'       `read_name`, `mod_code`, and optionally `group`.}
 #'     \item{region}{A [GenomicRanges::GRanges] object for the queried region.}
@@ -143,19 +151,15 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   # Add supplementary alignment columns from BAM flag and SA tag
   reads$is_supplementary <- bitwAnd(bam_data$flag, 0x800L) > 0L
 
-  sa_tags <- bam_data$tag[["SA"]]
-  if (!is.null(sa_tags)) {
-    sa_parsed <- lapply(sa_tags, parse_sa_tag)
-    reads$sa_chrom <- vapply(sa_parsed, function(x) {
-      if (nrow(x) == 0L) NA_character_ else x$rname[1L]
-    }, character(1L))
-    reads$sa_pos <- vapply(sa_parsed, function(x) {
-      if (nrow(x) == 0L) NA_integer_ else x$pos[1L]
-    }, integer(1L))
-  } else {
-    reads$sa_chrom <- NA_character_
-    reads$sa_pos   <- NA_integer_
-  }
+  # `sa_side` records which reference flank of *this* alignment each
+  # supplementary partner joins, worked out from read (query) coordinates.  The
+  # clipped side of the CIGAR cannot stand in for it: adapter trimming clips
+  # both ends of nearly every long read, so `clip_side` below is almost always
+  # "both" regardless of where the partner is.
+  reads <- cbind(
+    reads,
+    sa_columns(bam_data$cigar, reads$strand, bam_data$tag[["SA"]])
+  )
 
   reads$clip_side <- detect_clip_side(bam_data$cigar)
 
@@ -502,6 +506,11 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
     is_supplementary = logical(0L),
     sa_chrom        = character(0L),
     sa_pos          = integer(0L),
+    sa_side         = character(0L),
+    sa_chrom_left   = character(0L),
+    sa_pos_left     = integer(0L),
+    sa_chrom_right  = character(0L),
+    sa_pos_right    = integer(0L),
     clip_side       = character(0L),
     stringsAsFactors = FALSE
   )

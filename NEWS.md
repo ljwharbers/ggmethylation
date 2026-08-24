@@ -1,3 +1,29 @@
+# ggmethylation 0.3.2
+
+## Bug fixes
+
+- Supplementary-alignment indicators were drawn on **both** ends of a read. The
+  overlay chose its side from `$reads$clip_side`, which only asks whether the
+  CIGAR begins or ends in `S`/`H` — and adapter trimming clips both ends of
+  nearly every long read, so `clip_side` was `"both"` even for a read with a
+  single supplementary partner. The side is now derived from read (query)
+  coordinates by comparing the primary alignment's extent with each `SA`
+  entry's, so an indicator appears only on the flank where a partner actually
+  joins. `$reads` gains `sa_side` and per-flank `sa_chrom_left` /
+  `sa_pos_left` / `sa_chrom_right` / `sa_pos_right`; `clip_side` is unchanged
+  and still reports raw clipping. A read that genuinely spans two breakpoints
+  still gets two indicators, each coloured by its own partner. Objects built
+  by an earlier version fall back to the old clip-based sides with a warning.
+- Reads split on large deletions (`show_cigar = TRUE`) received a
+  supplementary indicator at every segment edge, including interior deletion
+  boundaries. Indicators are now emitted only on the read's outer ends.
+- The grouped read panel drew supplementary indicators 1.5× wider than the
+  zone where modification ticks were suppressed, so ticks showed through the
+  marker. Both now use one shared width.
+- `pack_reads()`'s wider `clip_gap` was keyed on `clip_side`, so every
+  adapter-trimmed read forced a 100 bp gap even though it carried no
+  indicator. `plot_methylation()` now keys it on `sa_side`.
+
 # ggmethylation 0.3.1
 
 ## Bug fixes

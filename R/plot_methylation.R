@@ -349,11 +349,14 @@
 #'   deletions to be displayed when `show_cigar = TRUE`. Indels smaller than
 #'   this threshold are hidden to reduce visual clutter from common small
 #'   indels. Default `50`.
-#' @param show_supplementary Logical. When `TRUE` (default), a coloured halo
-#'   is drawn around read bars indicating the chromosome of the supplementary
-#'   alignment partner (from the SA BAM tag). The original bar colouring
-#'   (group, strand, or default grey) is preserved inside the halo. Reads with
-#'   no supplementary alignment have no halo.
+#' @param show_supplementary Logical. When `TRUE` (default), a coloured
+#'   indicator is drawn at the end of a read where a supplementary alignment
+#'   joins it (from the SA BAM tag), coloured by that partner's chromosome. The
+#'   flank is taken from `$reads$sa_side`, so the indicator appears only on the
+#'   side the partner is actually on — a read spanning two breakpoints gets one
+#'   indicator per flank, each coloured by its own partner. The original bar
+#'   colouring (group, strand, or default grey) is preserved. Reads with no
+#'   supplementary alignment get no indicator.
 #' @param bnd_match_tol Integer. Position tolerance (bp) for matching
 #'   supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
 #'   whenever `variants` is supplied and reads carry SA tags; the visual border
@@ -555,19 +558,28 @@ plot_methylation <- function(data, sort_by = NULL,
   data$reads$lane <- integer(nrow(data$reads))
   separator_lanes <- numeric(0)
 
+  # The wider `clip_gap` exists solely to keep supplementary-alignment
+  # indicators from colliding, so key it on the flank that actually carries
+  # one.  `clip_side` would widen the gap for every adapter-trimmed read.
+  pack_side <- if ("sa_side" %in% names(data$reads)) {
+    data$reads$sa_side
+  } else {
+    data$reads$clip_side
+  }
+
   if (!is.null(data$group_tag)) {
     groups_ordered <- .ordered_plot_groups(data$reads$group)
     lane_offset <- 0L
     for (grp in groups_ordered) {
       idx <- which(.match_plot_group(data$reads$group, grp))
-      data$reads$lane[idx] <- pack_reads(data$reads[idx, ], clip_side = data$reads$clip_side[idx]) + lane_offset
+      data$reads$lane[idx] <- pack_reads(data$reads[idx, ], clip_side = pack_side[idx]) + lane_offset
       lane_offset <- max(data$reads$lane[idx]) + 2L
       separator_lanes <- c(separator_lanes, lane_offset - 1L)
     }
     # Drop the trailing separator (after the last group)
     separator_lanes <- separator_lanes[-length(separator_lanes)]
   } else {
-    data$reads$lane <- pack_reads(data$reads, clip_side = data$reads$clip_side)
+    data$reads$lane <- pack_reads(data$reads, clip_side = pack_side)
   }
 
   # --- 5b. Build variant overlay ---
