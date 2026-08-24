@@ -148,7 +148,11 @@ test_that("build_bnd_layer returns NULL for NULL input", {
   expect_null(ggmethylation:::build_bnd_layer(NULL))
 })
 
-test_that("build_bnd_layer returns a list of length 2 for a one-row bnd_df", {
+test_that("build_bnd_layer returns one geom_text layer per BND", {
+  # Commit eab0c7d ("major overhaul for variant plotting") dropped the
+  # geom_vline and left only the mate-location label, so a one-row bnd_df now
+  # yields a single layer rather than two. The docs were updated then; this
+  # test was not.
   bnd_df <- data.frame(
     position   = 1000L,
     mate_chrom = "chr7",
@@ -158,7 +162,8 @@ test_that("build_bnd_layer returns a list of length 2 for a one-row bnd_df", {
   result <- ggmethylation:::build_bnd_layer(bnd_df)
 
   expect_type(result, "list")
-  expect_length(result, 2L)
+  expect_length(result, 1L)
+  expect_s3_class(result[[1L]], "Layer")
 })
 
 # --- Bonus: mixed reads (some SA, some not) -----------------------------------

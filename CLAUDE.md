@@ -15,8 +15,8 @@ devtools::install()
 # Run all tests
 devtools::test()
 
-# Run a single test file
-devtools::test_file("tests/testthat/test-pack_reads.R")
+# Run a single test file (test_file() is defunct as of devtools 2.5.0)
+devtools::test(filter = "pack_reads")
 
 # Regenerate documentation (roxygen2)
 devtools::document()
@@ -67,11 +67,35 @@ The package has three layers:
 
 ## Test Data
 
-Integration tests require a real BAM file at:
+Integration tests run against a committed fixture — no external paths, no skipping:
+
 ```
-/staging/leuven/stg_00096/home/lharbers/repositories/ggmethylation/data/PTCL8_PB_tumor_chr21_22_subset.bam
+tests/testthat/fixtures/hg002_fiberseq_MEG3.bam
 ```
-Tests are automatically skipped if the file is unavailable. Unit tests (pack_reads, parse_mm_ml, smooth, utils) have no external dependencies.
+
+HG002 PacBio Fiber-seq, longphase-phased, aligned to CHM13, subset to the MEG3
+promoter/DMR (`chr14:95055000-95070000`). MEG3 is imprinted, so the two
+haplotypes carry genuinely different methylation — the grouped tests assert that
+real difference rather than merely that the code ran.
+
+The fixture is deliberately chosen to exercise several parser paths at once:
+
+| Property | Value | Exercises |
+|---|---|---|
+| reads | 52 | — |
+| MM / ML tags | 52/52 | MM/ML parsing |
+| HP tags | 51/52, split 30 / 21 | `group_tag = "HP"`, delta track, per-group smoothing |
+| reads without HP | 1 | `drop_na_group` |
+| mod codes | `C+m` (5mC) and `A+a` (6mA), both on every read | `mod_code` filtering, multi-code shapes |
+| MM flag | none (bare `C+m,`) | the "omit unlisted canonical bases" branch |
+| insertion sites | 54 | insertion-aware parsing, `list_insertion_loci()` |
+
+Rebuild it with `data-raw/build_test_fixture.sh` (requires cluster access to the
+source BAM). The exact counts in `test-integration.R` are regression anchors: the
+fixture is frozen, so a change in any of them means parsing behaviour changed and
+should be reviewed deliberately, not silently re-baselined.
+
+Unit tests (pack_reads, parse_mm_ml, smooth, utils) have no external dependencies.
 
 ## Documentation
 

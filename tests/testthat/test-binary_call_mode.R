@@ -240,7 +240,7 @@ test_that("binary smooth panel relabels the y axis", {
   p_cont <- ggmethylation::plot_methylation(md, show_supplementary = FALSE)
   p_bin  <- ggmethylation::plot_methylation(md, call_mode = "binary",
                                             show_supplementary = FALSE)
-  expect_match(y_scale_name(p_cont[[2]]), "Mean modification")
+  expect_match(y_scale_name(p_cont[[2]]), "Mean mod\\.")
   expect_match(y_scale_name(p_bin[[2]]), "Fraction")
 })
 

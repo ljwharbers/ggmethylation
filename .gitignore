@@ -14,6 +14,9 @@
 .superpowers/
 .worktrees
 
-test.*
-test*
+# Scratch scripts and figures at the repo root only.
+# NOTE: keep these anchored with a leading '/'. An unanchored 'test*'
+# also matches the tests/ directory and silently hides new test files.
+/test[0-9]*.R
+/test*.png
 .claude/

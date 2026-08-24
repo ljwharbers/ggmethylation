@@ -4,7 +4,11 @@
   groups <- unique(sites[[group_col]])
   groups <- sort(groups[!is.na(groups)])
   if (length(groups) != 2L) {
-    message("Delta track requires exactly two groups; skipping.")
+    warning(
+      "Delta track requires exactly two groups; found ", length(groups),
+      ". Skipping the delta panel.",
+      call. = FALSE
+    )
     return(NULL)
   }
 
@@ -31,7 +35,7 @@
 # with a group palette in hand pass the two group colours instead, so the delta
 # area matches the groups in the panels above (pos = group 2, neg = group 1).
 .build_delta_panel <- function(delta_df, region_start, region_end,
-                               y_label = "Δ methylation",
+                               y_label = "Δ mod.\nprobability",
                                fill_pos = .DELTA_DIVERGING$pos,
                                fill_neg = .DELTA_DIVERGING$neg) {
   df <- delta_df[!is.na(delta_df$delta), , drop = FALSE]
@@ -50,5 +54,6 @@
     ggplot2::scale_x_continuous(labels = scales::comma_format()) +
     ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
     ggplot2::labs(x = "Genomic position (bp)", y = y_label) +
-    theme_ggmethylation()
+    theme_ggmethylation() +
+    .compact_y_title()
 }

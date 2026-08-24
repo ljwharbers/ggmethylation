@@ -339,3 +339,39 @@ region_to_granges <- function(region) {
     ranges   = IRanges::IRanges(start = parsed$start, end = parsed$end)
   )
 }
+
+
+#' Validate `sort_by` against the available read columns
+#'
+#' `plot_methylation()` sorts reads with `order()` over columns pulled out of
+#' `$reads` by name. An unknown name yields `NULL`, and `order(NULL)` returns
+#' `integer(0)` -- which silently drops every read and produces an empty plot
+#' rather than an error. This helper turns that into an explicit failure.
+#'
+#' @param sort_by Character vector of column names to sort by.
+#' @param reads The `$reads` data frame the names must exist in.
+#'
+#' @return `sort_by`, invisibly, when every name is valid.
+#'
+#' @keywords internal
+.validate_sort_by <- function(sort_by, reads) {
+  if (is.null(sort_by)) {
+    return(invisible(sort_by))
+  }
+  if (!is.character(sort_by)) {
+    stop("`sort_by` must be a character vector of column names.", call. = FALSE)
+  }
+
+  missing <- setdiff(sort_by, names(reads))
+  if (length(missing) > 0L) {
+    stop(
+      "Unknown `sort_by` column", if (length(missing) > 1L) "s" else "", ": ",
+      paste0("\"", missing, "\"", collapse = ", "), ".\n",
+      "Available columns: ",
+      paste0("\"", names(reads), "\"", collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  invisible(sort_by)
+}

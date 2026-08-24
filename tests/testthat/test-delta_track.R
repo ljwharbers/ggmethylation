@@ -1,9 +1,11 @@
-test_that("compute_group_delta returns NULL and messages for non-2 groups", {
+test_that("compute_group_delta returns NULL and warns for non-2 groups", {
+  # This is a warning rather than a message on purpose: a message is invisible
+  # in scripts and knitr, so the delta panel used to vanish silently.
   sites <- data.frame(
     position = 1:5 * 100, mod_prob = seq(0.1, 0.5, length.out = 5),
     group = "A", stringsAsFactors = FALSE
   )
-  expect_message(
+  expect_warning(
     res <- ggmethylation:::.compute_group_delta(sites, "group", span = NULL),
     "exactly two groups"
   )
@@ -223,7 +225,11 @@ test_that("plot_methylation delta panel breaks over consensus deletions using re
 # extract_delta_data()). Stripping the patchwork class lets ggplot_build()
 # render that panel alone rather than the whole composite.
 delta_fills <- function(p) {
-  class(p) <- c("gg", "ggplot")
+  # Drop ONLY the patchwork class. Assigning c("gg", "ggplot") wholesale used to
+  # work when ggplot objects were plain S3, but ggplot2 >= 4.0 makes them S7
+  # ("ggplot2::ggplot" / "S7_object"); overwriting the class vector destroys S7
+  # dispatch and ggplot_build() then fails to find a method.
+  class(p) <- setdiff(class(p), "patchwork")
   unique(ggplot2::ggplot_build(p)$data[[1]]$fill)
 }
 
