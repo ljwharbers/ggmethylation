@@ -4,7 +4,7 @@
 \alias{read_variants}
 \title{Read variants from a VCF file}
 \usage{
-read_variants(vcf, region)
+read_variants(vcf, region, bnd_match_tol = 50L)
 }
 \arguments{
 \item{vcf}{Character. Path to a bgzipped VCF file (\code{.vcf.gz}) with a
@@ -12,6 +12,11 @@ corresponding tabix index (\code{.vcf.gz.tbi}).}
 
 \item{region}{Character. Genomic region string, e.g. \code{"chr1:1000-2000"}.
 The same format accepted by \code{\link[=read_methylation]{read_methylation()}}.}
+
+\item{bnd_match_tol}{Integer. Position tolerance (bp) used by
+\code{\link[=plot_methylation]{plot_methylation()}} when matching reads' supplementary-alignment (SA)
+breakpoints to the BND calls here; matched reads get a border on their SA
+indicator (requires \code{show_supplementary = TRUE}). Default \code{50}.}
 }
 \value{
 A \code{variant_data} object (S3 list) with elements:
@@ -22,6 +27,7 @@ A \code{variant_data} object (S3 list) with elements:
 or \code{"INV"}), \code{end} (integer), \code{mate_chrom} (character), and
 \code{mate_pos} (integer).}
 \item{region}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object for the queried region.}
+\item{bnd_match_tol}{The \code{bnd_match_tol} value.}
 }
 }
 \description{
@@ -38,7 +44,7 @@ Bioconductor. Install them with:
 }
 \examples{
 \dontrun{
-vd <- read_variants("calls.vcf.gz", "chr1:1000000-1050000")
+vd = read_variants("calls.vcf.gz", "chr1:1000000-1050000")
 print(vd)
 }
 

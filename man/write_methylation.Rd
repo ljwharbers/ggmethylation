@@ -10,8 +10,7 @@ write_methylation(
   format = c("tsv", "bed"),
   reads = TRUE,
   sites = TRUE,
-  gzip = FALSE,
-  ...
+  gzip = FALSE
 )
 }
 \arguments{
@@ -30,8 +29,6 @@ or \code{"bed"} (6-column BED, 0-based coordinates, no header).}
 
 \item{gzip}{Logical. Compress output files with gzip? Default \code{FALSE}.
 When \code{TRUE}, \code{.gz} is appended to each file name.}
-
-\item{...}{Reserved for future use; currently ignored.}
 }
 \value{
 \code{data}, invisibly. Allows use in a pipeline.
@@ -58,11 +55,11 @@ Columns: \code{position}, \code{mod_prob}, \code{read_name}, \code{mod_code}, \c
 
 6-column BED (no header). Coordinates are converted to 0-based half-open
 intervals (\code{chromStart = position - 1}, \code{chromEnd = position}). The \code{score}
-column contains \code{mod_prob} (float in \link{0, 1}).
+column contains \code{mod_prob} (float in \verb{[0, 1]}).
 }
 \examples{
 \dontrun{
-md <- read_methylation("sample.bam", "chr1:1000-2000")
+md = read_methylation("sample.bam", "chr1:1000-2000")
 
 # Write both TSV files to the current directory
 write_methylation(md, prefix = "output/sample_chr1")

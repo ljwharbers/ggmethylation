@@ -2,7 +2,7 @@
 # Internal function — call via ggmethylation:::build_variant_overlay()
 #
 # Signature:
-#   build_variant_overlay(data, variants, bnd_match_tol = 50L)
+#   build_variant_overlay(data, variants)
 #
 # Returns: named list(snv, sv, bnd, sa_reads), each element is a list of
 #          ggplot2 layers or NULL.  Returns NULL when variants is NULL or
@@ -17,14 +17,14 @@ test_that("build_variant_overlay returns NULL when variants is NULL", {
 # --- Test 2: Non-variant_data input returns NULL ---
 
 test_that("build_variant_overlay returns NULL for non-variant_data input", {
-  plain_list <- list(variants = data.frame(position = 1L))
+  plain_list = list(variants = data.frame(position = 1L))
   expect_null(ggmethylation:::build_variant_overlay(NULL, plain_list))
 })
 
 # --- Test 3: variant_data with 0-row variants returns list with all-NULL elements ---
 
 test_that("build_variant_overlay returns named list with NULL elements for empty variant_data", {
-  empty_vd <- structure(
+  empty_vd = structure(
     list(
       variants = data.frame(
         position    = integer(0),
@@ -42,7 +42,7 @@ test_that("build_variant_overlay returns named list with NULL elements for empty
   )
 
   # Build a minimal methylation_data so the function doesn't error on data$reads etc.
-  minimal_md <- structure(
+  minimal_md = structure(
     list(
       reads = data.frame(
         read_name = character(0), start = integer(0), end = integer(0),
@@ -60,7 +60,7 @@ test_that("build_variant_overlay returns named list with NULL elements for empty
     class = "methylation_data"
   )
 
-  result <- ggmethylation:::build_variant_overlay(minimal_md, empty_vd)
+  result = ggmethylation:::build_variant_overlay(minimal_md, empty_vd)
 
   expect_equal(names(result), c("snv", "sv", "bnd", "sa_reads"))
   expect_null(result$snv)
@@ -73,7 +73,7 @@ test_that("build_variant_overlay returns named list with NULL elements for empty
 #             produces a warning and returns snv = NULL ---
 
 test_that("build_variant_overlay warns and returns snv=NULL when sequences unavailable", {
-  minimal_md <- structure(
+  minimal_md = structure(
     list(
       reads = data.frame(
         read_name = "r1", start = 100L, end = 200L,
@@ -91,7 +91,7 @@ test_that("build_variant_overlay warns and returns snv=NULL when sequences unava
     class = "methylation_data"
   )
 
-  snv_vd <- structure(
+  snv_vd = structure(
     list(
       variants = data.frame(
         position   = 150L,

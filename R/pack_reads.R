@@ -20,48 +20,48 @@
 #'   `nrow(reads)`), where lane 1 is the top.
 #'
 #' @keywords internal
-pack_reads <- function(reads, gap = 10, clip_side = NULL, clip_gap = 100L) {
-  n <- nrow(reads)
+pack_reads = function(reads, gap = 10, clip_side = NULL, clip_gap = 100L) {
+  n = nrow(reads)
   if (n == 0L) {
     return(integer(0L))
   }
 
-  lanes <- list()
-  result <- integer(n)
+  lanes = list()
+  result = integer(n)
 
   for (i in seq_len(n)) {
-    placed <- FALSE
+    placed = FALSE
     for (j in seq_along(lanes)) {
       # Determine the effective gap for this pair of reads
       if (!is.null(clip_side)) {
-        prev_clip <- lanes[[j]]$clip
-        curr_clip <- clip_side[i]
+        prev_clip = lanes[[j]]$clip
+        curr_clip = clip_side[i]
         if ((!is.na(prev_clip) && prev_clip %in% c("right", "both")) ||
             (!is.na(curr_clip) && curr_clip %in% c("left", "both"))) {
-          effective_gap <- clip_gap
+          effective_gap = clip_gap
         } else {
-          effective_gap <- gap
+          effective_gap = gap
         }
       } else {
-        effective_gap <- gap
+        effective_gap = gap
       }
 
       if (reads$start[i] > lanes[[j]]$end + effective_gap) {
-        result[i] <- j
-        lanes[[j]] <- list(
+        result[i] = j
+        lanes[[j]] = list(
           end  = reads$end[i],
           clip = if (!is.null(clip_side)) clip_side[i] else NA
         )
-        placed <- TRUE
+        placed = TRUE
         break
       }
     }
     if (!placed) {
-      lanes <- c(lanes, list(list(
+      lanes = c(lanes, list(list(
         end  = reads$end[i],
         clip = if (!is.null(clip_side)) clip_side[i] else NA
       )))
-      result[i] <- length(lanes)
+      result[i] = length(lanes)
     }
   }
 

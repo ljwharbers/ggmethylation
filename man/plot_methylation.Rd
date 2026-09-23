@@ -7,14 +7,13 @@
 plot_methylation(
   data,
   sort_by = NULL,
-  colour_low = "#BDBDBD",
-  colour_high = "#C62828",
+  colour_low = .PROB_GRADIENT$low,
+  colour_high = .PROB_GRADIENT$high,
   colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
   line_width = 0.2,
   colour_strand = FALSE,
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
   group_colours = .GROUP_PALETTE_DEFAULT,
-  mod_code_shapes = NULL,
   smooth_span = NULL,
   panel_heights = NULL,
   annotations = NULL,
@@ -22,10 +21,8 @@ plot_methylation(
   show_cigar = TRUE,
   min_indel_size = 50L,
   show_supplementary = TRUE,
-  bnd_match_tol = 50L,
   show_ci = TRUE,
-  call_mode = c("continuous", "binary"),
-  call_threshold = 0.5,
+  call_threshold = NULL,
   call_ambiguous = NULL,
   show_delta = FALSE
 )
@@ -34,10 +31,11 @@ plot_methylation(
 \item{data}{A \code{methylation_data} object returned by \code{\link[=read_methylation]{read_methylation()}}.}
 
 \item{sort_by}{Character vector of column names from \code{data$reads} used
-to sort reads before packing into lanes. Default NULL uses \code{c("start")}
-when ungrouped or \code{c("group", "start", "mean_mod_prob")} when grouped.
+to sort reads before packing into lanes (reads are always packed per
+group, so group order is fixed). Default NULL uses \code{"start"} when
+ungrouped or \code{c("start", "group", "mean_mod_prob")} when grouped.
 \code{mean_mod_prob} is the per-read mean modification probability, or the
-per-read fraction of methylated calls when \code{call_mode = "binary"}.}
+per-read fraction of methylated calls when \code{call_threshold} is set.}
 
 \item{colour_low}{Colour for low modification probability (default
 \code{"#BDBDBD"}).}
@@ -48,7 +46,7 @@ per-read fraction of methylated calls when \code{call_mode = "binary"}.}
 \item{colour_ambiguous}{Colour for ambiguous calls (default \code{"#78909C"}, a
 slate blue-grey deliberately off the \code{colour_low}/\code{colour_high} ramp so it
 reads as "no confident call" rather than "intermediate methylation"). Only
-used when \code{call_mode = "binary"} and \code{call_ambiguous} is non-\code{NULL}.}
+used when \code{call_threshold} and \code{call_ambiguous} are set.}
 
 \item{line_width}{Linewidth of modification site lines (default 0.2).}
 
@@ -65,12 +63,6 @@ to \code{c("1" = "#0072B2", "2" = "#E69F00")} (the Okabe-Ito colorblind-safe
 blue/orange pair, see \code{.GROUP_PALETTE_DEFAULT}), matching the typical HP
 haplotype tag output. Pass \code{NULL} to use ggplot2 defaults, or supply a
 fully named vector for other group names.}
-
-\item{mod_code_shapes}{Named integer vector mapping modification codes to
-point shapes used in the legend when multiple modification codes are
-present. Names must match the mod codes in \code{data$sites$mod_code}. If
-\code{NULL} (default), shapes are assigned automatically (circle, square,
-triangle, diamond for up to four codes).}
 
 \item{smooth_span}{Loess smoothing span for the bottom panel. When \code{NULL}
 (default), an adaptive span is computed per group as
@@ -116,25 +108,22 @@ alignment partner (from the SA BAM tag). The original bar colouring
 (group, strand, or default grey) is preserved inside the halo. Reads with
 no supplementary alignment have no halo.}
 
-\item{bnd_match_tol}{Integer. Position tolerance (bp) for matching
-supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
-whenever \code{variants} is supplied and reads carry SA tags; the visual border
-marking requires \code{show_supplementary = TRUE}. Default 50.}
-
 \item{show_ci}{Logical. When \code{TRUE} (default), a shaded ribbon showing the
 loess confidence interval (\code{lower}/\code{upper} from \code{\link[=smooth_methylation]{smooth_methylation()}})
 is drawn behind each smooth line in the bottom panel. Has no effect when
 fewer than 4 unique positions are available for a group/code (no CI is
 computed in that case). Set to \code{FALSE} to hide the ribbon.}
 
-\item{call_mode}{Character. \code{"continuous"} (default) colours modification
-sites by a continuous probability gradient (\code{colour_low} to
-\code{colour_high}), and the smooth panel plots the mean modification
-probability per position. \code{"binary"} classifies each site as methylated,
-unmethylated, or ambiguous (see \code{call_threshold}/\code{call_ambiguous}) and
-colours them with a discrete scale instead.
+\item{call_threshold}{\code{NULL} (default) or a number in \verb{[0, 1]}. With
+\code{NULL}, modification sites are coloured by a continuous probability
+gradient (\code{colour_low} to \code{colour_high}) and the smooth panel plots the
+mean modification probability per position. A number switches to
+\strong{binary calls}: sites with probability at or above the threshold are
+methylated, the rest unmethylated (or ambiguous, see \code{call_ambiguous}),
+coloured with a discrete scale. The same split drives the read panel and
+every aggregate, so the two always agree.
 
-\code{"binary"} also changes what every aggregate reports: the smooth panel, the
+Binary calls change what every aggregate reports: the smooth panel, the
 delta panel (\code{show_delta}) and the per-read \code{mean_mod_prob} used for
 sorting all aggregate 0/1 calls rather than raw probabilities, so the
 smooth panel plots the \strong{fraction of calls that are methylated} and its
@@ -145,16 +134,10 @@ percent-methylation / beta value; the continuous mean is systematically
 pulled toward 0.5 by basecaller uncertainty.
 
 Because binarised values are 0 or 1, positions with thin coverage
-contribute coarser values than in continuous mode, so the binary curve is
-noisier where few reads overlap. The loess span still averages over
-neighbouring positions and the confidence ribbon (\code{show_ci}) widens where
-evidence is sparse.}
-
-\item{call_threshold}{Numeric in \verb{[0, 1]}. Modification probability at or
-above which a site is classified as methylated when
-\code{call_mode = "binary"}. Used for both the read panel colours and the
-binarised aggregates, so the two panels always split at the same value.
-Default \code{0.5}. Ignored when \code{call_mode = "continuous"}.}
+contribute coarser values than with continuous probabilities, so the
+binary curve is noisier where few reads overlap. The loess span still
+averages over neighbouring positions and the confidence ribbon
+(\code{show_ci}) widens where evidence is sparse.}
 
 \item{call_ambiguous}{\code{NULL} (default) for a hard threshold, or a numeric
 half-width defining a band \verb{[call_threshold - w, call_threshold + w)}
@@ -163,7 +146,7 @@ rather than methylated/unmethylated. Ambiguous sites are excluded from
 both the numerator and the denominator of the methylated fraction, so the
 smooth panel reports the fraction methylated \emph{among confident calls}. The
 default \code{NULL} discards nothing — every site is called at
-\code{call_threshold}. Ignored when \code{call_mode = "continuous"}.}
+\code{call_threshold}. Requires \code{call_threshold}.}
 
 \item{show_delta}{Logical. When \code{TRUE}, and grouping yields exactly two
 groups, an additional panel is appended below the smooth panel showing
@@ -183,15 +166,16 @@ Creates a ggplot2 visualisation of read-level base modification data. When
 no grouping is present, produces a single panel showing reads as grey bars
 with coloured modification dots. When groups are present, adds a bottom
 panel with loess-smoothed mean modification probability per group and
-combines the panels using patchwork. With \code{call_mode = "binary"} the smooth
+combines the panels using patchwork. Setting \code{call_threshold} switches to
+binary calls: sites are coloured methylated/unmethylated and the smooth
 panel plots the fraction of methylated calls instead of the mean probability.
 }
 \examples{
 \dontrun{
-md <- read_methylation("sample.bam", "chr1:1000-2000")
+md = read_methylation("sample.bam", "chr1:1000-2000")
 plot_methylation(md)
 
-md <- read_methylation("sample.bam", "chr1:1000-2000", group_tag = "HP")
+md = read_methylation("sample.bam", "chr1:1000-2000", group_tag = "HP")
 plot_methylation(md, group_colours = c("1" = "steelblue", "2" = "coral"))
 }
 

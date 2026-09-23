@@ -10,10 +10,14 @@
 #'   for 5-methylcytosine).
 #' @param group_tag Character or NULL. BAM tag used to group reads (e.g.
 #'   `"HP"` for haplotype, `"RG"` for read group). NULL disables grouping.
+#' @param snv `NULL`, or a list `list(position =, ref =, alt =)` to group reads
+#'   by the base they carry at an SNV instead of by a BAM tag: reads with the
+#'   `ref` base form group `"REF"`, reads with `alt` form `"ALT"`, and all
+#'   other reads are dropped. Cannot be combined with `group_tag`.
 #' @param max_reads Integer. Maximum number of reads to return (default 200).
 #'   If more reads overlap the region, a random subset is kept.
 #' @param per_group_downsample Logical. When `TRUE` and grouping is active
-#'   (via `group_tag` or `snv_position`), the `max_reads` cap is applied
+#'   (via `group_tag` or `snv`), the `max_reads` cap is applied
 #'   independently per group. When `FALSE` (default), the existing global
 #'   cap behaviour is unchanged.
 #' @param min_mapq Integer. Minimum mapping quality (MAPQ) threshold
@@ -64,406 +68,399 @@
 #'
 #' @examples
 #' \dontrun{
-#' md <- read_methylation("sample.bam", "chr1:1000-2000")
-#' md <- read_methylation("sample.bam", "chr1:1000-2000",
+#' md = read_methylation("sample.bam", "chr1:1000-2000")
+#' md = read_methylation("sample.bam", "chr1:1000-2000",
 #'   group_tag = "HP", max_reads = 100
+#' )
+#' md = read_methylation("sample.bam", "chr1:1000-2000",
+#'   snv = list(position = 1500, ref = "C", alt = "T")
 #' )
 #' }
 #'
 #' @export
-read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
-                             snv_position = NULL, ref_base = NULL,
-                             alt_base = NULL, max_reads = 200L,
+read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
+                             snv = NULL, max_reads = 200L,
                              per_group_downsample = FALSE,
                              min_mapq = 0L,
                              strand_filter = c("+", "-"),
                              min_read_length = 0L,
                              drop_na_group = FALSE) {
   # --- 1. Validate inputs ---
-  mod_code <- as.character(mod_code)          # coerce in case of factor
+  mod_code = as.character(mod_code)          # coerce in case of factor
   if (length(mod_code) == 0L || any(!nzchar(mod_code))) {
     stop("'mod_code' must be a non-empty character vector of modification codes.",
          call. = FALSE)
   }
-  mod_code <- unique(mod_code)                # drop accidental duplicates
+  mod_code = unique(mod_code)                # drop accidental duplicates
 
-  if (!is.null(group_tag) && !is.null(snv_position)) {
-    stop("'group_tag' and 'snv_position' are mutually exclusive.", call. = FALSE)
+  if (!is.null(group_tag) && !is.null(snv)) {
+    stop("'group_tag' and 'snv' are mutually exclusive.", call. = FALSE)
   }
-  if (!is.null(snv_position) && (is.null(ref_base) || is.null(alt_base))) {
-    stop("'ref_base' and 'alt_base' must be provided when 'snv_position' is set.",
-         call. = FALSE)
-  }
-  strand_filter <- match.arg(strand_filter, choices = c("+", "-"), several.ok = TRUE)
-  if (!is.integer(min_mapq))        min_mapq <- as.integer(min_mapq)
-  if (!is.integer(min_read_length)) min_read_length <- as.integer(min_read_length)
+  snv = .check_snv(snv)
+  strand_filter = match.arg(strand_filter, choices = c("+", "-"), several.ok = TRUE)
+  min_mapq = as.integer(min_mapq)
+  min_read_length = as.integer(min_read_length)
   validate_bam_index(bam)
-  # --- 2. Set up Rsamtools query ---
-  gr <- region_to_granges(region)
 
-  what <- c("qname", "flag", "pos", "cigar", "strand", "seq", "mapq")
-
-  tag_names <- c("MM", "ML", "SA")
-  if (!is.null(group_tag)) tag_names <- c(tag_names, group_tag)
-
-  param <- Rsamtools::ScanBamParam(
+  # --- 2. Query the BAM ---
+  gr = region_to_granges(region)
+  param = Rsamtools::ScanBamParam(
     which = gr,
-    what = what,
-    tag = tag_names
+    what  = c("qname", "flag", "pos", "cigar", "strand", "seq", "mapq"),
+    tag   = c("MM", "ML", "SA", group_tag)
   )
-
-  bam_data <- Rsamtools::scanBam(bam, param = param)[[1]]
-
-  # --- 3. Check for reads ---
-  if (is.null(bam_data$qname) || length(bam_data$qname) == 0L) {
+  bam_data = Rsamtools::scanBam(bam, param = param)[[1]]
+  if (length(bam_data$qname) == 0L) {
     warning("No reads found in region '", region, "'.", call. = FALSE)
     return(empty_methylation_data(gr, mod_code, group_tag))
   }
 
-  # --- 4. Build reads data.frame ---
-  ref_widths <- cigar_ref_width(bam_data$cigar)
+  # `reads$.idx` maps each row back to its record in `bam_data`, so reads can
+  # be filtered freely; it is dropped before returning.
+  reads = .bam_reads(bam_data)
 
-  reads <- data.frame(
-    read_name = bam_data$qname,
-    start = bam_data$pos,
-    end = bam_data$pos + ref_widths - 1L,
-    bam_pos = bam_data$pos,
-    strand = as.character(bam_data$strand),
-    stringsAsFactors = FALSE
-  )
-
-  # Add supplementary alignment columns from BAM flag and SA tag
-  reads$is_supplementary <- bitwAnd(bam_data$flag, 0x800L) > 0L
-
-  sa_tags <- bam_data$tag[["SA"]]
-  if (!is.null(sa_tags)) {
-    sa_parsed <- lapply(sa_tags, parse_sa_tag)
-    reads$sa_chrom <- vapply(sa_parsed, function(x) {
-      if (nrow(x) == 0L) NA_character_ else x$rname[1L]
-    }, character(1L))
-    reads$sa_pos <- vapply(sa_parsed, function(x) {
-      if (nrow(x) == 0L) NA_integer_ else x$pos[1L]
-    }, integer(1L))
-  } else {
-    reads$sa_chrom <- NA_character_
-    reads$sa_pos   <- NA_integer_
-  }
-
-  reads$clip_side <- detect_clip_side(bam_data$cigar)
-
-  # Disambiguate read names when primary + supplementary both fall in the
-  # viewed region (same qname appears >1 time).  Primary alignments keep
-  # their original name; supplementary copies get "_supp1", "_supp2", ...
-  qname_tab  <- table(reads$read_name)
-  dup_qnames <- names(qname_tab[qname_tab > 1L])
-  if (length(dup_qnames) > 0L) {
-    for (qn in dup_qnames) {
-      supp_idx <- which(reads$read_name == qn & reads$is_supplementary)
-      for (k in seq_along(supp_idx)) {
-        reads$read_name[supp_idx[k]] <- paste0(qn, "_supp", k)
-      }
-    }
-  }
-
-  # Add group column
+  # --- 3. Grouping by BAM tag ---
   if (!is.null(group_tag)) {
-    group_values <- bam_data$tag[[group_tag]]
+    group_values = bam_data$tag[[group_tag]]
     if (is.null(group_values) || all(is.na(group_values))) {
       warning(
         "Group tag '", group_tag, "' not found in any read. ",
         "Ignoring grouping.", call. = FALSE
       )
-      reads$group <- NA_character_
-      group_tag <- NULL
+      reads$group = NA_character_
+      group_tag = NULL
     } else {
-      reads$group <- as.character(group_values)
+      reads$group = as.character(group_values)
+      if (isTRUE(drop_na_group)) reads = reads[!is.na(reads$group), , drop = FALSE]
     }
   }
 
-  # bam_indices maps filtered-reads rows back to original bam_data positions
-  bam_indices <- seq_len(nrow(reads))
-
-  # Drop reads with NA group if requested
-  if (isTRUE(drop_na_group) && !is.null(group_tag) && "group" %in% names(reads)) {
-    na_mask <- is.na(reads$group)
-    if (any(na_mask)) {
-      reads       <- reads[!na_mask, , drop = FALSE]
-      bam_indices <- bam_indices[!na_mask]
-      rownames(reads) <- NULL
-    }
-  }
-
-  # --- 4b. Apply read-level filters ---
-  n_before <- nrow(reads)
-  filter_mask <- rep(TRUE, n_before)
-
-  # MAPQ filter
-  if (min_mapq > 0L) {
-    mapq_vec <- bam_data$mapq
-    filter_mask <- filter_mask & (!is.na(mapq_vec) & mapq_vec >= min_mapq)
-  }
-
-  # Strand filter
-  if (!identical(sort(strand_filter), c("+", "-"))) {
-    filter_mask <- filter_mask & (reads$strand %in% strand_filter)
-  }
-
-  # Read length filter (ref_widths computed earlier from CIGAR)
-  if (min_read_length > 0L) {
-    filter_mask <- filter_mask & (ref_widths >= min_read_length)
-  }
-
-  if (!all(filter_mask)) {
-    n_removed <- sum(!filter_mask)
-    frac_removed <- n_removed / n_before
-    if (frac_removed > 0.5) {
-      warning(sprintf(
-        "%.0f%% of reads (%d/%d) were removed by filters (min_mapq=%d, strand_filter=c(%s), min_read_length=%d).",
-        frac_removed * 100, n_removed, n_before, min_mapq,
-        paste(sprintf('"%s"', strand_filter), collapse = ", "),
-        min_read_length
-      ), call. = FALSE)
-    }
-    reads       <- reads[filter_mask, , drop = FALSE]
-    bam_indices <- bam_indices[filter_mask]
-    rownames(reads) <- NULL
-  }
-
+  # --- 4. Read-level filters ---
+  reads = .filter_reads(reads, bam_data, min_mapq, strand_filter, min_read_length)
   if (nrow(reads) == 0L) {
     warning("No reads remain after applying filters.", call. = FALSE)
     return(empty_methylation_data(gr, mod_code, group_tag))
   }
 
-  # --- 5. SNV-based grouping ---
-
-  if (!is.null(snv_position)) {
-    n_all <- nrow(reads)
-    snv_bases <- character(n_all)
-    for (j in seq_len(n_all)) {
-      idx_j <- bam_indices[j]
-      seq_str <- as.character(bam_data$seq[[idx_j]])
-      q_pos <- ref_to_seq(bam_data$cigar[idx_j], bam_data$pos[idx_j], snv_position)
-      snv_bases[j] <- if (!is.na(q_pos) && q_pos >= 1L && q_pos <= nchar(seq_str)) {
-        toupper(substr(seq_str, q_pos, q_pos))
-      } else {
-        NA_character_
-      }
-    }
-    reads$group <- ifelse(
-      snv_bases == toupper(ref_base), "REF",
-      ifelse(snv_bases == toupper(alt_base), "ALT", NA_character_)
-    )
-    snv_keep <- which(!is.na(reads$group))
-    if (length(snv_keep) == 0L) {
-      warning("No reads carry REF or ALT at snv_position ", snv_position, ".",
+  # --- 5. Grouping by SNV genotype ---
+  if (!is.null(snv)) {
+    reads$group = .snv_genotype(bam_data, reads$.idx, snv$position, snv$ref, snv$alt)
+    reads = reads[!is.na(reads$group), , drop = FALSE]
+    if (nrow(reads) == 0L) {
+      warning("No reads carry REF or ALT at SNV position ", snv$position, ".",
               call. = FALSE)
-      return(empty_methylation_data(gr, mod_code, "SNV", snv_position))
+      return(empty_methylation_data(gr, mod_code, "SNV", snv$position))
     }
-    bam_indices <- bam_indices[snv_keep]
-    reads <- reads[snv_keep, , drop = FALSE]
-    rownames(reads) <- NULL
-    group_tag <- "SNV"
+    group_tag = "SNV"
   }
 
-  # --- 6. Downsample if needed ---
-  n_reads <- nrow(reads)
-  keep_local <- seq_len(n_reads)
+  # --- 6. Downsample ---
+  reads = .downsample_reads(reads, max_reads,
+                            per_group = per_group_downsample && !is.null(group_tag))
+  rownames(reads) = NULL
 
-  active_grouping <- per_group_downsample &&
-                     !is.null(group_tag) && "group" %in% names(reads)
-
-  if (active_grouping) {
-    groups <- unique(reads$group[!is.na(reads$group)])
-    keep_local <- unlist(lapply(groups, function(g) {
-      idx <- which(reads$group == g)
-      if (length(idx) > max_reads) idx <- sort(sample(idx, max_reads))
-      idx
-    }), use.names = FALSE)
-    keep_local <- sort(keep_local)
-    reads <- reads[keep_local, , drop = FALSE]
-    rownames(reads) <- NULL
-  } else if (n_reads > max_reads) {
-    keep_local <- sort(sample(n_reads, max_reads))
-    reads <- reads[keep_local, , drop = FALSE]
-    rownames(reads) <- NULL
-  }
-
-  # Translate to original bam_data indices
-  keep <- bam_indices[keep_local]
-
-  # --- 7. Parse MM/ML tags for each read ---
-  sites_list     <- vector("list", length(keep))
-  ins_sites_list <- vector("list", length(keep))
-  dc_list        <- vector("list", length(keep))
-
-  for (j in seq_along(keep)) {
-    idx     <- keep[j]
-    seq_str <- as.character(bam_data$seq[[idx]])
-    mm      <- bam_data$tag$MM[idx]
-    ml      <- bam_data$tag$ML[[idx]]
-
-    dc         <- decompose_cigar(bam_data$cigar[idx], bam_data$pos[idx])
-    dc_list[[j]] <- dc
-    i_rows     <- dc[dc$type == "I", , drop = FALSE]
-
-    code_sites <- vector("list", length(mod_code))
-    code_ins   <- vector("list", length(mod_code))
-
-    for (ci in seq_along(mod_code)) {
-      parsed <- parse_mm_ml(
-        seq      = seq_str,
-        mm_tag   = mm,
-        ml_tag   = ml,
-        mod_code = mod_code[ci],
-        strand   = reads$strand[j],
-        cigar    = bam_data$cigar[idx],
-        pos      = bam_data$pos[idx]
-      )
-
-      s <- parsed$sites
-      s$read_name <- if (nrow(s) > 0L) reads$read_name[j] else character(0L)
-      s$mod_code  <- if (nrow(s) > 0L) mod_code[ci]       else character(0L)
-      code_sites[[ci]] <- s
-
-      is_df <- parsed$insertion_sites
-      if (nrow(is_df) > 0L && nrow(i_rows) > 0L) {
-        row_match <- vapply(is_df$query_pos, function(qp) {
-          m <- which(qp >= i_rows$query_start & qp <= i_rows$query_end)
-          if (length(m) == 0L) NA_integer_ else m[1L]
-        }, integer(1L))
-        is_df$read_name  <- reads$read_name[j]
-        is_df$mod_code   <- mod_code[ci]
-        is_df$ref_anchor <- i_rows$ref_start[row_match]
-        is_df$ins_length <- i_rows$length[row_match]
-        is_df$ins_offset <- is_df$query_pos - i_rows$query_start[row_match] + 1L
-      } else {
-        is_df$read_name  <- character(0L)
-        is_df$mod_code   <- character(0L)
-        is_df$ref_anchor <- integer(0L)
-        is_df$ins_length <- integer(0L)
-        is_df$ins_offset <- integer(0L)
-      }
-      code_ins[[ci]] <- is_df
-    }
-    sites_list[[j]]     <- do.call(rbind, code_sites)
-    ins_sites_list[[j]] <- do.call(rbind, code_ins)
-  }
-
-  sites <- do.call(rbind, sites_list)
-
-  if (is.null(sites) || nrow(sites) == 0L) {
-    sites <- data.frame(
-      position  = integer(0L),
-      mod_prob  = numeric(0L),
-      read_name = character(0L),
-      mod_code  = character(0L),
-      stringsAsFactors = FALSE
-    )
-  }
-
-  # Add group column to sites by joining on read_name
+  # --- 7. Parse MM/ML tags and CIGARs ---
+  parsed = .parse_read_mods(bam_data, reads, mod_code)
+  sites = parsed$sites
+  insertion_sites = parsed$insertion_sites
+  cigar_features = parsed$cigar_features
   if (!is.null(group_tag)) {
-    sites$group <- reads$group[match(sites$read_name, reads$read_name)]
+    sites$group = reads$group[match(sites$read_name, reads$read_name)]
+    insertion_sites$group = reads$group[match(insertion_sites$read_name, reads$read_name)]
   }
 
-  # --- Build insertion_sites ---
-  insertion_sites <- do.call(rbind, ins_sites_list)
-  if (is.null(insertion_sites) || nrow(insertion_sites) == 0L) {
-    insertion_sites <- data.frame(
-      read_name  = character(0L),
-      ref_anchor = integer(0L),
-      query_pos  = integer(0L),
-      ins_offset = integer(0L),
-      ins_length = integer(0L),
-      mod_prob   = numeric(0L),
-      mod_code   = character(0L),
-      stringsAsFactors = FALSE
-    )
-  } else {
-    insertion_sites <- insertion_sites[, c("read_name", "ref_anchor", "query_pos",
-                                           "ins_offset", "ins_length",
-                                           "mod_prob", "mod_code"), drop = FALSE]
-    rownames(insertion_sites) <- NULL
+  # --- 8. Restrict everything to the region ---
+  region_start = GenomicRanges::start(gr)
+  region_end   = GenomicRanges::end(gr)
+  reads$start = pmax(reads$start, region_start)
+  reads$end   = pmin(reads$end, region_end)
+
+  in_region = function(df, keep) {
+    df = df[keep, , drop = FALSE]
+    rownames(df) = NULL
+    df
   }
-
-  if (!is.null(group_tag)) {
-    insertion_sites$group <- reads$group[match(insertion_sites$read_name, reads$read_name)]
-  }
-
-  # --- 7. Clip reads to region ---
-  reads$start <- pmax(reads$start, GenomicRanges::start(gr))
-  reads$end <- pmin(reads$end, GenomicRanges::end(gr))
-
-  # --- 8. Filter sites to region ---
-  sites <- sites[
-    sites$position >= GenomicRanges::start(gr) & sites$position <= GenomicRanges::end(gr),
-    ,
-    drop = FALSE
-  ]
-  rownames(sites) <- NULL
-
-  if (nrow(insertion_sites) > 0L) {
-    insertion_sites <- insertion_sites[
-      insertion_sites$ref_anchor >= GenomicRanges::start(gr) &
-      insertion_sites$ref_anchor <= GenomicRanges::end(gr), , drop = FALSE
-    ]
-    rownames(insertion_sites) <- NULL
-  }
+  sites = in_region(sites, sites$position >= region_start & sites$position <= region_end)
+  insertion_sites = in_region(
+    insertion_sites,
+    insertion_sites$ref_anchor >= region_start & insertion_sites$ref_anchor <= region_end
+  )
+  # Features overlapping the region; insertions (no ref_end) are a point at
+  # ref_start.
+  feature_end = ifelse(is.na(cigar_features$ref_end), cigar_features$ref_start,
+                       cigar_features$ref_end)
+  cigar_features = in_region(
+    cigar_features,
+    is.na(cigar_features$ref_start) |
+      (cigar_features$ref_start <= region_end & feature_end >= region_start)
+  )
 
   # --- 9. Return methylation_data object ---
-  # Retain sequences and CIGARs for kept reads (no additional I/O needed)
-  sequences <- setNames(as.character(bam_data$seq[keep]), reads$read_name)
-  cigars    <- setNames(bam_data$cigar[keep], reads$read_name)
+  # Sequences and CIGARs are kept for the variant overlay.
+  sequences = stats::setNames(as.character(bam_data$seq[reads$.idx]), reads$read_name)
+  cigars    = stats::setNames(bam_data$cigar[reads$.idx], reads$read_name)
+  reads$.idx = NULL
 
-  # --- 10. Decompose CIGARs into structural features ---
-  # dc_list already computed per-read in the parse loop above; reuse it.
-  cigar_list <- vector("list", length(keep))
-  for (j in seq_along(keep)) {
-    dc <- dc_list[[j]]
-    dc <- dc[dc$type %in% c("I", "D", "N"), , drop = FALSE]
-    if (nrow(dc) > 0L) {
-      dc$read_name <- reads$read_name[j]
-      cigar_list[[j]] <- dc
-    }
+  .new_methylation_data(
+    reads = reads, sites = sites, insertion_sites = insertion_sites, region = gr,
+    mod_code = mod_code, group_tag = group_tag, snv_position = snv$position,
+    sequences = sequences, cigars = cigars, cigar_features = cigar_features
+  )
+}
+
+# Validate the `snv` argument: NULL, or list(position =, ref =, alt =) with a
+# single position and single-base alleles. Returns it with an integer position.
+.check_snv = function(snv) {
+  if (is.null(snv)) return(NULL)
+  snv = as.list(snv)
+  ok = all(c("position", "ref", "alt") %in% names(snv)) &&
+    all(lengths(snv[c("position", "ref", "alt")]) == 1L) &&
+    !is.na(suppressWarnings(as.integer(snv$position))) &&
+    all(nchar(c(snv$ref, snv$alt)) == 1L)
+  if (!ok) {
+    stop("`snv` must be list(position = <integer>, ref = <base>, alt = <base>), ",
+         "e.g. list(position = 1500, ref = \"C\", alt = \"T\").", call. = FALSE)
   }
-  cigar_features <- do.call(rbind, cigar_list)
-  if (is.null(cigar_features) || nrow(cigar_features) == 0L) {
-    cigar_features <- data.frame(
-      type        = character(0L),
-      ref_start   = integer(0L),
-      ref_end     = integer(0L),
-      query_start = integer(0L),
-      query_end   = integer(0L),
-      length      = integer(0L),
-      read_name   = character(0L),
-      stringsAsFactors = FALSE
-    )
+  list(position = as.integer(snv$position), ref = snv$ref, alt = snv$alt)
+}
+
+# Build the per-read table from a scanBam() result: coordinates, strand,
+# supplementary flag, first SA partner and clip side, plus `.idx` (row index
+# into `bam_data`).
+.bam_reads = function(bam_data) {
+  reads = data.frame(
+    read_name = bam_data$qname,
+    start     = bam_data$pos,
+    end       = bam_data$pos + cigar_ref_width(bam_data$cigar) - 1L,
+    bam_pos   = bam_data$pos,
+    strand    = as.character(bam_data$strand),
+    stringsAsFactors = FALSE
+  )
+  reads$is_supplementary = bitwAnd(bam_data$flag, 0x800L) > 0L
+
+  sa_tags = bam_data$tag[["SA"]]
+  if (!is.null(sa_tags)) {
+    sa_parsed = lapply(sa_tags, parse_sa_tag)
+    reads$sa_chrom = vapply(sa_parsed, function(x) {
+      if (nrow(x) == 0L) NA_character_ else x$rname[1L]
+    }, character(1L))
+    reads$sa_pos = vapply(sa_parsed, function(x) {
+      if (nrow(x) == 0L) NA_integer_ else x$pos[1L]
+    }, integer(1L))
   } else {
-    rownames(cigar_features) <- NULL
-    # Clip to region bounds: keep features that overlap the query region
-    # For features with ref coords, filter by overlap
-    has_ref <- !is.na(cigar_features$ref_start)
-    in_region <- rep(TRUE, nrow(cigar_features))
-    # Features with ref_start: must not be entirely outside region
-    in_region[has_ref & !is.na(cigar_features$ref_end)] <-
-      cigar_features$ref_start[has_ref & !is.na(cigar_features$ref_end)] <= GenomicRanges::end(gr) &
-      cigar_features$ref_end[has_ref & !is.na(cigar_features$ref_end)] >= GenomicRanges::start(gr)
-    # Features with ref_start but NA ref_end (insertions): check point
-    in_region[has_ref & is.na(cigar_features$ref_end)] <-
-      cigar_features$ref_start[has_ref & is.na(cigar_features$ref_end)] >= GenomicRanges::start(gr) &
-      cigar_features$ref_start[has_ref & is.na(cigar_features$ref_end)] <= GenomicRanges::end(gr)
-    # Features without ref coords (S, H): keep them (positioned at read ends later)
-    cigar_features <- cigar_features[in_region, , drop = FALSE]
-    rownames(cigar_features) <- NULL
+    reads$sa_chrom = NA_character_
+    reads$sa_pos   = NA_integer_
+  }
+  reads$clip_side = detect_clip_side(bam_data$cigar)
+
+  # When a primary and its supplementary alignment(s) both fall in the region
+  # the qname repeats: the primary keeps its name, supplementary copies become
+  # "<qname>_supp1", "<qname>_supp2", ...
+  renamed = reads$is_supplementary &
+    reads$read_name %in% reads$read_name[duplicated(reads$read_name)]
+  if (any(renamed)) {
+    nth = stats::ave(seq_along(reads$read_name)[renamed], reads$read_name[renamed],
+                     FUN = seq_along)
+    reads$read_name[renamed] = paste0(reads$read_name[renamed], "_supp", nth)
   }
 
-  # (mod_code column is already populated per-code in the inner loop above)
+  reads$.idx = seq_len(nrow(reads))
+  reads
+}
+
+# Apply the MAPQ, strand and reference-length filters, warning when they
+# remove more than half of the reads.
+.filter_reads = function(reads, bam_data, min_mapq, strand_filter, min_read_length) {
+  keep = rep(TRUE, nrow(reads))
+  if (min_mapq > 0L) {
+    mapq = bam_data$mapq[reads$.idx]
+    keep = keep & !is.na(mapq) & mapq >= min_mapq
+  }
+  if (!setequal(strand_filter, c("+", "-"))) {
+    keep = keep & reads$strand %in% strand_filter
+  }
+  if (min_read_length > 0L) {
+    keep = keep & cigar_ref_width(bam_data$cigar[reads$.idx]) >= min_read_length
+  }
+  if (all(keep)) return(reads)
+
+  n_removed = sum(!keep)
+  if (n_removed / length(keep) > 0.5) {
+    warning(sprintf(
+      "%.0f%% of reads (%d/%d) were removed by filters (min_mapq=%d, strand_filter=c(%s), min_read_length=%d).",
+      100 * n_removed / length(keep), n_removed, length(keep), min_mapq,
+      paste(sprintf('"%s"', strand_filter), collapse = ", "),
+      min_read_length
+    ), call. = FALSE)
+  }
+  reads[keep, , drop = FALSE]
+}
+
+# "REF" / "ALT" / NA per read, from the base each read carries at `position`.
+.snv_genotype = function(bam_data, idx, position, ref_base, alt_base) {
+  bases = vapply(idx, function(i) {
+    seq_str = as.character(bam_data$seq[[i]])
+    q_pos = ref_to_seq(bam_data$cigar[i], bam_data$pos[i], position)
+    if (!is.na(q_pos) && q_pos >= 1L && q_pos <= nchar(seq_str)) {
+      toupper(substr(seq_str, q_pos, q_pos))
+    } else {
+      NA_character_
+    }
+  }, character(1L))
+  ifelse(bases == toupper(ref_base), "REF",
+         ifelse(bases == toupper(alt_base), "ALT", NA_character_))
+}
+
+# Keep at most `max_reads` reads, sampled at random (in original order). With
+# `per_group`, the cap applies to each non-NA group separately and reads
+# without a group are dropped.
+.downsample_reads = function(reads, max_reads, per_group = FALSE) {
+  if (per_group) {
+    groups = unique(reads$group[!is.na(reads$group)])
+    keep = unlist(lapply(groups, function(g) {
+      idx = which(reads$group == g)
+      if (length(idx) > max_reads) idx = sort(sample(idx, max_reads))
+      idx
+    }), use.names = FALSE)
+    return(reads[sort(keep), , drop = FALSE])
+  }
+  if (nrow(reads) > max_reads) {
+    return(reads[sort(sample(nrow(reads), max_reads)), , drop = FALSE])
+  }
+  reads
+}
+
+# Parse every read's MM/ML tags (per modification code) and CIGAR.
+# Returns list(sites, insertion_sites, cigar_features), not yet restricted to
+# the region.
+.parse_read_mods = function(bam_data, reads, mod_code) {
+  n = nrow(reads)
+  sites_list = ins_list = cigar_list = vector("list", n)
+
+  for (j in seq_len(n)) {
+    i         = reads$.idx[j]
+    read_name = reads$read_name[j]
+    seq_str   = as.character(bam_data$seq[[i]])
+    dc        = decompose_cigar(bam_data$cigar[i], bam_data$pos[i])
+
+    per_code = lapply(mod_code, function(code) {
+      parsed = parse_mm_ml(
+        seq      = seq_str,
+        mm_tag   = bam_data$tag$MM[i],
+        ml_tag   = bam_data$tag$ML[[i]],
+        mod_code = code,
+        strand   = reads$strand[j],
+        cigar    = bam_data$cigar[i],
+        pos      = bam_data$pos[i]
+      )
+      s = parsed$sites
+      s$read_name = rep(read_name, nrow(s))
+      s$mod_code  = rep(code, nrow(s))
+      list(sites = s,
+           ins = .anchor_insertion_sites(parsed$insertion_sites, dc, read_name, code))
+    })
+    sites_list[[j]] = do.call(rbind, lapply(per_code, `[[`, "sites"))
+    ins_list[[j]]   = do.call(rbind, lapply(per_code, `[[`, "ins"))
+
+    dc = dc[dc$type %in% c("I", "D", "N"), , drop = FALSE]
+    dc$read_name = rep(read_name, nrow(dc))
+    cigar_list[[j]] = dc
+  }
+
+  bind = function(pieces, empty) {
+    out = do.call(rbind, c(list(empty), pieces))
+    rownames(out) = NULL
+    out
+  }
+  list(
+    sites           = bind(sites_list, .empty_sites()),
+    insertion_sites = bind(ins_list, .empty_insertion_sites()),
+    cigar_features  = bind(cigar_list, .empty_cigar_features())
+  )
+}
+
+# Attach each inserted-base call to the CIGAR `I` operation it sits in:
+# the reference anchor, insertion length and 1-based offset within it.
+.anchor_insertion_sites = function(ins, dc, read_name, code) {
+  i_rows = dc[dc$type == "I", , drop = FALSE]
+  if (nrow(ins) == 0L || nrow(i_rows) == 0L) return(.empty_insertion_sites())
+  op = vapply(ins$query_pos, function(qp) {
+    m = which(qp >= i_rows$query_start & qp <= i_rows$query_end)
+    if (length(m) == 0L) NA_integer_ else m[1L]
+  }, integer(1L))
+  data.frame(
+    read_name  = read_name,
+    ref_anchor = i_rows$ref_start[op],
+    query_pos  = ins$query_pos,
+    ins_offset = ins$query_pos - i_rows$query_start[op] + 1L,
+    ins_length = i_rows$length[op],
+    mod_prob   = ins$mod_prob,
+    mod_code   = code,
+    stringsAsFactors = FALSE
+  )
+}
+
+# Zero-row templates for the methylation_data tables.
+.empty_reads = function() {
+  data.frame(
+    read_name        = character(0L),
+    start            = integer(0L),
+    end              = integer(0L),
+    bam_pos          = integer(0L),
+    strand           = character(0L),
+    is_supplementary = logical(0L),
+    sa_chrom         = character(0L),
+    sa_pos           = integer(0L),
+    clip_side        = character(0L),
+    stringsAsFactors = FALSE
+  )
+}
+
+.empty_sites = function() {
+  data.frame(
+    position  = integer(0L),
+    mod_prob  = numeric(0L),
+    read_name = character(0L),
+    mod_code  = character(0L),
+    stringsAsFactors = FALSE
+  )
+}
+
+.empty_insertion_sites = function() {
+  data.frame(
+    read_name  = character(0L),
+    ref_anchor = integer(0L),
+    query_pos  = integer(0L),
+    ins_offset = integer(0L),
+    ins_length = integer(0L),
+    mod_prob   = numeric(0L),
+    mod_code   = character(0L),
+    stringsAsFactors = FALSE
+  )
+}
+
+.empty_cigar_features = function() {
+  data.frame(
+    type        = character(0L),
+    ref_start   = integer(0L),
+    ref_end     = integer(0L),
+    query_start = integer(0L),
+    query_end   = integer(0L),
+    length      = integer(0L),
+    read_name   = character(0L),
+    stringsAsFactors = FALSE
+  )
+}
+
+.new_methylation_data = function(reads, sites, insertion_sites, region, mod_code,
+                                 group_tag, snv_position, sequences, cigars,
+                                 cigar_features) {
   structure(
     list(
       reads           = reads,
       sites           = sites,
       insertion_sites = insertion_sites,
-      region          = gr,
+      region          = region,
       mod_code        = mod_code,
       group_tag       = group_tag,
       snv_position    = snv_position,
@@ -480,75 +477,42 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
 #' @param gr A [GenomicRanges::GRanges] object.
 #' @param mod_code Character. Modification code.
 #' @param group_tag Character or NULL. Grouping tag.
+#' @param snv_position Integer or NULL. SNV position used for grouping.
 #'
 #' @return An empty `methylation_data` object.
 #'
 #' @keywords internal
-empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL) {
-  reads <- data.frame(
-    read_name       = character(0L),
-    start           = integer(0L),
-    end             = integer(0L),
-    bam_pos         = integer(0L),
-    strand          = character(0L),
-    is_supplementary = logical(0L),
-    sa_chrom        = character(0L),
-    sa_pos          = integer(0L),
-    clip_side       = character(0L),
-    stringsAsFactors = FALSE
-  )
-
-  sites <- data.frame(
-    position = integer(0L),
-    mod_prob = numeric(0L),
-    read_name = character(0L),
-    mod_code = character(0L),
-    stringsAsFactors = FALSE
-  )
-
-  insertion_sites <- data.frame(
-    read_name  = character(0L),
-    ref_anchor = integer(0L),
-    query_pos  = integer(0L),
-    ins_offset = integer(0L),
-    ins_length = integer(0L),
-    mod_prob   = numeric(0L),
-    mod_code   = character(0L),
-    stringsAsFactors = FALSE
-  )
-
+empty_methylation_data = function(gr, mod_code, group_tag, snv_position = NULL) {
+  reads = .empty_reads()
+  sites = .empty_sites()
+  insertion_sites = .empty_insertion_sites()
   if (!is.null(group_tag)) {
-    reads$group           <- character(0L)
-    sites$group           <- character(0L)
-    insertion_sites$group <- character(0L)
+    reads$group           = character(0L)
+    sites$group           = character(0L)
+    insertion_sites$group = character(0L)
   }
-
-  cigar_features <- data.frame(
-    type        = character(0L),
-    ref_start   = integer(0L),
-    ref_end     = integer(0L),
-    query_start = integer(0L),
-    query_end   = integer(0L),
-    length      = integer(0L),
-    read_name   = character(0L),
-    stringsAsFactors = FALSE
+  no_reads = stats::setNames(character(0), character(0))
+  .new_methylation_data(
+    reads = reads, sites = sites, insertion_sites = insertion_sites, region = gr,
+    mod_code = mod_code, group_tag = group_tag, snv_position = snv_position,
+    sequences = no_reads, cigars = no_reads, cigar_features = .empty_cigar_features()
   )
+}
 
-  structure(
-    list(
-      reads           = reads,
-      sites           = sites,
-      insertion_sites = insertion_sites,
-      region          = gr,
-      mod_code        = mod_code,
-      group_tag       = group_tag,
-      snv_position    = snv_position,
-      sequences       = setNames(character(0), character(0)),
-      cigars          = setNames(character(0), character(0)),
-      cigar_features  = cigar_features
-    ),
-    class = "methylation_data"
-  )
+# Per-group read counts and mean/median modification probability, one row per
+# non-NA group in sorted order (NULL when there are no groups).
+.group_stats = function(x) {
+  groups = sort(unique(x$reads$group[!is.na(x$reads$group)]))
+  do.call(rbind, lapply(groups, function(g) {
+    mods = x$sites$mod_prob[!is.na(x$sites$group) & x$sites$group == g]
+    data.frame(
+      group           = g,
+      n_reads         = sum(x$reads$group == g, na.rm = TRUE),
+      mean_mod_prob   = if (length(mods) > 0L) mean(mods, na.rm = TRUE) else NA_real_,
+      median_mod_prob = if (length(mods) > 0L) stats::median(mods, na.rm = TRUE) else NA_real_,
+      stringsAsFactors = FALSE
+    )
+  }))
 }
 
 #' Print a methylation_data object
@@ -559,16 +523,16 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
 #' @return `x`, invisibly.
 #'
 #' @export
-print.methylation_data <- function(x, ...) {
-  chrom <- as.character(GenomicRanges::seqnames(x$region))
-  start <- GenomicRanges::start(x$region)
-  end <- GenomicRanges::end(x$region)
+print.methylation_data = function(x, ...) {
+  chrom = as.character(GenomicRanges::seqnames(x$region))
+  start = GenomicRanges::start(x$region)
+  end = GenomicRanges::end(x$region)
 
-  n_plus  <- sum(x$reads$strand == "+", na.rm = TRUE)
-  n_minus <- sum(x$reads$strand == "-", na.rm = TRUE)
+  n_plus  = sum(x$reads$strand == "+", na.rm = TRUE)
+  n_minus = sum(x$reads$strand == "-", na.rm = TRUE)
 
-  read_lengths <- x$reads$end - x$reads$start + 1L
-  med_len <- if (length(read_lengths) > 0L) as.integer(median(read_lengths)) else NA_integer_
+  read_lengths = x$reads$end - x$reads$start + 1L
+  med_len = if (length(read_lengths) > 0L) as.integer(stats::median(read_lengths)) else NA_integer_
 
   cat("methylation_data object\n")
   cat(sprintf("Region: %s:%d-%d\n", chrom, start, end))
@@ -580,14 +544,12 @@ print.methylation_data <- function(x, ...) {
   cat(sprintf("Modification code(s): %s\n", paste(x$mod_code, collapse = ", ")))
 
   if (!is.null(x$group_tag)) {
-    n_groups <- length(unique(x$reads$group[!is.na(x$reads$group)]))
+    stats_df = .group_stats(x)
+    n_groups = if (is.null(stats_df)) 0L else nrow(stats_df)
     cat(sprintf("Group tag: %s (%d groups)\n", x$group_tag, n_groups))
-    groups <- sort(unique(x$reads$group[!is.na(x$reads$group)]))
-    for (g in groups) {
-      n_g   <- sum(x$reads$group == g, na.rm = TRUE)
-      mods  <- x$sites$mod_prob[!is.na(x$sites$group) & x$sites$group == g]
-      mean_g <- if (length(mods) > 0L) round(mean(mods, na.rm = TRUE), 2L) else NA_real_
-      cat(sprintf("  %s: %d reads, mean methylation %.2f\n", g, n_g, mean_g))
+    for (i in seq_len(n_groups)) {
+      cat(sprintf("  %s: %d reads, mean methylation %.2f\n", stats_df$group[i],
+                  stats_df$n_reads[i], round(stats_df$mean_mod_prob[i], 2L)))
     }
   }
 
@@ -600,44 +562,34 @@ print.methylation_data <- function(x, ...) {
 #' @param ... Unused.
 #' @return A named list with summary statistics (invisibly).
 #' @export
-summary.methylation_data <- function(object, ...) {
-  chrom <- as.character(GenomicRanges::seqnames(object$region))
-  reg_str <- sprintf("%s:%d-%d", chrom,
+summary.methylation_data = function(object, ...) {
+  chrom = as.character(GenomicRanges::seqnames(object$region))
+  reg_str = sprintf("%s:%d-%d", chrom,
                      GenomicRanges::start(object$region),
                      GenomicRanges::end(object$region))
 
-  strand_df <- as.data.frame(table(strand = object$reads$strand),
+  strand_df = as.data.frame(table(strand = object$reads$strand),
                               stringsAsFactors = FALSE)
-  names(strand_df)[2] <- "n_reads"
+  names(strand_df)[2] = "n_reads"
 
-  lens <- object$reads$end - object$reads$start + 1L
-  rl <- if (length(lens) > 0L)
-    list(median = as.integer(median(lens)), min = min(lens), max = max(lens))
+  lens = object$reads$end - object$reads$start + 1L
+  rl = if (length(lens) > 0L)
+    list(median = as.integer(stats::median(lens)), min = min(lens), max = max(lens))
   else
     list(median = NA_integer_, min = NA_integer_, max = NA_integer_)
 
-  overall_mean <- if (nrow(object$sites) > 0L)
+  overall_mean = if (nrow(object$sites) > 0L)
     round(mean(object$sites$mod_prob, na.rm = TRUE), 4L)
   else NA_real_
 
-  groups_df <- NULL
+  groups_df = NULL
   if (!is.null(object$group_tag)) {
-    g_levels <- sort(unique(object$reads$group[!is.na(object$reads$group)]))
-    groups_df <- do.call(rbind, lapply(g_levels, function(g) {
-      n_g  <- sum(object$reads$group == g, na.rm = TRUE)
-      mods <- object$sites$mod_prob[
-        !is.na(object$sites$group) & object$sites$group == g]
-      data.frame(
-        group           = g,
-        n_reads         = n_g,
-        mean_mod_prob   = if (length(mods) > 0L) round(mean(mods,   na.rm = TRUE), 4L) else NA_real_,
-        median_mod_prob = if (length(mods) > 0L) round(median(mods, na.rm = TRUE), 4L) else NA_real_,
-        stringsAsFactors = FALSE
-      )
-    }))
+    groups_df = .group_stats(object)
+    groups_df$mean_mod_prob   = round(groups_df$mean_mod_prob, 4L)
+    groups_df$median_mod_prob = round(groups_df$median_mod_prob, 4L)
   }
 
-  out <- list(
+  out = list(
     region                = reg_str,
     n_reads               = nrow(object$reads),
     n_sites               = nrow(object$sites),

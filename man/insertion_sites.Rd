@@ -4,10 +4,10 @@
 \alias{insertion_sites}
 \title{Access inserted-base modification calls from a methylation_data object}
 \usage{
-insertion_sites(m)
+insertion_sites(data)
 }
 \arguments{
-\item{m}{A \code{methylation_data} object produced by \code{\link[=read_methylation]{read_methylation()}}.}
+\item{data}{A \code{methylation_data} object produced by \code{\link[=read_methylation]{read_methylation()}}.}
 }
 \value{
 A data.frame with columns \code{read_name}, \code{ref_anchor}, \code{query_pos},

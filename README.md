@@ -104,7 +104,7 @@ loci <- list_insertion_loci(meth, min_reads = 2L)
 print(loci)
 
 # Plot the first locus
-plot_insertion_locus(meth, loci$locus_id[1L])
+plot_insertion_locus(meth, loci[1L, ])
 ```
 
 ## Supported modification types

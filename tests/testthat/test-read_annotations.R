@@ -4,7 +4,7 @@
 skip_if_not_installed("GenomicFeatures")
 
 # Build a minimal synthetic TxDb once for all tests in this file
-txdb <- GenomicFeatures::makeTxDb(
+txdb = GenomicFeatures::makeTxDb(
   transcripts = data.frame(
     tx_id     = 1L,
     tx_name   = "tx1",
@@ -28,7 +28,7 @@ txdb <- GenomicFeatures::makeTxDb(
 # --- Test 1: overlapping region returns correct transcript and exon counts ---
 
 test_that("read_annotations returns 1 transcript and 1 exon for overlapping region", {
-  ann <- read_annotations(txdb = txdb, region = "chr1:900-2100")
+  ann = read_annotations(txdb = txdb, region = "chr1:900-2100")
 
   expect_s3_class(ann, "gene_annotations")
   expect_named(ann, c("transcripts", "exons", "cds", "utr5", "utr3", "region"))
@@ -40,7 +40,7 @@ test_that("read_annotations returns 1 transcript and 1 exon for overlapping regi
 # --- Test: $cds, $utr5, $utr3 fields exist in returned object ---
 
 test_that("read_annotations includes cds, utr5, utr3 fields in returned object", {
-  ann <- read_annotations(txdb = txdb, region = "chr1:900-2100")
+  ann = read_annotations(txdb = txdb, region = "chr1:900-2100")
 
   expect_true("cds"  %in% names(ann))
   expect_true("utr5" %in% names(ann))
@@ -60,7 +60,7 @@ test_that("read_annotations includes cds, utr5, utr3 fields in returned object",
 # --- Test 2: non-overlapping region returns 0 transcripts gracefully ---
 
 test_that("read_annotations returns 0 transcripts for non-overlapping region", {
-  ann <- read_annotations(txdb = txdb, region = "chr2:1-100")
+  ann = read_annotations(txdb = txdb, region = "chr2:1-100")
 
   expect_s3_class(ann, "gene_annotations")
   expect_equal(nrow(ann$transcripts), 0L)
@@ -92,14 +92,14 @@ test_that("read_annotations errors when neither txdb nor gtf is provided", {
 # --- Test 5: print() method runs without error ---
 
 test_that("print.gene_annotations runs without error", {
-  ann <- read_annotations(txdb = txdb, region = "chr1:900-2100")
+  ann = read_annotations(txdb = txdb, region = "chr1:900-2100")
 
   expect_no_error(print(ann))
   expect_invisible(print(ann))
 })
 
 test_that("print.gene_annotations works for empty annotations", {
-  ann <- read_annotations(txdb = txdb, region = "chr2:1-100")
+  ann = read_annotations(txdb = txdb, region = "chr2:1-100")
 
   expect_no_error(print(ann))
   expect_invisible(print(ann))
@@ -111,7 +111,7 @@ test_that("clear_annotation_cache() returns NULL invisibly and leaves cache empt
   # Seed the cache with a dummy entry
   assign("dummy_key", txdb, envir = ggmethylation:::.annotation_cache)
 
-  result <- clear_annotation_cache()
+  result = clear_annotation_cache()
 
   expect_null(result)
   expect_equal(length(ls(ggmethylation:::.annotation_cache)), 0L)

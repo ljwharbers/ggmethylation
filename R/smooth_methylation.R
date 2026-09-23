@@ -18,11 +18,59 @@
   sites
 }
 
+# Adaptive loess span targeting ~15 data points per local fit.
+.adaptive_span = function(n_positions) max(0.15, min(0.75, 15 / n_positions))
+
+# Loess fit of `mean_prob ~ position`, predicted at `grid` with a 95% band
+# (+/- 1.96 se) clamped to [0, 1]. With `mask_outside`, grid points outside the
+# data's own range are set to NA instead of being extrapolated.
+.loess_predict = function(agg, grid, span, mask_outside = FALSE) {
+  fit = stats::loess(mean_prob ~ position, data = agg, span = span)
+  pr  = stats::predict(fit, newdata = data.frame(position = grid), se = TRUE)
+  out = data.frame(
+    position  = grid,
+    mean_prob = pr$fit,
+    lower     = pmin(pmax(pr$fit - 1.96 * pr$se.fit, 0), 1),
+    upper     = pmin(pmax(pr$fit + 1.96 * pr$se.fit, 0), 1)
+  )
+  if (mask_outside) {
+    outside = grid < min(agg$position) | grid > max(agg$position)
+    out[outside, c("mean_prob", "lower", "upper")] = NA_real_
+  }
+  out
+}
+
+# Smooth one group's sites: per-position means, then loess on `grid` (or on a
+# 200-point grid over the group's own range when `grid` is NULL). Groups with
+# fewer than 4 unique positions return raw means (own grid) or a linear
+# interpolation (shared grid), without a confidence band.
+.smooth_group = function(sites, span = NULL, grid = NULL) {
+  agg = stats::aggregate(mod_prob ~ position, data = sites, FUN = mean)
+  names(agg) = c("position", "mean_prob")
+  if (is.null(span)) span = .adaptive_span(nrow(agg))
+  own_grid = is.null(grid)
+
+  if (nrow(agg) < 4L) {
+    if (own_grid) return(cbind(agg, lower = NA_real_, upper = NA_real_))
+    interp = stats::approx(agg$position, agg$mean_prob, xout = grid, rule = 1)$y
+    return(data.frame(position = grid, mean_prob = interp,
+                      lower = NA_real_, upper = NA_real_))
+  }
+  if (own_grid) grid = seq(min(agg$position), max(agg$position), length.out = 200L)
+
+  tryCatch(
+    suppressWarnings(.loess_predict(agg, grid, span, mask_outside = !own_grid)),
+    error = function(e) {
+      if (own_grid) cbind(agg, lower = NA_real_, upper = NA_real_) else
+        data.frame(position = grid, mean_prob = NA_real_, lower = NA_real_, upper = NA_real_)
+    }
+  )
+}
+
 #' Fit a loess curve to x/y data and predict on a 200-point grid
 #'
-#' Core smoothing primitive used by [smooth_methylation()] and
-#' [plot_insertion_locus()]. Aggregates y values per unique x by mean, fits a
-#' loess curve, and returns predictions on a regular 200-point grid.
+#' Single-group shortcut for [smooth_methylation()], used by
+#' [plot_insertion_locus()].
 #'
 #' @param x Numeric vector of positions.
 #' @param y Numeric vector of values (same length as `x`).
@@ -33,31 +81,8 @@
 #'   raw per-x means when fewer than 4 unique x values are present.
 #'
 #' @keywords internal
-.smooth_xy <- function(x, y, span = NULL) {
-  agg <- stats::aggregate(y ~ x, FUN = mean)
-  names(agg) <- c("position", "mean_prob")
-
-  effective_span <- if (is.null(span)) {
-    max(0.15, min(0.75, 15 / nrow(agg)))
-  } else {
-    span
-  }
-
-  if (nrow(agg) < 4L) {
-    return(agg)
-  }
-
-  tryCatch(
-    suppressWarnings({
-      fit  <- stats::loess(mean_prob ~ position, data = agg, span = effective_span)
-      grid <- seq(min(agg$position, na.rm = TRUE),
-                  max(agg$position, na.rm = TRUE),
-                  length.out = 200L)
-      pred <- stats::predict(fit, newdata = data.frame(position = grid))
-      data.frame(position = grid, mean_prob = pred)
-    }),
-    error = function(e) agg
-  )
+.smooth_xy = function(x, y, span = NULL) {
+  .smooth_group(data.frame(position = x, mod_prob = y), span)[c("position", "mean_prob")]
 }
 
 #' Smooth methylation probabilities per group using loess
@@ -69,7 +94,10 @@
 #'
 #' @param sites A data.frame with columns `position`, `mod_prob`, and a
 #'   grouping column (specified by `group_col`).
-#' @param group_col Name of the grouping column (default `"group"`).
+#' @param group_col Name of the grouping column (default `"group"`). Sites
+#'   whose group is `NA` are dropped.
+#' @param mod_code_col Optional name of a modification-code column; when set,
+#'   one line is fitted per group and code.
 #' @param span Loess smoothing span. When `NULL` (default), an adaptive span is
 #'   computed per group as `max(0.15, min(0.75, 15 / n_unique_sites))`, targeting
 #'   approximately 15 data points per local fit regardless of region size or CpG
@@ -96,132 +124,32 @@
 #'   values for every group instead (see `grid` above).
 #'
 #' @keywords internal
-smooth_methylation <- function(sites, group_col = "group",
+smooth_methylation = function(sites, group_col = "group",
                                mod_code_col = NULL, span = NULL, grid = NULL) {
+  # One line per group, or per (group, mod_code) pair when mod_code_col is set.
+  # Sites without a group are not smoothed.
+  id_cols = group_col
   if (!is.null(mod_code_col) && mod_code_col %in% names(sites)) {
-    sites$.smooth_group <- paste(sites[[group_col]], sites[[mod_code_col]], sep = ":::")
-    effective_group_col <- ".smooth_group"
-  } else {
-    effective_group_col <- group_col
+    id_cols = c(group_col, mod_code_col)
   }
-
-  out_cols <- c("position", "mean_prob", "lower", "upper", effective_group_col)
+  out_cols = c("position", "mean_prob", "lower", "upper", id_cols)
+  if (!is.null(sites)) sites = sites[!is.na(sites[[group_col]]), , drop = FALSE]
 
   if (is.null(sites) || nrow(sites) == 0L) {
-    out <- data.frame(
-      position  = numeric(0L),
-      mean_prob = numeric(0L),
-      lower     = numeric(0L),
-      upper     = numeric(0L),
-      group     = character(0L),
-      stringsAsFactors = FALSE
-    )
-    names(out)[5L] <- effective_group_col
+    out = data.frame(position = numeric(0L), mean_prob = numeric(0L),
+                     lower = numeric(0L), upper = numeric(0L))
+    for (col in id_cols) out[[col]] = character(0L)
     return(out)
   }
 
-  groups <- unique(sites[[effective_group_col]])
-  groups <- groups[!is.na(groups)]
-  result_list <- vector("list", length(groups))
-
-  for (k in seq_along(groups)) {
-    grp <- groups[k]
-    sub <- sites[sites[[effective_group_col]] == grp, , drop = FALSE]
-
-    # Compute per-site mean modification probability
-    agg <- stats::aggregate(
-      mod_prob ~ position,
-      data = sub,
-      FUN = mean
-    )
-    names(agg) <- c("position", "mean_prob")
-
-    effective_span <- if (is.null(span)) {
-      max(0.15, min(0.75, 15 / nrow(agg)))
-    } else {
-      span
-    }
-
-    if (is.null(grid)) {
-      if (nrow(agg) < 4L) {
-        # Too few unique positions for loess; return raw means, no CI
-        df <- agg
-        df$lower <- NA_real_
-        df$upper <- NA_real_
-      } else {
-        df <- tryCatch(
-          suppressWarnings({
-            fit      <- stats::loess(mean_prob ~ position, data = agg, span = effective_span)
-            own_grid <- seq(min(agg$position, na.rm = TRUE),
-                        max(agg$position, na.rm = TRUE),
-                        length.out = 200L)
-            pr   <- stats::predict(fit, newdata = data.frame(position = own_grid), se = TRUE)
-            lower <- pmin(pmax(pr$fit - 1.96 * pr$se.fit, 0), 1)
-            upper <- pmin(pmax(pr$fit + 1.96 * pr$se.fit, 0), 1)
-            data.frame(position = own_grid, mean_prob = pr$fit,
-                       lower = lower, upper = upper)
-          }),
-          error = function(e) {
-            agg$lower <- NA_real_
-            agg$upper <- NA_real_
-            agg
-          }
-        )
-      }
-    } else {
-      # Shared external grid: evaluate every group at the same positions so
-      # they can be compared/subtracted index-wise (e.g. delta track).
-      if (nrow(agg) < 4L) {
-        mean_prob <- stats::approx(agg$position, agg$mean_prob, xout = grid, rule = 1)$y
-        df <- data.frame(
-          position  = grid,
-          mean_prob = mean_prob,
-          lower     = NA_real_,
-          upper     = NA_real_
-        )
-      } else {
-        df <- tryCatch(
-          suppressWarnings({
-            fit <- stats::loess(mean_prob ~ position, data = agg, span = effective_span)
-            pr  <- stats::predict(fit, newdata = data.frame(position = grid), se = TRUE)
-            mean_prob <- pr$fit
-            lower <- pmin(pmax(pr$fit - 1.96 * pr$se.fit, 0), 1)
-            upper <- pmin(pmax(pr$fit + 1.96 * pr$se.fit, 0), 1)
-            out_of_support <- grid < min(agg$position, na.rm = TRUE) |
-              grid > max(agg$position, na.rm = TRUE)
-            mean_prob[out_of_support] <- NA_real_
-            lower[out_of_support] <- NA_real_
-            upper[out_of_support] <- NA_real_
-            data.frame(position = grid, mean_prob = mean_prob,
-                       lower = lower, upper = upper)
-          }),
-          error = function(e) {
-            data.frame(
-              position  = grid,
-              mean_prob = NA_real_,
-              lower     = NA_real_,
-              upper     = NA_real_
-            )
-          }
-        )
-      }
-    }
-
-    df[[effective_group_col]] <- grp
-    result_list[[k]] <- df
-  }
-
-  out <- do.call(rbind, result_list)
-  rownames(out) <- NULL
-  out <- out[, out_cols, drop = FALSE]
-
-  # Split composite key back into original columns
-  if (!is.null(mod_code_col) && mod_code_col %in% names(sites)) {
-    parts <- strsplit(out[[".smooth_group"]], ":::", fixed = TRUE)
-    out[[group_col]]    <- vapply(parts, `[[`, character(1L), 1L)
-    out[[mod_code_col]] <- vapply(parts, `[[`, character(1L), 2L)
-    out[[".smooth_group"]] <- NULL
-  }
-
-  out
+  keys = unique(sites[id_cols])
+  pieces = lapply(seq_len(nrow(keys)), function(k) {
+    in_key = Reduce(`&`, lapply(id_cols, function(col) sites[[col]] == keys[[col]][k]))
+    df = .smooth_group(sites[in_key, , drop = FALSE], span, grid)
+    for (col in id_cols) df[[col]] = keys[[col]][k]
+    df
+  })
+  out = do.call(rbind, pieces)
+  rownames(out) = NULL
+  out[, out_cols, drop = FALSE]
 }
