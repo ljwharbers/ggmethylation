@@ -118,16 +118,15 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
 #'
 #' @param data A `methylation_data` object.
 #' @param variants A `variant_data` object returned by [read_variants()], or
-#'   `NULL`.
-#' @param bnd_match_tol Integer. Position tolerance (bp) for matching SA
-#'   breakpoints to VCF BND calls. Default `50L`.
+#'   `NULL`. Its `bnd_match_tol` sets the SA-to-BND matching tolerance
+#'   (50 bp when absent).
 #'
 #' @return A named list with elements `snv`, `sv`, `bnd`, and `sa_reads`
 #'   (each is a list of ggplot2 layer objects or `NULL`), or `NULL` when
 #'   `variants` is `NULL` or not a `variant_data` object.
 #'
 #' @keywords internal
-build_variant_overlay <- function(data, variants, bnd_match_tol = 50L) {
+build_variant_overlay <- function(data, variants) {
   if (is.null(variants) || !inherits(variants, "variant_data")) {
     return(NULL)
   }
@@ -167,7 +166,8 @@ build_variant_overlay <- function(data, variants, bnd_match_tol = 50L) {
   bnd_layers         <- build_bnd_layer(bnd_rows)
   sa_reads_validated <- NULL
   if ("sa_chrom" %in% names(data$reads)) {
-    sa_reads_validated <- match_sa_to_vcf_bnd(data$reads, bnd_rows, tol = bnd_match_tol)
+    tol <- if (is.null(variants$bnd_match_tol)) 50L else variants$bnd_match_tol
+    sa_reads_validated <- match_sa_to_vcf_bnd(data$reads, bnd_rows, tol = tol)
   }
 
   list(

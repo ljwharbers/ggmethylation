@@ -7,10 +7,12 @@
 #' (left reference flank | insertion bases in literal bp | right reference flank),
 #' with an optional loess-smoothed comparison panel below.
 #'
-#' Use [list_insertion_loci()] to discover available `locus_id` values.
+#' Use [list_insertion_loci()] to find loci; pass one row of its output.
 #'
-#' @param m A `methylation_data` object produced by [read_methylation()].
-#' @param locus_id Character. A `locus_id` value from [list_insertion_loci()].
+#' @param data A `methylation_data` object produced by [read_methylation()].
+#' @param locus One row of the data.frame returned by [list_insertion_loci()]
+#'   for `data`, e.g. `loci[1, ]` or `loci[loci$locus_id == id, ]`. It carries
+#'   the locus' carrier and non-carrier reads and the clustering tolerances.
 #' @param flank Integer. Number of reference base pairs to show on each side of
 #'   the insertion (default 200).
 #' @param show_smoothed Logical. Whether to add a loess-smoothed modification
@@ -18,9 +20,6 @@
 #' @param include_noncarriers Logical. Whether to include reads that span the
 #'   locus but do not carry the insertion (default `TRUE`). Non-carriers are
 #'   shown below carriers with an empty middle region.
-#' @param tol_pos Integer. Position tolerance used for re-clustering (must match
-#'   the value used when calling [list_insertion_loci()]; default 10).
-#' @param tol_len Numeric. Length tolerance used for re-clustering (default 0.20).
 #' @param colour_low Character. Colour for low modification probability
 #'   (default `"#BDBDBD"`).
 #' @param colour_high Character. Colour for high modification probability
@@ -32,69 +31,41 @@
 #' \dontrun{
 #' md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
 #' loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
-#' plot_insertion_locus(md, loci$locus_id[1L])
+#' plot_insertion_locus(md, loci[1, ])
 #' }
 #'
 #' @export
-plot_insertion_locus <- function(m, locus_id,
+plot_insertion_locus <- function(data, locus,
                                   flank              = 200L,
                                   show_smoothed      = TRUE,
                                   include_noncarriers = TRUE,
-                                  tol_pos            = 10L,
-                                  tol_len            = 0.20,
                                   colour_low         = .PROB_GRADIENT$low,
                                   colour_high        = .PROB_GRADIENT$high) {
-  if (!inherits(m, "methylation_data")) {
-    stop("'m' must be a methylation_data object.", call. = FALSE)
+  if (!inherits(data, "methylation_data")) {
+    stop("'data' must be a methylation_data object.", call. = FALSE)
+  }
+  locus_cols = c("locus_id", "anchor_pos", "median_length", "carriers",
+                 "noncarriers", "tol_pos")
+  if (!is.data.frame(locus) || nrow(locus) != 1L || !all(locus_cols %in% names(locus))) {
+    stop("`locus` must be one row of list_insertion_loci() output, e.g. loci[1, ].",
+         call. = FALSE)
   }
 
-  # --- 1. Find the requested locus ---
-  loci <- list_insertion_loci(m, tol_pos = tol_pos, tol_len = tol_len,
-                               min_reads = 1L)
-  locus_row <- loci[loci$locus_id == locus_id, , drop = FALSE]
-  if (nrow(locus_row) == 0L) {
-    stop("locus_id '", locus_id, "' not found. ",
-         "Run list_insertion_loci() to see available IDs.", call. = FALSE)
-  }
+  # --- 1. Carrier / non-carrier reads of the locus ---
+  locus_id    = locus$locus_id
+  anchor      = locus$anchor_pos
+  mid_width   = locus$median_length
+  tol_pos     = locus$tol_pos
+  flank       = as.integer(flank)
 
-  anchor      <- locus_row$anchor_pos
-  mid_width   <- locus_row$median_length
-  flank       <- as.integer(flank)
+  carrier_ins_len  = locus$carriers[[1L]]   # insertion length, named by read
+  carrier_names    = names(carrier_ins_len)
+  noncarrier_names = locus$noncarriers[[1L]]
 
-  # Carrier read names: rows in cigar_features[type=="I"] whose ref_start is
-  # within tol_pos of anchor and whose length is within tol_len of mid_width
-  cf_ins <- m$cigar_features[m$cigar_features$type == "I" &
-                              !is.na(m$cigar_features$ref_start), , drop = FALSE]
-  carrier_mask <- abs(cf_ins$ref_start - anchor) <= tol_pos &
-                  abs(cf_ins$length - mid_width) / pmax(mid_width, 1L) <= tol_len
-  carrier_cf       <- cf_ins[carrier_mask, , drop = FALSE]
-  carrier_names    <- unique(carrier_cf$read_name)
-
-  # Build per-carrier lookup: read_name -> insertion length (use first I-row per read)
-  carrier_ins_len <- setNames(
-    vapply(carrier_names, function(rn) {
-      rows <- carrier_cf[carrier_cf$read_name == rn, , drop = FALSE]
-      rows$length[1L]
-    }, integer(1L)),
-    carrier_names
-  )
-
-  reads_all <- m$reads
+  reads_all <- data$reads
   all_names <- reads_all$read_name
-
-  # Non-carrier reads: span [anchor - tol_pos, anchor + tol_pos], not in carrier set
-  read_start <- pmin(reads_all$bam_pos, reads_all$start)
-  read_end   <- reads_all$end
-  spans_locus <- read_start <= (anchor + tol_pos) & read_end >= (anchor - tol_pos)
-  noncarrier_mask_all <- spans_locus & !(all_names %in% carrier_names)
-  noncarrier_names <- all_names[noncarrier_mask_all]
-
   carrier_reads    <- reads_all[all_names %in% carrier_names, , drop = FALSE]
-  noncarrier_reads <- if (include_noncarriers) {
-    reads_all[noncarrier_mask_all, , drop = FALSE]
-  } else {
-    reads_all[integer(0), , drop = FALSE]
-  }
+  noncarrier_reads <- reads_all[include_noncarriers & all_names %in% noncarrier_names, , drop = FALSE]
 
   if (nrow(carrier_reads) == 0L) {
     stop("No carrier reads found for locus '", locus_id, "'.", call. = FALSE)
@@ -199,7 +170,7 @@ plot_insertion_locus <- function(m, locus_id,
   )
 
   # --- 4. Build mod-site data in stitched coords ---
-  sites <- m$sites
+  sites <- data$sites
   lane_map <- reads_packed[, c("read_name", "lane"), drop = FALSE]
 
   # Left flank sites: ref positions in [anchor - flank, anchor]
@@ -215,7 +186,7 @@ plot_insertion_locus <- function(m, locus_id,
   rf_sites$stitch_x <- rf_sites$position + mid_width
 
   # Insertion sites: carriers at this locus
-  ins_sites <- m$insertion_sites
+  ins_sites <- data$insertion_sites
   ins_locus <- if (nrow(ins_sites) > 0L) {
     ins_sites[ins_sites$read_name %in% carrier_names &
               abs(ins_sites$ref_anchor - anchor) <= tol_pos, , drop = FALSE]
@@ -226,26 +197,11 @@ plot_insertion_locus <- function(m, locus_id,
   ins_locus$stitch_x <- anchor + ins_locus$ins_offset - 1L
 
   # Combine all sites
-  all_sites <- rbind(
-    if (nrow(lf_sites) > 0L)
-      data.frame(stitch_x = lf_sites$stitch_x, mod_prob = lf_sites$mod_prob,
-                 lane = lf_sites$lane, stringsAsFactors = FALSE)
-    else
-      data.frame(stitch_x = numeric(0), mod_prob = numeric(0),
-                 lane = numeric(0), stringsAsFactors = FALSE),
-    if (nrow(rf_sites) > 0L)
-      data.frame(stitch_x = rf_sites$stitch_x, mod_prob = rf_sites$mod_prob,
-                 lane = rf_sites$lane, stringsAsFactors = FALSE)
-    else
-      data.frame(stitch_x = numeric(0), mod_prob = numeric(0),
-                 lane = numeric(0), stringsAsFactors = FALSE),
-    if (nrow(ins_locus) > 0L)
-      data.frame(stitch_x = ins_locus$stitch_x, mod_prob = ins_locus$mod_prob,
-                 lane = ins_locus$lane, stringsAsFactors = FALSE)
-    else
-      data.frame(stitch_x = numeric(0), mod_prob = numeric(0),
-                 lane = numeric(0), stringsAsFactors = FALSE)
-  )
+  stitched = function(df) {
+    data.frame(stitch_x = df$stitch_x, mod_prob = df$mod_prob, lane = df$lane,
+               stringsAsFactors = FALSE)
+  }
+  all_sites <- rbind(stitched(lf_sites), stitched(rf_sites), stitched(ins_locus))
 
   # --- 5. Build stitched x-axis break labels ---
   sep1 <- anchor          # left flank / middle boundary
@@ -321,47 +277,29 @@ plot_insertion_locus <- function(m, locus_id,
   # Compute smooth curves for carriers and non-carriers in left/right flanks,
   # and for carriers in the insertion middle.
 
-  smooth_list <- list()
-
-  .add_smooth <- function(x_vals, y_vals, group_label, region) {
-    if (length(x_vals) < 4L) return(invisible(NULL))
+  smooth_piece <- function(x_vals, y_vals, group_label, region) {
+    if (length(x_vals) < 4L) return(NULL)
     df <- .smooth_xy(x_vals, y_vals)
     df$group  <- group_label
     df$region <- region
-    smooth_list[[length(smooth_list) + 1L]] <<- df
+    df
   }
+  carriers_in    <- function(df) df[df$read_name %in% carrier_names, , drop = FALSE]
+  noncarriers_in <- function(df) df[df$read_name %in% noncarrier_names, , drop = FALSE]
+  lf_c <- carriers_in(lf_sites)
+  rf_c <- carriers_in(rf_sites)
+  lf_nc <- noncarriers_in(lf_sites)
+  rf_nc <- noncarriers_in(rf_sites)
 
-  carrier_read_names    <- carrier_names
-  noncarrier_read_names <- noncarrier_names
-
-  # Left flank — carriers
-  lf_c <- lf_sites[lf_sites$read_name %in% carrier_read_names, , drop = FALSE]
-  if (nrow(lf_c) > 0L) .add_smooth(lf_c$position, lf_c$mod_prob, "carrier", "left")
-
-  # Left flank — non-carriers
-  if (include_noncarriers) {
-    lf_nc <- lf_sites[lf_sites$read_name %in% noncarrier_read_names, , drop = FALSE]
-    if (nrow(lf_nc) > 0L) .add_smooth(lf_nc$position, lf_nc$mod_prob, "non-carrier", "left")
-  }
-
-  # Insertion middle — carriers only
-  if (nrow(ins_locus) > 0L) {
-    # Use literal ins_offset as x (1..ins_length), shifted to stitched axis
-    ins_c <- ins_locus
-    .add_smooth(anchor + ins_c$ins_offset - 1L, ins_c$mod_prob, "carrier", "middle")
-  }
-
-  # Right flank — carriers
-  rf_c <- rf_sites[rf_sites$read_name %in% carrier_read_names, , drop = FALSE]
-  if (nrow(rf_c) > 0L)
-    .add_smooth(rf_c$position + mid_width, rf_c$mod_prob, "carrier", "right")
-
-  # Right flank — non-carriers
-  if (include_noncarriers) {
-    rf_nc <- rf_sites[rf_sites$read_name %in% noncarrier_read_names, , drop = FALSE]
-    if (nrow(rf_nc) > 0L)
-      .add_smooth(rf_nc$position + mid_width, rf_nc$mod_prob, "non-carrier", "right")
-  }
+  # Carriers and non-carriers in each flank; carriers only in the insertion
+  # (at literal ins_offset, shifted onto the stitched axis).
+  smooth_list <- Filter(Negate(is.null), list(
+    smooth_piece(lf_c$position, lf_c$mod_prob, "carrier", "left"),
+    if (include_noncarriers) smooth_piece(lf_nc$position, lf_nc$mod_prob, "non-carrier", "left"),
+    smooth_piece(anchor + ins_locus$ins_offset - 1L, ins_locus$mod_prob, "carrier", "middle"),
+    smooth_piece(rf_c$position + mid_width, rf_c$mod_prob, "carrier", "right"),
+    if (include_noncarriers) smooth_piece(rf_nc$position + mid_width, rf_nc$mod_prob, "non-carrier", "right")
+  ))
 
   if (length(smooth_list) == 0L) {
     # No smoothing data; return read panel only

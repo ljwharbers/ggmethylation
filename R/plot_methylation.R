@@ -243,8 +243,8 @@
 # y-axis label for the smooth panel, and for the delta panel below it. In binary
 # mode the panel aggregates 0/1 calls, so the quantity is a fraction of
 # methylated calls rather than a mean probability.
-.smooth_y_label = function(call_mode) {
-  if (identical(call_mode, "binary")) {
+.smooth_y_label = function(binary) {
+  if (binary) {
     "Fraction\nmethylated"
   } else {
     "Mean modification\nprobability"
@@ -256,8 +256,8 @@
 # the smooth panel's y-axis title. The "(group2 - group1)" line it used to carry
 # is now redundant: the area is filled with the colour of whichever group is
 # higher, so the sign is readable off the plot itself.
-.delta_y_label = function(call_mode) {
-  if (identical(call_mode, "binary")) {
+.delta_y_label = function(binary) {
+  if (binary) {
     "Δ fraction\nmethylated"
   } else {
     "Δ methylation"
@@ -286,13 +286,8 @@
 # probabilities, so they report a fraction of methylated calls. The raw
 # `data$sites` is still what build_read_panel() colours, so it can keep the
 # ambiguous category.
-.sites_for_aggregation = function(sites, call_mode, call_threshold,
-                                  call_ambiguous) {
-  if (identical(call_mode, "binary")) {
-    .binarize_sites(sites, call_threshold, call_ambiguous)
-  } else {
-    sites
-  }
+.sites_for_aggregation = function(sites, call_threshold, call_ambiguous) {
+  if (is.null(call_threshold)) sites else .binarize_sites(sites, call_threshold, call_ambiguous)
 }
 
 # Sort reads and pack them into lanes (per group when grouped, with a blank
@@ -398,7 +393,7 @@
   smoothed = .apply_deletion_breaks(smoothed, data$cigar_features, reads, "group",
                                     opts$min_indel_size, opts$show_cigar)
 
-  y_label = .smooth_y_label(opts$call_mode)
+  y_label = .smooth_y_label(opts$binary)
   if (grouped) {
     .build_smooth_panel(
       smoothed, region_start, region_end, y_label, opts$show_ci,
@@ -447,7 +442,7 @@
   }
   rownames(smoothed) = NULL
 
-  y_label = .smooth_y_label(opts$call_mode)
+  y_label = .smooth_y_label(opts$binary)
   if (any(!vapply(samples, function(s) is.null(s$group_tag), logical(1L)))) {
     .build_smooth_panel(smoothed, region_start, region_end, y_label, opts$show_ci,
                         colour = "group", linetype = "sample",
@@ -482,7 +477,7 @@
     fill_pos = group_colours[[delta_groups[2L]]]
   }
   .build_delta_panel(delta_df, region_start, region_end,
-                     .delta_y_label(opts$call_mode),
+                     .delta_y_label(opts$binary),
                      fill_pos = fill_pos, fill_neg = fill_neg)
 }
 
@@ -492,7 +487,8 @@
 #' no grouping is present, produces a single panel showing reads as grey bars
 #' with coloured modification dots. When groups are present, adds a bottom
 #' panel with loess-smoothed mean modification probability per group and
-#' combines the panels using patchwork. With `call_mode = "binary"` the smooth
+#' combines the panels using patchwork. Setting `call_threshold` switches to
+#' binary calls: sites are coloured methylated/unmethylated and the smooth
 #' panel plots the fraction of methylated calls instead of the mean probability.
 #'
 #' @param data A `methylation_data` object returned by [read_methylation()].
@@ -501,7 +497,7 @@
 #'   group, so group order is fixed). Default NULL uses `"start"` when
 #'   ungrouped or `c("start", "group", "mean_mod_prob")` when grouped.
 #'   `mean_mod_prob` is the per-read mean modification probability, or the
-#'   per-read fraction of methylated calls when `call_mode = "binary"`.
+#'   per-read fraction of methylated calls when `call_threshold` is set.
 #' @param colour_low Colour for low modification probability (default
 #'   `"#BDBDBD"`).
 #' @param colour_high Colour for high modification probability (default
@@ -509,7 +505,7 @@
 #' @param colour_ambiguous Colour for ambiguous calls (default `"#78909C"`, a
 #'   slate blue-grey deliberately off the `colour_low`/`colour_high` ramp so it
 #'   reads as "no confident call" rather than "intermediate methylation"). Only
-#'   used when `call_mode = "binary"` and `call_ambiguous` is non-`NULL`.
+#'   used when `call_threshold` and `call_ambiguous` are set.
 #' @param line_width Linewidth of modification site lines (default 0.2).
 #' @param colour_strand Logical. When `TRUE`, read bars are coloured by strand
 #'   (`"+"` = forward, `"-"` = reverse). Ignored when data is grouped; group
@@ -559,23 +555,21 @@
 #'   alignment partner (from the SA BAM tag). The original bar colouring
 #'   (group, strand, or default grey) is preserved inside the halo. Reads with
 #'   no supplementary alignment have no halo.
-#' @param bnd_match_tol Integer. Position tolerance (bp) for matching
-#'   supplementary-alignment breakpoints to VCF BND calls. The SA matching runs
-#'   whenever `variants` is supplied and reads carry SA tags; the visual border
-#'   marking requires `show_supplementary = TRUE`. Default 50.
 #' @param show_ci Logical. When `TRUE` (default), a shaded ribbon showing the
 #'   loess confidence interval (`lower`/`upper` from [smooth_methylation()])
 #'   is drawn behind each smooth line in the bottom panel. Has no effect when
 #'   fewer than 4 unique positions are available for a group/code (no CI is
 #'   computed in that case). Set to `FALSE` to hide the ribbon.
-#' @param call_mode Character. `"continuous"` (default) colours modification
-#'   sites by a continuous probability gradient (`colour_low` to
-#'   `colour_high`), and the smooth panel plots the mean modification
-#'   probability per position. `"binary"` classifies each site as methylated,
-#'   unmethylated, or ambiguous (see `call_threshold`/`call_ambiguous`) and
-#'   colours them with a discrete scale instead.
+#' @param call_threshold `NULL` (default) or a number in `[0, 1]`. With
+#'   `NULL`, modification sites are coloured by a continuous probability
+#'   gradient (`colour_low` to `colour_high`) and the smooth panel plots the
+#'   mean modification probability per position. A number switches to
+#'   **binary calls**: sites with probability at or above the threshold are
+#'   methylated, the rest unmethylated (or ambiguous, see `call_ambiguous`),
+#'   coloured with a discrete scale. The same split drives the read panel and
+#'   every aggregate, so the two always agree.
 #'
-#'   `"binary"` also changes what every aggregate reports: the smooth panel, the
+#'   Binary calls change what every aggregate reports: the smooth panel, the
 #'   delta panel (`show_delta`) and the per-read `mean_mod_prob` used for
 #'   sorting all aggregate 0/1 calls rather than raw probabilities, so the
 #'   smooth panel plots the **fraction of calls that are methylated** and its
@@ -586,15 +580,10 @@
 #'   pulled toward 0.5 by basecaller uncertainty.
 #'
 #'   Because binarised values are 0 or 1, positions with thin coverage
-#'   contribute coarser values than in continuous mode, so the binary curve is
-#'   noisier where few reads overlap. The loess span still averages over
-#'   neighbouring positions and the confidence ribbon (`show_ci`) widens where
-#'   evidence is sparse.
-#' @param call_threshold Numeric in `[0, 1]`. Modification probability at or
-#'   above which a site is classified as methylated when
-#'   `call_mode = "binary"`. Used for both the read panel colours and the
-#'   binarised aggregates, so the two panels always split at the same value.
-#'   Default `0.5`. Ignored when `call_mode = "continuous"`.
+#'   contribute coarser values than with continuous probabilities, so the
+#'   binary curve is noisier where few reads overlap. The loess span still
+#'   averages over neighbouring positions and the confidence ribbon
+#'   (`show_ci`) widens where evidence is sparse.
 #' @param call_ambiguous `NULL` (default) for a hard threshold, or a numeric
 #'   half-width defining a band `[call_threshold - w, call_threshold + w)`
 #'   around `call_threshold` within which sites are labelled "ambiguous"
@@ -602,7 +591,7 @@
 #'   both the numerator and the denominator of the methylated fraction, so the
 #'   smooth panel reports the fraction methylated *among confident calls*. The
 #'   default `NULL` discards nothing — every site is called at
-#'   `call_threshold`. Ignored when `call_mode = "continuous"`.
+#'   `call_threshold`. Requires `call_threshold`.
 #' @param show_delta Logical. When `TRUE`, and grouping yields exactly two
 #'   groups, an additional panel is appended below the smooth panel showing
 #'   the signed difference in loess-smoothed modification probability between
@@ -640,14 +629,10 @@ plot_methylation = function(data, sort_by = NULL,
                             show_cigar = TRUE,
                             min_indel_size = 50L,
                             show_supplementary = TRUE,
-                            bnd_match_tol = 50L,
                             show_ci = TRUE,
-                            call_mode = c("continuous", "binary"),
-                            call_threshold = 0.5,
+                            call_threshold = NULL,
                             call_ambiguous = NULL,
                             show_delta = FALSE) {
-  call_mode = match.arg(call_mode)
-
   # --- 1. Validate input ---
   multi = inherits(data, "multi_methylation_data")
   if (!multi && !inherits(data, "methylation_data")) {
@@ -661,6 +646,15 @@ plot_methylation = function(data, sort_by = NULL,
   }
   if (isTRUE(colour_strand) && !all(c("+", "-") %in% names(strand_colours))) {
     stop("'strand_colours' must be a named vector with '+' and '-' entries.", call. = FALSE)
+  }
+  if (!is.null(call_threshold) &&
+      !(is.numeric(call_threshold) && length(call_threshold) == 1L &&
+        call_threshold >= 0 && call_threshold <= 1)) {
+    stop("`call_threshold` must be NULL or a single number in [0, 1].", call. = FALSE)
+  }
+  if (is.null(call_threshold) && !is.null(call_ambiguous)) {
+    stop("`call_ambiguous` only applies to binary calls; set `call_threshold` too.",
+         call. = FALSE)
   }
   if (!is.null(variants) && !inherits(variants, "variant_data")) {
     stop("`variants` must be a `variant_data` object returned by read_variants().",
@@ -686,13 +680,13 @@ plot_methylation = function(data, sort_by = NULL,
   region_start = GenomicRanges::start(data$region)
   region_end   = GenomicRanges::end(data$region)
   opts = list(smooth_span = smooth_span, min_indel_size = min_indel_size,
-              show_cigar = show_cigar, show_ci = show_ci, call_mode = call_mode,
+              show_cigar = show_cigar, show_ci = show_ci, binary = !is.null(call_threshold),
               group_colours = group_colours)
 
   # --- 2. Sort and pack each sample's reads ---
   prepared = lapply(samples, function(s) {
     if (nrow(s$reads) == 0L) return(NULL)
-    sites_agg = .sites_for_aggregation(s$sites, call_mode, call_threshold, call_ambiguous)
+    sites_agg = .sites_for_aggregation(s$sites, call_threshold, call_ambiguous)
     c(.prepare_reads(s, sites_agg, sort_by), list(sites_agg = sites_agg))
   })
 
@@ -716,11 +710,10 @@ plot_methylation = function(data, sort_by = NULL,
       strand_colours     = strand_colours,
       group_colours      = group_colours,
       show_x_axis        = FALSE,
-      variant_overlay    = build_variant_overlay(s, variants, bnd_match_tol = bnd_match_tol),
+      variant_overlay    = build_variant_overlay(s, variants),
       show_cigar         = show_cigar,
       min_indel_size     = min_indel_size,
       show_supplementary = show_supplementary,
-      call_mode          = call_mode,
       call_threshold     = call_threshold,
       call_ambiguous     = call_ambiguous
     )

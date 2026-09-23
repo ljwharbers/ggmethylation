@@ -4,10 +4,10 @@
 \alias{list_insertion_loci}
 \title{List insertion loci from a methylation_data object}
 \usage{
-list_insertion_loci(m, tol_pos = 10L, tol_len = 0.2, min_reads = 2L)
+list_insertion_loci(data, tol_pos = 10L, tol_len = 0.2, min_reads = 2L)
 }
 \arguments{
-\item{m}{A \code{methylation_data} object produced by \code{\link[=read_methylation]{read_methylation()}}.}
+\item{data}{A \code{methylation_data} object produced by \code{\link[=read_methylation]{read_methylation()}}.}
 
 \item{tol_pos}{Integer. Maximum distance in base pairs between consecutive
 insertion anchor positions to be merged into the same locus (default 10).}
@@ -20,7 +20,7 @@ relative to the running cluster median to be merged into the same locus
 locus to be reported (default 2).}
 }
 \value{
-A data.frame (tibble-compatible) with one row per locus and columns:
+A data.frame with one row per locus and columns:
 \describe{
 \item{locus_id}{Character. Deterministic identifier
 \code{"INS_<chrom>_<anchor_pos>_<median_length>bp"}.}
@@ -36,7 +36,13 @@ locus.}
 \item{length_max}{Integer. Maximum insertion length in the locus.}
 \item{mean_ins_mod_prob}{Numeric or NA. Mean modification probability
 across all insertion-site calls at this locus. NA when
-\code{m$insertion_sites} has no rows for this locus.}
+\code{data$insertion_sites} has no rows for this locus.}
+\item{carriers}{List-column. Per locus, a named integer vector of the
+carrier reads' insertion lengths, named by \code{read_name}.}
+\item{noncarriers}{List-column. Per locus, the \code{read_name}s of the
+non-carrier reads.}
+\item{tol_pos, tol_len}{The tolerances used, so \code{\link[=plot_insertion_locus]{plot_insertion_locus()}}
+selects insertion calls exactly as they were clustered.}
 }
 Sorted by \code{anchor_pos}. Returns a zero-row data.frame when no insertions
 pass the \code{min_reads} threshold.
@@ -45,14 +51,15 @@ pass the \code{min_reads} threshold.
 Clusters insertion events across reads into loci using a greedy single-pass
 algorithm. Insertions are grouped when their reference anchor positions and
 lengths are within the specified tolerances of each other. Returns a summary
-tibble sorted by anchor position; pass a \code{locus_id} value to
-\code{\link[=plot_insertion_locus]{plot_insertion_locus()}} to visualise a specific locus.
+data.frame sorted by anchor position; pass one of its rows to
+\code{\link[=plot_insertion_locus]{plot_insertion_locus()}} to visualise that locus.
 }
 \examples{
 \dontrun{
 md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
 loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
 loci$locus_id
+plot_insertion_locus(md, loci[1, ])
 }
 
 }

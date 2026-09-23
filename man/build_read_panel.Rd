@@ -19,17 +19,16 @@ build_read_panel(
   show_x_axis = FALSE,
   variant_overlay = NULL,
   show_cigar = FALSE,
-  cigar_features = NULL,
   min_indel_size = 50L,
   show_supplementary = FALSE,
-  call_mode = "continuous",
-  call_threshold = 0.5,
+  call_threshold = NULL,
   call_ambiguous = NULL
 )
 }
 \arguments{
 \item{data}{A \code{methylation_data} object. \verb{$reads} must already contain a
-\code{lane} column (from \code{pack_reads()}) and a \code{mean_mod_prob} column.}
+\code{lane} column (from \code{pack_reads()}) and a \code{mean_mod_prob} column.
+\verb{$cigar_features} supplies the indels drawn when \code{show_cigar = TRUE}.}
 
 \item{separator_lanes}{Numeric vector of y-positions where horizontal
 dashed separator lines should be drawn (between groups). Pass
@@ -44,7 +43,7 @@ dashed separator lines should be drawn (between groups). Pass
 \item{colour_high}{Colour for high modification probability.}
 
 \item{colour_ambiguous}{Colour for ambiguous calls. Only used when
-\code{call_mode = "binary"} and \code{call_ambiguous} is non-\code{NULL}.}
+\code{call_threshold} and \code{call_ambiguous} are set.}
 
 \item{line_width}{Linewidth of modification site markers.}
 
@@ -64,22 +63,25 @@ on the read panel.}
 \item{show_cigar}{Logical. When \code{TRUE}, structural variants from CIGAR
 strings are overlaid on reads. Default \code{FALSE}.}
 
-\item{cigar_features}{Data.frame of CIGAR features (from
-\code{methylation_data$cigar_features}), or \code{NULL}.}
-
 \item{min_indel_size}{Integer. Minimum size (in bp) for insertions and
 deletions to be displayed. Features smaller than this threshold are
 suppressed. Default \code{50}.}
+
+\item{show_supplementary}{Logical. Draw supplementary-alignment indicators.}
+
+\item{call_threshold, call_ambiguous}{Binary-call settings (\code{NULL} threshold
+for continuous colouring); see \code{\link[=plot_methylation]{plot_methylation()}}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object.
 }
 \description{
-Constructs the top read panel (horizontal read bars + modification
-probability lines) for a single \code{methylation_data} object that has already
-been sorted and lane-packed. This function encapsulates the grouped,
-strand-coloured, and plain rendering branches so that both
-\code{plot_methylation()} (single-sample) and \code{.plot_multi_methylation()}
-(multi-sample) can share the same drawing code.
+Constructs the read panel (horizontal read bars + modification probability
+lines) for a single \code{methylation_data} object that has already been sorted
+and lane-packed. Used by \code{\link[=plot_methylation]{plot_methylation()}} for every sample it draws.
+}
+\details{
+Read bars are filled by group when the data is grouped, by strand when
+\code{colour_strand = TRUE}, and in a fixed grey otherwise.
 }
 \keyword{internal}

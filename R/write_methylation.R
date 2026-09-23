@@ -34,7 +34,7 @@
 #'
 #' 6-column BED (no header). Coordinates are converted to 0-based half-open
 #' intervals (`chromStart = position - 1`, `chromEnd = position`). The `score`
-#' column contains `mod_prob` (float in [0, 1]).
+#' column contains `mod_prob` (float in `[0, 1]`).
 #'
 #' @examples
 #' \dontrun{

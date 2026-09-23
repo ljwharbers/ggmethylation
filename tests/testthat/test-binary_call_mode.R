@@ -1,4 +1,4 @@
-# Tests for binarized call mode (call_mode = "binary"):
+# Tests for binarized calls (plot_methylation(call_threshold = <number>)):
 # .classify_calls() and .binarize_sites(), the read panel, and the
 # fraction-methylated smooth/delta panels in plot_methylation().
 
@@ -55,7 +55,7 @@ test_that("plot_methylation renders in binary mode", {
     stringsAsFactors = FALSE
   )
   md <- make_test_data(reads, sites)
-  p <- ggmethylation::plot_methylation(md, call_mode = "binary",
+  p <- ggmethylation::plot_methylation(md, call_threshold = 0.5,
                                        show_supplementary = FALSE)
   expect_true(inherits(p, "ggplot") || inherits(p, "patchwork"))
 })
@@ -91,7 +91,7 @@ test_that("ambiguous calls render in a colour distinct from unmethylated", {
   md <- make_test_data(reads, sites)
 
   p <- ggmethylation::plot_methylation(
-    md, call_mode = "binary", call_ambiguous = 0.1,
+    md, call_threshold = 0.5, call_ambiguous = 0.1,
     show_supplementary = FALSE
   )
   cols <- call_colours(p, sites)
@@ -115,7 +115,7 @@ test_that("colour_ambiguous overrides the default ambiguous colour", {
   md <- make_test_data(reads, sites)
 
   p <- ggmethylation::plot_methylation(
-    md, call_mode = "binary", call_ambiguous = 0.1,
+    md, call_threshold = 0.5, call_ambiguous = 0.1,
     colour_ambiguous = "purple", show_supplementary = FALSE
   )
   expect_true("purple" %in% call_colours(p, sites))
@@ -225,7 +225,7 @@ test_that("binary smooth panel plots fraction methylated, not mean probability",
   md <- make_uniform_md(prob = 0.8)
 
   p_cont <- ggmethylation::plot_methylation(md, show_supplementary = FALSE)
-  p_bin  <- ggmethylation::plot_methylation(md, call_mode = "binary",
+  p_bin  <- ggmethylation::plot_methylation(md, call_threshold = 0.5,
                                             show_supplementary = FALSE)
 
   cont_vals <- p_cont[[2]]$data$mean_prob
@@ -238,19 +238,29 @@ test_that("binary smooth panel plots fraction methylated, not mean probability",
 test_that("binary smooth panel relabels the y axis", {
   md <- make_uniform_md()
   p_cont <- ggmethylation::plot_methylation(md, show_supplementary = FALSE)
-  p_bin  <- ggmethylation::plot_methylation(md, call_mode = "binary",
+  p_bin  <- ggmethylation::plot_methylation(md, call_threshold = 0.5,
                                             show_supplementary = FALSE)
   expect_match(y_scale_name(p_cont[[2]]), "Mean modification")
   expect_match(y_scale_name(p_bin[[2]]), "Fraction")
 })
 
-test_that("continuous mode smooth panel is unchanged by call_threshold", {
+test_that("continuous colouring is the default; call_threshold switches to binary", {
   md <- make_uniform_md(prob = 0.8)
-  p_a <- ggmethylation::plot_methylation(md, show_supplementary = FALSE)
-  p_b <- ggmethylation::plot_methylation(md, call_threshold = 0.9,
-                                         call_ambiguous = 0.3,
-                                         show_supplementary = FALSE)
-  expect_equal(p_a[[2]]$data$mean_prob, p_b[[2]]$data$mean_prob)
+  p_default <- ggmethylation::plot_methylation(md, show_supplementary = FALSE)
+  p_null <- ggmethylation::plot_methylation(md, call_threshold = NULL,
+                                            show_supplementary = FALSE)
+  expect_equal(p_default[[2]]$data$mean_prob, p_null[[2]]$data$mean_prob)
+  expect_match(y_scale_name(p_default[[2]]), "Mean modification")
+})
+
+test_that("call_threshold and call_ambiguous are validated", {
+  md <- make_uniform_md()
+  expect_error(ggmethylation::plot_methylation(md, call_ambiguous = 0.1),
+               "call_threshold")
+  expect_error(ggmethylation::plot_methylation(md, call_threshold = 1.5),
+               "call_threshold")
+  expect_error(ggmethylation::plot_methylation(md, call_threshold = "binary"),
+               "call_threshold")
 })
 
 test_that("ambiguous sites are excluded from the smoothed fraction", {
@@ -270,9 +280,9 @@ test_that("ambiguous sites are excluded from the smoothed fraction", {
   )
   md <- make_test_data(reads, sites)
 
-  p_hard <- ggmethylation::plot_methylation(md, call_mode = "binary",
+  p_hard <- ggmethylation::plot_methylation(md, call_threshold = 0.5,
                                             show_supplementary = FALSE)
-  p_amb  <- ggmethylation::plot_methylation(md, call_mode = "binary",
+  p_amb  <- ggmethylation::plot_methylation(md, call_threshold = 0.5,
                                             call_ambiguous = 0.1,
                                             show_supplementary = FALSE)
   # Hard threshold: r2's 0.45 counts as unmethylated -> fraction 0.5
@@ -302,8 +312,7 @@ test_that("all-ambiguous data still builds a plot", {
     0L
   )
   expect_silent(
-    p <- ggmethylation::plot_methylation(md, call_mode = "binary",
-                                         call_threshold = 0.5,
+    p <- ggmethylation::plot_methylation(md, call_threshold = 0.5,
                                          call_ambiguous = 0.2,
                                          show_supplementary = FALSE)
   )
@@ -333,7 +342,7 @@ test_that("mean_mod_prob becomes a fraction of methylated calls in binary mode",
   }
 
   p_cont <- ggmethylation::plot_methylation(md, show_supplementary = FALSE)
-  p_bin  <- ggmethylation::plot_methylation(md, call_mode = "binary",
+  p_bin  <- ggmethylation::plot_methylation(md, call_threshold = 0.5,
                                             show_supplementary = FALSE)
   expect_equal(read_mean(p_cont), mean(c(0.9, 0.9, 0.1)), tolerance = 1e-6)
   expect_equal(read_mean(p_bin), 2 / 3, tolerance = 1e-6)
@@ -360,7 +369,7 @@ test_that("binary mode grouped delta panel builds and is relabelled", {
   md <- make_test_data(reads, sites)
   md$group_tag <- "HP"
 
-  p <- ggmethylation::plot_methylation(md, call_mode = "binary",
+  p <- ggmethylation::plot_methylation(md, call_threshold = 0.5,
                                        show_delta = TRUE,
                                        show_supplementary = FALSE)
   expect_s3_class(p, "patchwork")

@@ -9,9 +9,7 @@ read_methylation(
   region,
   mod_code = "m",
   group_tag = NULL,
-  snv_position = NULL,
-  ref_base = NULL,
-  alt_base = NULL,
+  snv = NULL,
   max_reads = 200L,
   per_group_downsample = FALSE,
   min_mapq = 0L,
@@ -31,11 +29,16 @@ for 5-methylcytosine).}
 \item{group_tag}{Character or NULL. BAM tag used to group reads (e.g.
 \code{"HP"} for haplotype, \code{"RG"} for read group). NULL disables grouping.}
 
+\item{snv}{\code{NULL}, or a list \code{list(position =, ref =, alt =)} to group reads
+by the base they carry at an SNV instead of by a BAM tag: reads with the
+\code{ref} base form group \code{"REF"}, reads with \code{alt} form \code{"ALT"}, and all
+other reads are dropped. Cannot be combined with \code{group_tag}.}
+
 \item{max_reads}{Integer. Maximum number of reads to return (default 200).
 If more reads overlap the region, a random subset is kept.}
 
 \item{per_group_downsample}{Logical. When \code{TRUE} and grouping is active
-(via \code{group_tag} or \code{snv_position}), the \code{max_reads} cap is applied
+(via \code{group_tag} or \code{snv}), the \code{max_reads} cap is applied
 independently per group. When \code{FALSE} (default), the existing global
 cap behaviour is unchanged.}
 
@@ -99,6 +102,9 @@ a given genomic region. This is the main entry point for data extraction
 md <- read_methylation("sample.bam", "chr1:1000-2000")
 md <- read_methylation("sample.bam", "chr1:1000-2000",
   group_tag = "HP", max_reads = 100
+)
+md <- read_methylation("sample.bam", "chr1:1000-2000",
+  snv = list(position = 1500, ref = "C", alt = "T")
 )
 }
 

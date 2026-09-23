@@ -19,8 +19,7 @@ A data.frame with columns \code{position} and \code{mean_prob}. Returns
 raw per-x means when fewer than 4 unique x values are present.
 }
 \description{
-Core smoothing primitive used by \code{\link[=smooth_methylation]{smooth_methylation()}} and
-\code{\link[=plot_insertion_locus]{plot_insertion_locus()}}. Aggregates y values per unique x by mean, fits a
-loess curve, and returns predictions on a regular 200-point grid.
+Single-group shortcut for \code{\link[=smooth_methylation]{smooth_methylation()}}, used by
+\code{\link[=plot_insertion_locus]{plot_insertion_locus()}}.
 }
 \keyword{internal}

@@ -29,9 +29,7 @@ meth_hp <- read_methylation(bam, region, group_tag = "HP")
 # Replace the placeholder below once a suitable position is identified:
 #   meth_snv <- read_methylation(
 #     bam, region,
-#     snv_position = <INTEGER_POSITION>,
-#     ref_base     = "C",
-#     alt_base     = "T"
+#     snv = list(position = <INTEGER_POSITION>, ref = "C", alt = "T")
 #   )
 
 message("Building meth_snv (using HP grouping as placeholder) ...")

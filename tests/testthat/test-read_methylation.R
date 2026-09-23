@@ -40,3 +40,22 @@ test_that("drop_na_group combined with min_mapq/min_read_length filters the righ
   expect_equal(got, expected)
   expect_lt(nrow(md$reads), nrow(all_reads))
 })
+
+test_that("snv groups reads into REF/ALT by the base at the SNV", {
+  # In the fixture, HP2 reads carry G at chr1:3000 (ref A).
+  md = read_fixture(snv = list(position = 3000, ref = "A", alt = "G"))
+  expect_equal(md$group_tag, "SNV")
+  expect_identical(md$snv_position, 3000L)
+  expect_setequal(unique(md$reads$group), c("REF", "ALT"))
+
+  hp = read_fixture(group_tag = "HP")
+  alt_reads = md$reads$read_name[md$reads$group == "ALT"]
+  expect_true(all(hp$reads$group[match(alt_reads, hp$reads$read_name)] == "2"))
+})
+
+test_that("snv is validated", {
+  expect_error(read_fixture(snv = list(position = 3000, ref = "A")), "snv")
+  expect_error(read_fixture(snv = list(position = 3000, ref = "AT", alt = "G")), "snv")
+  expect_error(read_fixture(snv = list(position = 3000, ref = "A", alt = "G"),
+                            group_tag = "HP"), "mutually exclusive")
+})

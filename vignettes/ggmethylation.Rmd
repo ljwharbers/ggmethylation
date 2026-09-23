@@ -141,17 +141,15 @@ plot_methylation(
 ## SNV-based grouping
 
 When a heterozygous SNV is present in the region, reads can be split by
-allele using `snv_position`, `ref_base`, and `alt_base`. A dashed vertical
+allele by passing `snv = list(position =, ref =, alt =)`. A dashed vertical
 line marks the SNV position in the read panel so the allele split is easy to
 locate visually.
 
 ```{r read-snv, eval = FALSE, echo = TRUE}
-# Replace snv_position with the actual coordinate of a heterozygous SNV
+# Replace the position with the actual coordinate of a heterozygous SNV
 meth_snv <- read_methylation(
   bam, region,
-  snv_position = 34505000L,
-  ref_base     = "C",
-  alt_base     = "T"
+  snv = list(position = 34505000L, ref = "C", alt = "T")
 )
 ```
 
@@ -301,7 +299,7 @@ loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
 print(loci)
 
 # Visualise the first locus
-plot_insertion_locus(md, loci$locus_id[1L])
+plot_insertion_locus(md, loci[1L, ])
 ```
 
 The `n_carriers` column in the `loci` table reports how many reads carry the

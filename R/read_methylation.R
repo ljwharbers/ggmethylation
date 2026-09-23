@@ -10,10 +10,14 @@
 #'   for 5-methylcytosine).
 #' @param group_tag Character or NULL. BAM tag used to group reads (e.g.
 #'   `"HP"` for haplotype, `"RG"` for read group). NULL disables grouping.
+#' @param snv `NULL`, or a list `list(position =, ref =, alt =)` to group reads
+#'   by the base they carry at an SNV instead of by a BAM tag: reads with the
+#'   `ref` base form group `"REF"`, reads with `alt` form `"ALT"`, and all
+#'   other reads are dropped. Cannot be combined with `group_tag`.
 #' @param max_reads Integer. Maximum number of reads to return (default 200).
 #'   If more reads overlap the region, a random subset is kept.
 #' @param per_group_downsample Logical. When `TRUE` and grouping is active
-#'   (via `group_tag` or `snv_position`), the `max_reads` cap is applied
+#'   (via `group_tag` or `snv`), the `max_reads` cap is applied
 #'   independently per group. When `FALSE` (default), the existing global
 #'   cap behaviour is unchanged.
 #' @param min_mapq Integer. Minimum mapping quality (MAPQ) threshold
@@ -68,12 +72,14 @@
 #' md <- read_methylation("sample.bam", "chr1:1000-2000",
 #'   group_tag = "HP", max_reads = 100
 #' )
+#' md <- read_methylation("sample.bam", "chr1:1000-2000",
+#'   snv = list(position = 1500, ref = "C", alt = "T")
+#' )
 #' }
 #'
 #' @export
 read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
-                             snv_position = NULL, ref_base = NULL,
-                             alt_base = NULL, max_reads = 200L,
+                             snv = NULL, max_reads = 200L,
                              per_group_downsample = FALSE,
                              min_mapq = 0L,
                              strand_filter = c("+", "-"),
@@ -87,13 +93,10 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   }
   mod_code = unique(mod_code)                # drop accidental duplicates
 
-  if (!is.null(group_tag) && !is.null(snv_position)) {
-    stop("'group_tag' and 'snv_position' are mutually exclusive.", call. = FALSE)
+  if (!is.null(group_tag) && !is.null(snv)) {
+    stop("'group_tag' and 'snv' are mutually exclusive.", call. = FALSE)
   }
-  if (!is.null(snv_position) && (is.null(ref_base) || is.null(alt_base))) {
-    stop("'ref_base' and 'alt_base' must be provided when 'snv_position' is set.",
-         call. = FALSE)
-  }
+  snv = .check_snv(snv)
   strand_filter = match.arg(strand_filter, choices = c("+", "-"), several.ok = TRUE)
   min_mapq = as.integer(min_mapq)
   min_read_length = as.integer(min_read_length)
@@ -140,13 +143,13 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
   }
 
   # --- 5. Grouping by SNV genotype ---
-  if (!is.null(snv_position)) {
-    reads$group = .snv_genotype(bam_data, reads$.idx, snv_position, ref_base, alt_base)
+  if (!is.null(snv)) {
+    reads$group = .snv_genotype(bam_data, reads$.idx, snv$position, snv$ref, snv$alt)
     reads = reads[!is.na(reads$group), , drop = FALSE]
     if (nrow(reads) == 0L) {
-      warning("No reads carry REF or ALT at snv_position ", snv_position, ".",
+      warning("No reads carry REF or ALT at SNV position ", snv$position, ".",
               call. = FALSE)
-      return(empty_methylation_data(gr, mod_code, "SNV", snv_position))
+      return(empty_methylation_data(gr, mod_code, "SNV", snv$position))
     }
     group_tag = "SNV"
   }
@@ -200,9 +203,25 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
 
   .new_methylation_data(
     reads = reads, sites = sites, insertion_sites = insertion_sites, region = gr,
-    mod_code = mod_code, group_tag = group_tag, snv_position = snv_position,
+    mod_code = mod_code, group_tag = group_tag, snv_position = snv$position,
     sequences = sequences, cigars = cigars, cigar_features = cigar_features
   )
+}
+
+# Validate the `snv` argument: NULL, or list(position =, ref =, alt =) with a
+# single position and single-base alleles. Returns it with an integer position.
+.check_snv = function(snv) {
+  if (is.null(snv)) return(NULL)
+  snv = as.list(snv)
+  ok = all(c("position", "ref", "alt") %in% names(snv)) &&
+    all(lengths(snv[c("position", "ref", "alt")]) == 1L) &&
+    !is.na(suppressWarnings(as.integer(snv$position))) &&
+    all(nchar(c(snv$ref, snv$alt)) == 1L)
+  if (!ok) {
+    stop("`snv` must be list(position = <integer>, ref = <base>, alt = <base>), ",
+         "e.g. list(position = 1500, ref = \"C\", alt = \"T\").", call. = FALSE)
+  }
+  list(position = as.integer(snv$position), ref = snv$ref, alt = snv$alt)
 }
 
 # Build the per-read table from a scanBam() result: coordinates, strand,

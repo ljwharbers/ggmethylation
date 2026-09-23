@@ -12,6 +12,8 @@ empty_methylation_data(gr, mod_code, group_tag, snv_position = NULL)
 \item{mod_code}{Character. Modification code.}
 
 \item{group_tag}{Character or NULL. Grouping tag.}
+
+\item{snv_position}{Integer or NULL. SNV position used for grouping.}
 }
 \value{
 An empty \code{methylation_data} object.

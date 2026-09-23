@@ -14,6 +14,10 @@
 #'   corresponding tabix index (`.vcf.gz.tbi`).
 #' @param region Character. Genomic region string, e.g. `"chr1:1000-2000"`.
 #'   The same format accepted by [read_methylation()].
+#' @param bnd_match_tol Integer. Position tolerance (bp) used by
+#'   [plot_methylation()] when matching reads' supplementary-alignment (SA)
+#'   breakpoints to the BND calls here; matched reads get a border on their SA
+#'   indicator (requires `show_supplementary = TRUE`). Default `50`.
 #'
 #' @return A `variant_data` object (S3 list) with elements:
 #'   \describe{
@@ -23,6 +27,7 @@
 #'       or `"INV"`), `end` (integer), `mate_chrom` (character), and
 #'       `mate_pos` (integer).}
 #'     \item{region}{A [GenomicRanges::GRanges] object for the queried region.}
+#'     \item{bnd_match_tol}{The `bnd_match_tol` value.}
 #'   }
 #'
 #' @examples
@@ -32,7 +37,7 @@
 #' }
 #'
 #' @export
-read_variants <- function(vcf, region) {
+read_variants <- function(vcf, region, bnd_match_tol = 50L) {
   if (!requireNamespace("VariantAnnotation", quietly = TRUE)) {
     stop(
       "Package 'VariantAnnotation' is required to read VCF files. ",
@@ -77,10 +82,7 @@ read_variants <- function(vcf, region) {
       mate_pos   = integer(0L),
       stringsAsFactors = FALSE
     )
-    return(structure(
-      list(variants = variants_df, region = region_gr),
-      class = "variant_data"
-    ))
+    return(.new_variant_data(variants_df, region_gr, bnd_match_tol))
   }
 
   # Extract per-variant data
@@ -148,8 +150,13 @@ read_variants <- function(vcf, region) {
   )
   rownames(variants_df) <- NULL
 
+  .new_variant_data(variants_df, region_gr, bnd_match_tol)
+}
+
+.new_variant_data = function(variants, region, bnd_match_tol) {
   structure(
-    list(variants = variants_df, region = region_gr),
+    list(variants = variants, region = region,
+         bnd_match_tol = as.integer(bnd_match_tol)),
     class = "variant_data"
   )
 }

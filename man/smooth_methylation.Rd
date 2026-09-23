@@ -16,7 +16,11 @@ smooth_methylation(
 \item{sites}{A data.frame with columns \code{position}, \code{mod_prob}, and a
 grouping column (specified by \code{group_col}).}
 
-\item{group_col}{Name of the grouping column (default \code{"group"}).}
+\item{group_col}{Name of the grouping column (default \code{"group"}). Sites
+whose group is \code{NA} are dropped.}
+
+\item{mod_code_col}{Optional name of a modification-code column; when set,
+one line is fitted per group and code.}
 
 \item{span}{Loess smoothing span. When \code{NULL} (default), an adaptive span is
 computed per group as \code{max(0.15, min(0.75, 15 / n_unique_sites))}, targeting

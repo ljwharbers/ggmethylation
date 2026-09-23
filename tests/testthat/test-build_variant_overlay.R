@@ -2,7 +2,7 @@
 # Internal function — call via ggmethylation:::build_variant_overlay()
 #
 # Signature:
-#   build_variant_overlay(data, variants, bnd_match_tol = 50L)
+#   build_variant_overlay(data, variants)
 #
 # Returns: named list(snv, sv, bnd, sa_reads), each element is a list of
 #          ggplot2 layers or NULL.  Returns NULL when variants is NULL or

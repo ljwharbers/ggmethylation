@@ -65,7 +65,7 @@ make_cf <- function(read_names, ref_starts, lengths) {
 
 # --- insertion_sites accessor ---
 
-test_that("insertion_sites() returns m$insertion_sites", {
+test_that("insertion_sites() returns data$insertion_sites", {
   ins <- data.frame(read_name = "r1", ref_anchor = 100L, query_pos = 5L,
                     ins_offset = 1L, ins_length = 10L, mod_prob = 0.8,
                     mod_code = "m", stringsAsFactors = FALSE)
@@ -179,7 +179,7 @@ test_that("plot_insertion_locus() returns a ggplot object (show_smoothed = FALSE
   loci <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
   expect_equal(nrow(loci), 1L)
 
-  p <- ggmethylation::plot_insertion_locus(md, loci$locus_id[1L], show_smoothed = FALSE)
+  p <- ggmethylation::plot_insertion_locus(md, loci[1L, ], show_smoothed = FALSE)
   expect_true(inherits(p, c("gg", "patchwork")))
 })
 
@@ -199,19 +199,37 @@ test_that("plot_insertion_locus() returns patchwork when show_smoothed = TRUE", 
   md    <- make_test_md(reads, cf, ins_sites_df = ins_sites)
 
   loci <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
-  p <- ggmethylation::plot_insertion_locus(md, loci$locus_id[1L], show_smoothed = TRUE)
+  p <- ggmethylation::plot_insertion_locus(md, loci[1L, ], show_smoothed = TRUE)
   expect_true(inherits(p, c("gg", "patchwork")))
 })
 
-test_that("plot_insertion_locus() errors on unknown locus_id", {
+test_that("plot_insertion_locus() requires one row of list_insertion_loci()", {
   reads <- make_reads(c("r1", "r2"), c(1L, 1L), c(300L, 300L))
   cf    <- make_cf(c("r1", "r2"), c(100L, 103L), c(50L, 50L))
   md    <- make_test_md(reads, cf)
+  loci  <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
 
-  expect_error(
-    ggmethylation::plot_insertion_locus(md, "INS_chr1_99999_100bp"),
-    "not found"
-  )
+  expect_error(ggmethylation::plot_insertion_locus(md, "INS_chr1_99999_100bp"),
+               "list_insertion_loci")
+  expect_error(ggmethylation::plot_insertion_locus(md, loci[0L, ]),
+               "list_insertion_loci")
+})
+
+test_that("list_insertion_loci() returns each locus' reads and tolerances", {
+  reads <- make_reads(c("r1", "r2", "r3", "r4"), 1L, 300L)
+  cf    <- make_cf(c("r1", "r2"), c(100L, 103L), c(50L, 52L))
+  md    <- make_test_md(reads, cf)
+
+  loci <- ggmethylation::list_insertion_loci(md, tol_pos = 12L, tol_len = 0.1,
+                                             min_reads = 2L)
+  expect_equal(loci$carriers[[1L]], c(r1 = 50L, r2 = 52L))
+  expect_equal(loci$noncarriers[[1L]], c("r3", "r4"))
+  expect_equal(loci$n_noncarriers, 2L)
+  expect_equal(loci$tol_pos, 12L)
+  expect_equal(loci$tol_len, 0.1)
+
+  empty <- ggmethylation::list_insertion_loci(make_test_md(reads, cf[0L, ]))
+  expect_true(all(c("carriers", "noncarriers", "tol_pos", "tol_len") %in% names(empty)))
 })
 
 test_that("plot_insertion_locus() respects include_noncarriers = FALSE", {
@@ -220,7 +238,7 @@ test_that("plot_insertion_locus() respects include_noncarriers = FALSE", {
   md    <- make_test_md(reads, cf)
 
   loci <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
-  p <- ggmethylation::plot_insertion_locus(md, loci$locus_id[1L],
+  p <- ggmethylation::plot_insertion_locus(md, loci[1L, ],
                                             show_smoothed = FALSE,
                                             include_noncarriers = FALSE)
   expect_true(inherits(p, c("gg", "patchwork")))
@@ -234,7 +252,7 @@ test_that("plot_insertion_locus() uses the shared package colour palette", {
 
   # Enough per-read sites (>= 4 per group/region) are needed for the smoothed
   # panel to actually build a patchwork (rather than falling back to the read
-  # panel alone) -- see .add_smooth()'s `length(x_vals) < 4L` guard.
+  # panel alone) -- see smooth_piece()'s `length(x_vals) < 4L` guard.
   ins_sites <- data.frame(
     read_name  = c("r1", "r2"),
     ref_anchor = c(100L, 103L),
@@ -258,7 +276,7 @@ test_that("plot_insertion_locus() uses the shared package colour palette", {
   md$sites <- sites
 
   loci <- ggmethylation::list_insertion_loci(md, min_reads = 2L)
-  p <- ggmethylation::plot_insertion_locus(md, loci$locus_id[1L], show_smoothed = TRUE)
+  p <- ggmethylation::plot_insertion_locus(md, loci[1L, ], show_smoothed = TRUE)
   expect_true(inherits(p, "patchwork"))
 
   # Read-panel carrier fill should be the Okabe-Ito blue, non-carrier neutral grey.

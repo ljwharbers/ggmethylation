@@ -242,7 +242,7 @@
 #' @param colour_low Colour for low modification probability.
 #' @param colour_high Colour for high modification probability.
 #' @param colour_ambiguous Colour for ambiguous calls. Only used when
-#'   `call_mode = "binary"` and `call_ambiguous` is non-`NULL`.
+#'   `call_threshold` and `call_ambiguous` are set.
 #' @param line_width Linewidth of modification site markers.
 #' @param colour_strand Logical. Colour read bars by strand when ungrouped.
 #' @param strand_colours Named character vector with `"+"` and `"-"` entries.
@@ -258,8 +258,8 @@
 #'   deletions to be displayed. Features smaller than this threshold are
 #'   suppressed. Default `50`.
 #' @param show_supplementary Logical. Draw supplementary-alignment indicators.
-#' @param call_mode,call_threshold,call_ambiguous Site colouring mode; see
-#'   [plot_methylation()].
+#' @param call_threshold,call_ambiguous Binary-call settings (`NULL` threshold
+#'   for continuous colouring); see [plot_methylation()].
 #'
 #' @return A [ggplot2::ggplot] object.
 #'
@@ -280,8 +280,7 @@ build_read_panel <- function(data,
                              show_cigar         = FALSE,
                              min_indel_size     = 50L,
                              show_supplementary = FALSE,
-                             call_mode          = "continuous",
-                             call_threshold     = 0.5,
+                             call_threshold     = NULL,
                              call_ambiguous     = NULL) {
   cigar_features = if (isTRUE(show_cigar)) data$cigar_features
   has_cigar = !is.null(cigar_features) && nrow(cigar_features) > 0L
@@ -381,7 +380,7 @@ build_read_panel <- function(data,
   }
   p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
                               colour_low, colour_high, colour_ambiguous,
-                              call_mode, call_threshold, call_ambiguous)
+                              call_threshold, call_ambiguous)
 
   if (length(separator_lanes) > 0L) {
     p <- p +
@@ -532,16 +531,15 @@ build_read_panel <- function(data,
 
 # Add mod-prob segment layer and colour scale to an existing ggplot.
 #
-# When `call_mode = "binary"`, sites are classified into discrete calls
+# With a non-NULL `call_threshold`, sites are classified into discrete calls
 # (methylated/unmethylated/ambiguous) via .classify_calls() and coloured with
 # a manual discrete scale instead of the continuous gradient.
 .add_mod_prob_segments <- function(p, sites_plot, half_height, line_width,
                                     colour_low, colour_high,
                                     colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
-                                    call_mode = "continuous",
-                                    call_threshold = 0.5,
+                                    call_threshold = NULL,
                                     call_ambiguous = NULL) {
-  if (identical(call_mode, "binary") && nrow(sites_plot) > 0L) {
+  if (!is.null(call_threshold) && nrow(sites_plot) > 0L) {
     sites_plot$.call <- .classify_calls(sites_plot$mod_prob,
                                         call_threshold, call_ambiguous)
     vals <- c(unmethylated = colour_low, methylated = colour_high,

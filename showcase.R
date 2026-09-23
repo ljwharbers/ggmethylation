@@ -91,10 +91,10 @@ plot_methylation(meth_hp,
 # Adjust panel height ratio (reads : smooth)
 plot_methylation(meth_hp, panel_heights = c(4, 1))
 
-# Custom shape mapping when multiple modification codes are present
-# (e.g. 5mC "m" and 5hmC "h" from a dual-modification BAM)
+# Multiple modification codes (e.g. 5mC "m" and 5hmC "h" from a
+# dual-modification BAM) get one smooth line per code
 # meth_dual = read_methylation(BAM, REGION, mod_code = c("m", "h"))
-# plot_methylation(meth_dual, mod_code_shapes = c(m = 16L, h = 17L))
+# plot_methylation(meth_dual)
 
 
 # =============================================================================
@@ -186,7 +186,8 @@ print(vars)
 plot_methylation(meth_hp, variants = vars)
 
 # BND matching tolerance (bp) for VCF-validated SA border
-plot_methylation(meth_hp, variants = vars, bnd_match_tol = 100L)
+vars_loose = read_variants(VCF_SVs, REGION, bnd_match_tol = 100L)
+plot_methylation(meth_hp, variants = vars_loose)
 
 
 

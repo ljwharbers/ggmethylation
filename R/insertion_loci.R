@@ -4,18 +4,18 @@
 #'
 #' Convenience accessor for `methylation_data$insertion_sites`.
 #'
-#' @param m A `methylation_data` object produced by [read_methylation()].
+#' @param data A `methylation_data` object produced by [read_methylation()].
 #'
 #' @return A data.frame with columns `read_name`, `ref_anchor`, `query_pos`,
 #'   `ins_offset`, `ins_length`, `mod_prob`, `mod_code`, and optionally
 #'   `group`. Zero rows when no inserted-base modifications were found.
 #'
 #' @export
-insertion_sites <- function(m) {
-  if (!inherits(m, "methylation_data")) {
-    stop("'m' must be a methylation_data object.", call. = FALSE)
+insertion_sites <- function(data) {
+  if (!inherits(data, "methylation_data")) {
+    stop("'data' must be a methylation_data object.", call. = FALSE)
   }
-  m$insertion_sites
+  data$insertion_sites
 }
 
 #' List insertion loci from a methylation_data object
@@ -23,10 +23,10 @@ insertion_sites <- function(m) {
 #' Clusters insertion events across reads into loci using a greedy single-pass
 #' algorithm. Insertions are grouped when their reference anchor positions and
 #' lengths are within the specified tolerances of each other. Returns a summary
-#' tibble sorted by anchor position; pass a `locus_id` value to
-#' [plot_insertion_locus()] to visualise a specific locus.
+#' data.frame sorted by anchor position; pass one of its rows to
+#' [plot_insertion_locus()] to visualise that locus.
 #'
-#' @param m A `methylation_data` object produced by [read_methylation()].
+#' @param data A `methylation_data` object produced by [read_methylation()].
 #' @param tol_pos Integer. Maximum distance in base pairs between consecutive
 #'   insertion anchor positions to be merged into the same locus (default 10).
 #' @param tol_len Numeric. Maximum fractional difference in insertion length
@@ -35,7 +35,7 @@ insertion_sites <- function(m) {
 #' @param min_reads Integer. Minimum number of carrier reads required for a
 #'   locus to be reported (default 2).
 #'
-#' @return A data.frame (tibble-compatible) with one row per locus and columns:
+#' @return A data.frame with one row per locus and columns:
 #'   \describe{
 #'     \item{locus_id}{Character. Deterministic identifier
 #'       `"INS_<chrom>_<anchor_pos>_<median_length>bp"`.}
@@ -51,7 +51,13 @@ insertion_sites <- function(m) {
 #'     \item{length_max}{Integer. Maximum insertion length in the locus.}
 #'     \item{mean_ins_mod_prob}{Numeric or NA. Mean modification probability
 #'       across all insertion-site calls at this locus. NA when
-#'       `m$insertion_sites` has no rows for this locus.}
+#'       `data$insertion_sites` has no rows for this locus.}
+#'     \item{carriers}{List-column. Per locus, a named integer vector of the
+#'       carrier reads' insertion lengths, named by `read_name`.}
+#'     \item{noncarriers}{List-column. Per locus, the `read_name`s of the
+#'       non-carrier reads.}
+#'     \item{tol_pos, tol_len}{The tolerances used, so [plot_insertion_locus()]
+#'       selects insertion calls exactly as they were clustered.}
 #'   }
 #'   Sorted by `anchor_pos`. Returns a zero-row data.frame when no insertions
 #'   pass the `min_reads` threshold.
@@ -61,18 +67,19 @@ insertion_sites <- function(m) {
 #' md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
 #' loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
 #' loci$locus_id
+#' plot_insertion_locus(md, loci[1, ])
 #' }
 #'
 #' @export
-list_insertion_loci <- function(m, tol_pos = 10L, tol_len = 0.20,
+list_insertion_loci <- function(data, tol_pos = 10L, tol_len = 0.20,
                                 min_reads = 2L) {
-  if (!inherits(m, "methylation_data")) {
-    stop("'m' must be a methylation_data object.", call. = FALSE)
+  if (!inherits(data, "methylation_data")) {
+    stop("'data' must be a methylation_data object.", call. = FALSE)
   }
   tol_pos   <- as.integer(tol_pos)
   min_reads <- as.integer(min_reads)
 
-  cf <- m$cigar_features
+  cf <- data$cigar_features
   ins <- cf[cf$type == "I" & !is.na(cf$ref_start), , drop = FALSE]
 
   empty_out <- data.frame(
@@ -87,10 +94,14 @@ list_insertion_loci <- function(m, tol_pos = 10L, tol_len = 0.20,
     mean_ins_mod_prob = numeric(0L),
     stringsAsFactors = FALSE
   )
+  empty_out$carriers    <- list()
+  empty_out$noncarriers <- list()
+  empty_out$tol_pos     <- integer(0L)
+  empty_out$tol_len     <- numeric(0L)
 
   if (nrow(ins) == 0L) return(empty_out)
 
-  chrom <- as.character(GenomicRanges::seqnames(m$region))
+  chrom <- as.character(GenomicRanges::seqnames(data$region))
 
   # Sort by ref_start for single-pass greedy clustering
   ord <- order(ins$ref_start)
@@ -122,8 +133,8 @@ list_insertion_loci <- function(m, tol_pos = 10L, tol_len = 0.20,
   n_clusters <- max(cluster_id)
   result_list <- vector("list", n_clusters)
 
-  all_read_names <- m$reads$read_name
-  ins_sites <- m$insertion_sites
+  all_read_names <- data$reads$read_name
+  ins_sites <- data$insertion_sites
 
   for (cid in seq_len(n_clusters)) {
     rows <- ins[cluster_id == cid, , drop = FALSE]
@@ -144,11 +155,11 @@ list_insertion_loci <- function(m, tol_pos = 10L, tol_len = 0.20,
     med_len <- as.integer(median(carrier_rows$length))
 
     # Non-carriers: reads spanning anchor_pos +/- tol_pos, not in carrier set
-    read_start <- pmin(m$reads$bam_pos, m$reads$start)
-    read_end   <- m$reads$end
+    read_start <- pmin(data$reads$bam_pos, data$reads$start)
+    read_end   <- data$reads$end
     spans_locus <- read_start <= (anchor + tol_pos) & read_end >= (anchor - tol_pos)
     noncarrier_mask <- spans_locus & !(all_read_names %in% carrier_names)
-    n_noncarriers <- sum(noncarrier_mask)
+    noncarriers   <- all_read_names[noncarrier_mask]
 
     # Mean mod_prob from insertion_sites for carrier reads at this locus
     mean_mod <- NA_real_
@@ -165,18 +176,26 @@ list_insertion_loci <- function(m, tol_pos = 10L, tol_len = 0.20,
 
     locus_id <- sprintf("INS_%s_%d_%dbp", chrom, anchor, med_len)
 
-    result_list[[cid]] <- data.frame(
+    row <- data.frame(
       locus_id          = locus_id,
       chrom             = chrom,
       anchor_pos        = anchor,
       n_carriers        = n_carriers,
-      n_noncarriers     = n_noncarriers,
+      n_noncarriers     = length(noncarriers),
       median_length     = med_len,
       length_min        = min(carrier_rows$length),
       length_max        = max(carrier_rows$length),
       mean_ins_mod_prob = mean_mod,
       stringsAsFactors  = FALSE
     )
+    # Insertion length per carrier read (its first matching insertion)
+    first <- !duplicated(carrier_rows$read_name)
+    row$carriers    <- list(stats::setNames(carrier_rows$length[first],
+                                            carrier_rows$read_name[first]))
+    row$noncarriers <- list(noncarriers)
+    row$tol_pos     <- tol_pos
+    row$tol_len     <- tol_len
+    result_list[[cid]] <- row
   }
 
   result_list <- Filter(Negate(is.null), result_list)

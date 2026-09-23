@@ -4,16 +4,14 @@
 \alias{build_variant_overlay}
 \title{Compose all variant overlay layers for a single methylation_data object}
 \usage{
-build_variant_overlay(data, variants, bnd_match_tol = 50L)
+build_variant_overlay(data, variants)
 }
 \arguments{
 \item{data}{A \code{methylation_data} object.}
 
 \item{variants}{A \code{variant_data} object returned by \code{\link[=read_variants]{read_variants()}}, or
-\code{NULL}.}
-
-\item{bnd_match_tol}{Integer. Position tolerance (bp) for matching SA
-breakpoints to VCF BND calls. Default \code{50L}.}
+\code{NULL}. Its \code{bnd_match_tol} sets the SA-to-BND matching tolerance
+(50 bp when absent).}
 }
 \value{
 A named list with elements \code{snv}, \code{sv}, \code{bnd}, and \code{sa_reads}

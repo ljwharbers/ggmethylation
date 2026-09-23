@@ -5,21 +5,21 @@
 \title{Plot modification probabilities at an insertion locus}
 \usage{
 plot_insertion_locus(
-  m,
-  locus_id,
+  data,
+  locus,
   flank = 200L,
   show_smoothed = TRUE,
   include_noncarriers = TRUE,
-  tol_pos = 10L,
-  tol_len = 0.2,
   colour_low = .PROB_GRADIENT$low,
   colour_high = .PROB_GRADIENT$high
 )
 }
 \arguments{
-\item{m}{A \code{methylation_data} object produced by \code{\link[=read_methylation]{read_methylation()}}.}
+\item{data}{A \code{methylation_data} object produced by \code{\link[=read_methylation]{read_methylation()}}.}
 
-\item{locus_id}{Character. A \code{locus_id} value from \code{\link[=list_insertion_loci]{list_insertion_loci()}}.}
+\item{locus}{One row of the data.frame returned by \code{\link[=list_insertion_loci]{list_insertion_loci()}}
+for \code{data}, e.g. \code{loci[1, ]} or \code{loci[loci$locus_id == id, ]}. It carries
+the locus' carrier and non-carrier reads and the clustering tolerances.}
 
 \item{flank}{Integer. Number of reference base pairs to show on each side of
 the insertion (default 200).}
@@ -30,11 +30,6 @@ probability panel below the read panel (default \code{TRUE}).}
 \item{include_noncarriers}{Logical. Whether to include reads that span the
 locus but do not carry the insertion (default \code{TRUE}). Non-carriers are
 shown below carriers with an empty middle region.}
-
-\item{tol_pos}{Integer. Position tolerance used for re-clustering (must match
-the value used when calling \code{\link[=list_insertion_loci]{list_insertion_loci()}}; default 10).}
-
-\item{tol_len}{Numeric. Length tolerance used for re-clustering (default 0.20).}
 
 \item{colour_low}{Character. Colour for low modification probability
 (default \code{"#BDBDBD"}).}
@@ -52,13 +47,13 @@ showing carrier and non-carrier reads in a stitched coordinate system
 with an optional loess-smoothed comparison panel below.
 }
 \details{
-Use \code{\link[=list_insertion_loci]{list_insertion_loci()}} to discover available \code{locus_id} values.
+Use \code{\link[=list_insertion_loci]{list_insertion_loci()}} to find loci; pass one row of its output.
 }
 \examples{
 \dontrun{
 md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
 loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
-plot_insertion_locus(md, loci$locus_id[1L])
+plot_insertion_locus(md, loci[1, ])
 }
 
 }
