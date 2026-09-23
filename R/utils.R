@@ -347,3 +347,7 @@ region_to_granges <- function(region) {
   means = tapply(sites$mod_prob, sites$read_name, mean, na.rm = TRUE)
   as.numeric(means[read_names])
 }
+
+# `.data$<col>` as an expression, exactly as a literal aes(.data$group) would
+# be written, for building aes() mappings from a column name.
+.data_col = function(col) rlang::call2("$", quote(.data), rlang::sym(col))

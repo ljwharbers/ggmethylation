@@ -340,8 +340,7 @@
                                labels = list(), colour_values = NULL,
                                linetype_values = NULL, linetype_name = NULL,
                                fixed_colour = .PROB_GRADIENT$high) {
-  # `.data$<col>`, exactly as a literal aes(.data$group) would be written
-  col_sym = function(col) rlang::call2("$", quote(.data), rlang::sym(col))
+  col_sym = .data_col
   aes_args = list(x = quote(.data$position), y = quote(.data$mean_prob))
   if (!is.null(colour))   aes_args$colour   = col_sym(colour)
   if (!is.null(linetype)) aes_args$linetype = col_sym(linetype)
@@ -720,7 +719,6 @@ plot_methylation = function(data, sort_by = NULL,
       show_x_axis        = FALSE,
       variant_overlay    = build_variant_overlay(s, variants, bnd_match_tol = bnd_match_tol),
       show_cigar         = show_cigar,
-      cigar_features     = if (isTRUE(show_cigar)) s$cigar_features else NULL,
       min_indel_size     = min_indel_size,
       show_supplementary = show_supplementary,
       call_mode          = call_mode,

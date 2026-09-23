@@ -224,15 +224,16 @@
 
 #' Build a ggplot2 read-level methylation panel
 #'
-#' Constructs the top read panel (horizontal read bars + modification
-#' probability lines) for a single `methylation_data` object that has already
-#' been sorted and lane-packed. This function encapsulates the grouped,
-#' strand-coloured, and plain rendering branches so that both
-#' `plot_methylation()` (single-sample) and `.plot_multi_methylation()`
-#' (multi-sample) can share the same drawing code.
+#' Constructs the read panel (horizontal read bars + modification probability
+#' lines) for a single `methylation_data` object that has already been sorted
+#' and lane-packed. Used by [plot_methylation()] for every sample it draws.
+#'
+#' Read bars are filled by group when the data is grouped, by strand when
+#' `colour_strand = TRUE`, and in a fixed grey otherwise.
 #'
 #' @param data A `methylation_data` object. `$reads` must already contain a
 #'   `lane` column (from `pack_reads()`) and a `mean_mod_prob` column.
+#'   `$cigar_features` supplies the indels drawn when `show_cigar = TRUE`.
 #' @param separator_lanes Numeric vector of y-positions where horizontal
 #'   dashed separator lines should be drawn (between groups). Pass
 #'   `numeric(0)` when no separators are needed.
@@ -253,11 +254,12 @@
 #'   on the read panel.
 #' @param show_cigar Logical. When `TRUE`, structural variants from CIGAR
 #'   strings are overlaid on reads. Default `FALSE`.
-#' @param cigar_features Data.frame of CIGAR features (from
-#'   `methylation_data$cigar_features`), or `NULL`.
 #' @param min_indel_size Integer. Minimum size (in bp) for insertions and
 #'   deletions to be displayed. Features smaller than this threshold are
 #'   suppressed. Default `50`.
+#' @param show_supplementary Logical. Draw supplementary-alignment indicators.
+#' @param call_mode,call_threshold,call_ambiguous Site colouring mode; see
+#'   [plot_methylation()].
 #'
 #' @return A [ggplot2::ggplot] object.
 #'
@@ -276,45 +278,29 @@ build_read_panel <- function(data,
                              show_x_axis        = FALSE,
                              variant_overlay    = NULL,
                              show_cigar         = FALSE,
-                             cigar_features     = NULL,
                              min_indel_size     = 50L,
                              show_supplementary = FALSE,
                              call_mode          = "continuous",
                              call_threshold     = 0.5,
                              call_ambiguous     = NULL) {
+  cigar_features = if (isTRUE(show_cigar)) data$cigar_features
+  has_cigar = !is.null(cigar_features) && nrow(cigar_features) > 0L
+
   # When show_cigar is TRUE, split reads on large deletions so the thick read
   # bar has IGV-style gaps instead of running through deletion regions.
   reads_plot <- data$reads
-  if (isTRUE(show_cigar) && !is.null(cigar_features) && nrow(cigar_features) > 0L) {
-    large_dels <- cigar_features[
-      cigar_features$type == "D" & cigar_features$length >= min_indel_size,
-      , drop = FALSE
-    ]
-    if (nrow(large_dels) > 0L) {
-      reads_plot <- .split_reads_on_deletions(data$reads, large_dels)
-    }
+  if (has_cigar) {
+    reads_plot <- .split_reads_on_deletions(
+      data$reads, .large_deletions(cigar_features, min_indel_size)
+    )
   }
 
-  # --- Annotate split-read segments with first/last flags ---
-  # For each read_name, segments ordered by start position.  The first segment
-  # in genomic order is marked is_first_segment = TRUE; the last is
-  # is_last_segment = TRUE.  Unsplit reads get both TRUE.
-  reads_plot$is_first_segment <- TRUE
-  reads_plot$is_last_segment  <- TRUE
-
-  rn_tab <- table(reads_plot$read_name)
-  split_names <- names(rn_tab[rn_tab > 1L])
-  if (length(split_names) > 0L) {
-    for (rn in split_names) {
-      idx <- which(reads_plot$read_name == rn)
-      ord <- order(reads_plot$start[idx])
-      sorted_idx <- idx[ord]
-      reads_plot$is_first_segment[sorted_idx] <- FALSE
-      reads_plot$is_last_segment[sorted_idx]  <- FALSE
-      reads_plot$is_first_segment[sorted_idx[1L]] <- TRUE
-      reads_plot$is_last_segment[sorted_idx[length(sorted_idx)]] <- TRUE
-    }
-  }
+  # Only the outermost segments of a split read carry an arrowhead: flag the
+  # first and last segment of each read in genomic order (unsplit reads get
+  # both flags).
+  seg_start <- reads_plot$start
+  reads_plot$is_first_segment <- seg_start == stats::ave(seg_start, reads_plot$read_name, FUN = min)
+  reads_plot$is_last_segment  <- seg_start == stats::ave(seg_start, reads_plot$read_name, FUN = max)
 
   # Merge vcf_validated flag from variant_overlay$sa_reads into reads_plot
   # Only needed when supplementary overlays will actually be drawn.
@@ -352,120 +338,57 @@ build_read_panel <- function(data,
   if (isTRUE(show_supplementary) &&
       "sa_chrom"  %in% names(data$reads) &&
       "clip_side" %in% names(data$reads)) {
-    sa_reads <- data$reads[!is.na(data$reads$sa_chrom), , drop = FALSE]
-    if (nrow(sa_reads) > 0L) {
-      keep <- rep(TRUE, nrow(sites_plot))
-      for (i in seq_len(nrow(sa_reads))) {
-        r        <- sa_reads[i, ]
-        rn       <- r$read_name
-        s        <- r$start
-        e        <- r$end
-        cs       <- r$clip_side
-        if (is.na(cs)) next
-        read_len <- e - s
-        sa_ext   <- min(arrow_w, read_len)
-        idx      <- sites_plot$read_name == rn
-        if (cs %in% c("left",  "both")) keep <- keep & !(idx & sites_plot$position <= s + sa_ext)
-        if (cs %in% c("right", "both")) keep <- keep & !(idx & sites_plot$position >= e - sa_ext)
-      }
-      sites_plot <- sites_plot[keep, , drop = FALSE]
+    sa_reads <- data$reads[!is.na(data$reads$sa_chrom) & !is.na(data$reads$clip_side), , drop = FALSE]
+    keep <- rep(TRUE, nrow(sites_plot))
+    for (i in seq_len(nrow(sa_reads))) {
+      r      <- sa_reads[i, ]
+      sa_ext <- min(arrow_w, r$end - r$start)
+      idx    <- sites_plot$read_name == r$read_name
+      if (r$clip_side %in% c("left",  "both")) keep <- keep & !(idx & sites_plot$position <= r$start + sa_ext)
+      if (r$clip_side %in% c("right", "both")) keep <- keep & !(idx & sites_plot$position >= r$end - sa_ext)
     }
+    sites_plot <- sites_plot[keep, , drop = FALSE]
   }
 
-  # --- Build read polygons ---
+  # --- Read bars: filled by group, by strand, or a fixed grey ---
+  grouped  <- !is.null(data$group_tag)
+  fill_var <- if (grouped) "group" else if (isTRUE(colour_strand)) "strand"
   read_polys <- .make_read_polygons(reads_plot, arrow_w, half_height)
+  bar_aes <- list(x = quote(.data$x), y = quote(.data$y), group = quote(.data$polygon_id))
 
   p <- ggplot2::ggplot()
-
-  # --- Read bar colouring ---
-  if (!is.null(data$group_tag)) {
-    # Grouped: fill read polygons by group, then colour scale for dots
-    p <- p +
-      ggplot2::geom_polygon(
-        data = read_polys,
-        ggplot2::aes(
-          x     = .data$x,
-          y     = .data$y,
-          group = .data$polygon_id,
-          fill  = .data$group
-        ),
-        colour = NA
-      )
-
-    if (!is.null(group_colours)) {
-      p <- p + ggplot2::scale_fill_manual(
-        values   = group_colours,
-        na.value = "grey50",
-        name     = "Group"
-      )
-    } else {
-      p <- p + ggplot2::scale_fill_discrete(name = "Group")
-    }
-
-    if (isTRUE(show_supplementary)) {
-      p <- .add_sa_overlay(p, reads_plot, arrow_w * 1.5, half_height,
-                           variant_overlay,
-                           needs_new_scale = TRUE)
-    }
-    p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
-                                colour_low, colour_high, colour_ambiguous,
-                                call_mode, call_threshold, call_ambiguous)
-
-    if (length(separator_lanes) > 0L) {
-      p <- p +
-        ggplot2::geom_hline(
-          yintercept = separator_lanes,
-          linetype = "dashed", colour = "grey40", linewidth = 0.4
-        )
-    }
+  if (is.null(fill_var)) {
+    p <- p + ggplot2::geom_polygon(data = read_polys, do.call(ggplot2::aes, bar_aes),
+                                   fill = "#B0BEC5", colour = NA)
   } else {
-    # Ungrouped path
-    if (isTRUE(colour_strand)) {
-      # Strand-coloured: fill polygons by strand
-      p <- p +
-        ggplot2::geom_polygon(
-          data = read_polys,
-          ggplot2::aes(
-            x     = .data$x,
-            y     = .data$y,
-            group = .data$polygon_id,
-            fill  = .data$strand
-          ),
-          colour = NA
-        ) +
-        ggplot2::scale_fill_manual(values = strand_colours, name = "Strand")
-
-      if (isTRUE(show_supplementary)) {
-        p <- .add_sa_overlay(p, reads_plot, arrow_w, half_height,
-                             variant_overlay,
-                             needs_new_scale = TRUE)
-      }
-      p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
-                                colour_low, colour_high, colour_ambiguous,
-                                call_mode, call_threshold, call_ambiguous)
+    bar_aes$fill <- .data_col(fill_var)
+    fill_scale <- if (!grouped) {
+      ggplot2::scale_fill_manual(values = strand_colours, name = "Strand")
+    } else if (!is.null(group_colours)) {
+      ggplot2::scale_fill_manual(values = group_colours, na.value = "grey50", name = "Group")
     } else {
-      # Plain (no grouping, no strand colouring)
-      p <- p +
-        ggplot2::geom_polygon(
-          data = read_polys,
-          ggplot2::aes(
-            x     = .data$x,
-            y     = .data$y,
-            group = .data$polygon_id
-          ),
-          fill = "#B0BEC5",
-          colour = NA
-        )
-
-      if (isTRUE(show_supplementary)) {
-        p <- .add_sa_overlay(p, reads_plot, arrow_w, half_height,
-                             variant_overlay,
-                             needs_new_scale = FALSE)
-      }
-      p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
-                                colour_low, colour_high, colour_ambiguous,
-                                call_mode, call_threshold, call_ambiguous)
+      ggplot2::scale_fill_discrete(name = "Group")
     }
+    p <- p + ggplot2::geom_polygon(data = read_polys, do.call(ggplot2::aes, bar_aes),
+                                   colour = NA) + fill_scale
+  }
+
+  if (isTRUE(show_supplementary)) {
+    # A bar fill scale is already on the plot unless the bars are plain grey.
+    p <- .add_sa_overlay(p, reads_plot, if (grouped) arrow_w * 1.5 else arrow_w,
+                         half_height, variant_overlay,
+                         needs_new_scale = !is.null(fill_var))
+  }
+  p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
+                              colour_low, colour_high, colour_ambiguous,
+                              call_mode, call_threshold, call_ambiguous)
+
+  if (length(separator_lanes) > 0L) {
+    p <- p +
+      ggplot2::geom_hline(
+        yintercept = separator_lanes,
+        linetype = "dashed", colour = "grey40", linewidth = 0.4
+      )
   }
 
   # SNV indicator line
@@ -478,16 +401,13 @@ build_read_panel <- function(data,
   }
 
   # CIGAR structural variant overlays
-  if (isTRUE(show_cigar) && !is.null(cigar_features) && nrow(cigar_features) > 0L) {
-    # Merge lane info
+  if (has_cigar) {
     cf <- merge(
       cigar_features,
       data$reads[, c("read_name", "lane", "start", "end"), drop = FALSE],
       by = "read_name"
     )
-
-    # Filter small indels
-    cf <- cf[!(cf$type %in% c("I", "D") & cf$length < min_indel_size), , drop = FALSE]
+    cf <- cf[cf$type %in% c("I", "D") & cf$length >= min_indel_size, , drop = FALSE]
 
     # Deletions: draw black line segments
     del_df <- cf[cf$type == "D", , drop = FALSE]
@@ -519,21 +439,12 @@ build_read_panel <- function(data,
         inherit.aes = FALSE
       )
     }
-
   }
 
-  # --- New variant overlay layers ---
+  # --- Variant overlay layers ---
   if (!is.null(variant_overlay)) {
-    for (layer_group in list(
-      variant_overlay$snv,
-      variant_overlay$sv,
-      variant_overlay$bnd
-    )) {
-      if (!is.null(layer_group)) {
-        for (lyr in layer_group) {
-          p <- p + lyr
-        }
-      }
+    for (lyr in c(variant_overlay$snv, variant_overlay$sv, variant_overlay$bnd)) {
+      p <- p + lyr
     }
   }
 

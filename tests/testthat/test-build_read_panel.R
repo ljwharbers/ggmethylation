@@ -154,7 +154,6 @@ test_that("build_read_panel excludes dots in deletion gaps with show_cigar=TRUE"
     strand_colours  = c("+" = "grey60", "-" = "grey60"),
     group_colours   = NULL,
     show_cigar      = TRUE,
-    cigar_features  = cigar_features,
     min_indel_size  = 50L
   )
   # Extract the geom_point layer data
