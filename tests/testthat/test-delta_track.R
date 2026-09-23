@@ -218,13 +218,10 @@ test_that("plot_methylation delta panel breaks over consensus deletions using re
 
 # --- Delta panel fills follow the group palette ------------------------------
 
-# The delta panel is the last panel handed to patchwork::wrap_plots(), so it
-# ends up as the top-level ggplot object (see the note above
-# extract_delta_data()). Stripping the patchwork class lets ggplot_build()
-# render that panel alone rather than the whole composite.
+# The delta panel is the last panel handed to patchwork::wrap_plots(), so
+# `p[[length(p)]]` extracts it as a plain ggplot that ggplot_build() can render.
 delta_fills <- function(p) {
-  class(p) <- c("gg", "ggplot")
-  unique(ggplot2::ggplot_build(p)$data[[1]]$fill)
+  unique(ggplot2::ggplot_build(p[[length(p)]])$data[[1]]$fill)
 }
 
 # Two groups whose methylation levels are constant, so the delta has a single

@@ -1,14 +1,10 @@
-# Okabe-Ito colorblind-safe qualitative palette
-.OKABE_ITO <- c(
-  "#E69F00", "#56B4E9", "#009E73", "#F0E442",
-  "#0072B2", "#D55E00", "#CC79A7", "#000000"
-)
-
 # Default group palette. Named "1"/"2" to match HP haplotype tag output.
-# Uses two well-separated Okabe-Ito hues (blue / orange).
+# Uses two well-separated hues (blue / orange) from the colorblind-safe
+# Okabe-Ito palette.
 .GROUP_PALETTE_DEFAULT <- c("1" = "#0072B2", "2" = "#E69F00")
 
-# Probability gradient endpoints (colorblind-safe grey -> red)
+# Probability gradient endpoints (colorblind-safe grey -> red). Default for
+# `colour_low`/`colour_high` in plot_methylation() and plot_insertion_locus().
 .PROB_GRADIENT <- list(low = "#BDBDBD", high = "#C62828")
 
 # Fallback diverging palette for the delta track. Used when `group_colours` is

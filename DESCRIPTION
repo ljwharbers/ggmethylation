@@ -19,7 +19,6 @@ RoxygenNote: 7.3.3
 Imports:
     Rsamtools,
     GenomicRanges,
-    GenomicAlignments,
     IRanges,
     ggplot2,
     ggnewscale,

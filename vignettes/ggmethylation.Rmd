@@ -199,8 +199,8 @@ plot_methylation(
 ```
 
 ```{r custom-sort, echo = TRUE}
-# Sort reads by group membership (default) vs. by genomic start
-plot_methylation(meth_hp, sort_by = "position")
+# Sort reads by mean modification probability instead of start position
+plot_methylation(meth_hp, sort_by = "mean_mod_prob")
 ```
 
 ## Composing with ggplot2

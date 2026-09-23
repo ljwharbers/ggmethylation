@@ -14,6 +14,7 @@
 .superpowers/
 .worktrees
 
-test.*
-test*
+# Root-level scratch scripts/plots (anchored so tests/ is not ignored)
+/test*.R
+/test*.png
 .claude/

@@ -7,14 +7,13 @@
 plot_methylation(
   data,
   sort_by = NULL,
-  colour_low = "#BDBDBD",
-  colour_high = "#C62828",
+  colour_low = .PROB_GRADIENT$low,
+  colour_high = .PROB_GRADIENT$high,
   colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
   line_width = 0.2,
   colour_strand = FALSE,
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
   group_colours = .GROUP_PALETTE_DEFAULT,
-  mod_code_shapes = NULL,
   smooth_span = NULL,
   panel_heights = NULL,
   annotations = NULL,
@@ -34,8 +33,9 @@ plot_methylation(
 \item{data}{A \code{methylation_data} object returned by \code{\link[=read_methylation]{read_methylation()}}.}
 
 \item{sort_by}{Character vector of column names from \code{data$reads} used
-to sort reads before packing into lanes. Default NULL uses \code{c("start")}
-when ungrouped or \code{c("group", "start", "mean_mod_prob")} when grouped.
+to sort reads before packing into lanes (reads are always packed per
+group, so group order is fixed). Default NULL uses \code{"start"} when
+ungrouped or \code{c("start", "group", "mean_mod_prob")} when grouped.
 \code{mean_mod_prob} is the per-read mean modification probability, or the
 per-read fraction of methylated calls when \code{call_mode = "binary"}.}
 
@@ -65,12 +65,6 @@ to \code{c("1" = "#0072B2", "2" = "#E69F00")} (the Okabe-Ito colorblind-safe
 blue/orange pair, see \code{.GROUP_PALETTE_DEFAULT}), matching the typical HP
 haplotype tag output. Pass \code{NULL} to use ggplot2 defaults, or supply a
 fully named vector for other group names.}
-
-\item{mod_code_shapes}{Named integer vector mapping modification codes to
-point shapes used in the legend when multiple modification codes are
-present. Names must match the mod codes in \code{data$sites$mod_code}. If
-\code{NULL} (default), shapes are assigned automatically (circle, square,
-triangle, diamond for up to four codes).}
 
 \item{smooth_span}{Loess smoothing span for the bottom panel. When \code{NULL}
 (default), an adaptive span is computed per group as

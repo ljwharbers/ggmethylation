@@ -12,8 +12,8 @@ plot_insertion_locus(
   include_noncarriers = TRUE,
   tol_pos = 10L,
   tol_len = 0.2,
-  colour_low = "#BDBDBD",
-  colour_high = "#C62828"
+  colour_low = .PROB_GRADIENT$low,
+  colour_high = .PROB_GRADIENT$high
 )
 }
 \arguments{

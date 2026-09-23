@@ -10,8 +10,7 @@ write_methylation(
   format = c("tsv", "bed"),
   reads = TRUE,
   sites = TRUE,
-  gzip = FALSE,
-  ...
+  gzip = FALSE
 )
 }
 \arguments{
@@ -30,8 +29,6 @@ or \code{"bed"} (6-column BED, 0-based coordinates, no header).}
 
 \item{gzip}{Logical. Compress output files with gzip? Default \code{FALSE}.
 When \code{TRUE}, \code{.gz} is appended to each file name.}
-
-\item{...}{Reserved for future use; currently ignored.}
 }
 \value{
 \code{data}, invisibly. Allows use in a pipeline.

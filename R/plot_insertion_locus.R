@@ -42,8 +42,8 @@ plot_insertion_locus <- function(m, locus_id,
                                   include_noncarriers = TRUE,
                                   tol_pos            = 10L,
                                   tol_len            = 0.20,
-                                  colour_low         = "#BDBDBD",
-                                  colour_high        = "#C62828") {
+                                  colour_low         = .PROB_GRADIENT$low,
+                                  colour_high        = .PROB_GRADIENT$high) {
   if (!inherits(m, "methylation_data")) {
     stop("'m' must be a methylation_data object.", call. = FALSE)
   }

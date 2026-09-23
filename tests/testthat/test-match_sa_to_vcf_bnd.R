@@ -148,7 +148,7 @@ test_that("build_bnd_layer returns NULL for NULL input", {
   expect_null(ggmethylation:::build_bnd_layer(NULL))
 })
 
-test_that("build_bnd_layer returns a list of length 2 for a one-row bnd_df", {
+test_that("build_bnd_layer returns a single mate-label layer for a one-row bnd_df", {
   bnd_df <- data.frame(
     position   = 1000L,
     mate_chrom = "chr7",
@@ -158,7 +158,7 @@ test_that("build_bnd_layer returns a list of length 2 for a one-row bnd_df", {
   result <- ggmethylation:::build_bnd_layer(bnd_df)
 
   expect_type(result, "list")
-  expect_length(result, 2L)
+  expect_length(result, 1L)
 })
 
 # --- Bonus: mixed reads (some SA, some not) -----------------------------------

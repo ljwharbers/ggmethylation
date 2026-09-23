@@ -14,7 +14,6 @@
 #' @param sites Logical. Write the `$sites` data frame? Default `TRUE`.
 #' @param gzip Logical. Compress output files with gzip? Default `FALSE`.
 #'   When `TRUE`, `.gz` is appended to each file name.
-#' @param ... Reserved for future use; currently ignored.
 #'
 #' @return `data`, invisibly. Allows use in a pipeline.
 #'
@@ -65,8 +64,7 @@ write_methylation <- function(data,
                               format = c("tsv", "bed"),
                               reads  = TRUE,
                               sites  = TRUE,
-                              gzip   = FALSE,
-                              ...) {
+                              gzip   = FALSE) {
 
   # --- Input validation ---
   if (!inherits(data, "methylation_data"))
@@ -98,8 +96,8 @@ write_methylation <- function(data,
     if (!is.null(data$group_tag) && "group" %in% names(data$reads))
       read_cols <- c(read_cols, "group")
     read_cols <- c(read_cols, "mean_mod_prob")
-    .write_tsv_maybe_gz(data$reads[, read_cols, drop = FALSE],
-                        paste0(prefix, "_reads.tsv"), gzip)
+    .write_table_maybe_gz(data$reads[, read_cols, drop = FALSE],
+                          paste0(prefix, "_reads.tsv"), gzip)
   }
 
   # --- Write sites ---
@@ -108,8 +106,8 @@ write_methylation <- function(data,
       site_cols <- c("position", "mod_prob", "read_name", "mod_code")
       if ("group" %in% names(data$sites))
         site_cols <- c(site_cols, "group")
-      .write_tsv_maybe_gz(data$sites[, site_cols, drop = FALSE],
-                          paste0(prefix, "_sites.tsv"), gzip)
+      .write_table_maybe_gz(data$sites[, site_cols, drop = FALSE],
+                            paste0(prefix, "_sites.tsv"), gzip)
     } else {
       # BED format
       chrom <- as.character(GenomicRanges::seqnames(data$region))
@@ -124,7 +122,8 @@ write_methylation <- function(data,
         strand     = strand_map[data$sites$read_name],
         stringsAsFactors = FALSE
       )
-      .write_bed_maybe_gz(bed, paste0(prefix, "_sites.bed"), gzip)
+      .write_table_maybe_gz(bed, paste0(prefix, "_sites.bed"), gzip,
+                            header = FALSE)
     }
   }
 
@@ -133,38 +132,21 @@ write_methylation <- function(data,
 
 # Internal helpers --------------------------------------------------------
 
-#' Write a data frame as TSV, optionally gzip-compressed
+#' Write a tab-separated table, optionally gzip-compressed
 #'
 #' @param df Data frame to write.
 #' @param path Output file path (without `.gz`; `.gz` appended when `gzip = TRUE`).
 #' @param gzip Logical. Compress the file?
+#' @param header Logical. Write a header line? `FALSE` for BED output.
 #'
 #' @return `path` (with `.gz` suffix if applicable), invisibly.
 #'
 #' @keywords internal
-.write_tsv_maybe_gz <- function(df, path, gzip) {
+.write_table_maybe_gz <- function(df, path, gzip, header = TRUE) {
   if (gzip) path <- paste0(path, ".gz")
   con <- if (gzip) gzfile(path, "w") else file(path, "w")
   on.exit(close(con))
   write.table(df, con, sep = "\t", quote = FALSE,
-              row.names = FALSE, col.names = TRUE)
-  invisible(path)
-}
-
-#' Write a data frame as BED (no header), optionally gzip-compressed
-#'
-#' @param df Data frame to write.
-#' @param path Output file path (without `.gz`; `.gz` appended when `gzip = TRUE`).
-#' @param gzip Logical. Compress the file?
-#'
-#' @return `path` (with `.gz` suffix if applicable), invisibly.
-#'
-#' @keywords internal
-.write_bed_maybe_gz <- function(df, path, gzip) {
-  if (gzip) path <- paste0(path, ".gz")
-  con <- if (gzip) gzfile(path, "w") else file(path, "w")
-  on.exit(close(con))
-  write.table(df, con, sep = "\t", quote = FALSE,
-              row.names = FALSE, col.names = FALSE)
+              row.names = FALSE, col.names = header)
   invisible(path)
 }

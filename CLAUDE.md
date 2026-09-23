@@ -47,7 +47,7 @@ The package has three layers:
 ## Key Data Structure
 
 `methylation_data` (S3 list):
-- `$reads`: data frame — `read_name`, `start`, `end`, `strand`, `bam_pos`, `mean_mod_prob`, optional `group`
+- `$reads`: data frame — `read_name`, `start`, `end`, `bam_pos`, `strand`, `is_supplementary`, `sa_chrom`, `sa_pos`, `clip_side`, optional `group`. (`mean_mod_prob` and `lane` are added at plot time, not stored.)
 - `$sites`: data frame — `read_name`, `position`, `mod_prob`, `mod_code`, optional `group`
 - `$insertion_sites`: data frame — `read_name`, `ref_anchor`, `query_pos`, `ins_offset`, `ins_length`, `mod_prob`, `mod_code`, optional `group`. Zero rows when no insertion modifications were found.
 - `$cigar_features`: data frame — one row per CIGAR operation per read; columns `type`, `ref_start`, `ref_end`, `query_start`, `query_end`, `length`, `read_name`. Used by `list_insertion_loci()`.

@@ -4,8 +4,8 @@ test_that("theme_ggmethylation returns a ggplot2 theme", {
 })
 
 test_that("palette constants have expected shape", {
-  expect_true(is.character(ggmethylation:::.OKABE_ITO))
-  expect_gte(length(ggmethylation:::.OKABE_ITO), 8L)
+  pg <- ggmethylation:::.PROB_GRADIENT
+  expect_true(all(c("low", "high") %in% names(pg)))
   gp <- ggmethylation:::.GROUP_PALETTE_DEFAULT
   expect_true(all(c("1", "2") %in% names(gp)))
   dv <- ggmethylation:::.DELTA_DIVERGING

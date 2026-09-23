@@ -199,7 +199,8 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
 
   # MAPQ filter
   if (min_mapq > 0L) {
-    mapq_vec <- bam_data$mapq
+    # Index by bam_indices: drop_na_group may already have removed rows.
+    mapq_vec <- bam_data$mapq[bam_indices]
     filter_mask <- filter_mask & (!is.na(mapq_vec) & mapq_vec >= min_mapq)
   }
 
@@ -210,7 +211,7 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
 
   # Read length filter (ref_widths computed earlier from CIGAR)
   if (min_read_length > 0L) {
-    filter_mask <- filter_mask & (ref_widths >= min_read_length)
+    filter_mask <- filter_mask & (ref_widths[bam_indices] >= min_read_length)
   }
 
   if (!all(filter_mask)) {

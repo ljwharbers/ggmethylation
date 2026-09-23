@@ -140,12 +140,9 @@
 # @param reads data.frame with SA-annotated reads (sa_chrom, clip_side columns).
 # @param arrow_w Numeric.
 # @param half_height Numeric.
-# @param region_start Integer.
-# @param region_end Integer.
 # @return data.frame with x, y, polygon_id, sa_chrom, lane columns,
 #   or a 0-row data.frame if no SA reads.
-.make_sa_overlay_polygons <- function(reads, arrow_w, half_height,
-                                      region_start, region_end) {
+.make_sa_overlay_polygons <- function(reads, arrow_w, half_height) {
   sa_reads <- reads[!is.na(reads$sa_chrom), , drop = FALSE]
   if (nrow(sa_reads) == 0L) {
     return(data.frame(
@@ -249,8 +246,6 @@
 #' @param colour_strand Logical. Colour read bars by strand when ungrouped.
 #' @param strand_colours Named character vector with `"+"` and `"-"` entries.
 #' @param group_colours Named character vector of colours per group, or NULL.
-#' @param mod_code_shapes Named integer vector mapping mod codes to point
-#'   shapes.
 #' @param show_x_axis Logical. When `FALSE` (default), x-axis text and ticks
 #'   are hidden. Set to `TRUE` for the bottom-most read panel.
 #' @param variant_overlay A list returned by [build_variant_overlay()], or `NULL`.
@@ -278,7 +273,6 @@ build_read_panel <- function(data,
                              colour_strand,
                              strand_colours,
                              group_colours,
-                             mod_code_shapes,
                              show_x_axis        = FALSE,
                              variant_overlay    = NULL,
                              show_cigar         = FALSE,
@@ -288,9 +282,6 @@ build_read_panel <- function(data,
                              call_mode          = "continuous",
                              call_threshold     = 0.5,
                              call_ambiguous     = NULL) {
-  codes      <- unique(data$sites$mod_code)
-  multi_code <- length(codes) > 1L
-
   # When show_cigar is TRUE, split reads on large deletions so the thick read
   # bar has IGV-style gaps instead of running through deletion regions.
   reads_plot <- data$reads
@@ -413,7 +404,7 @@ build_read_panel <- function(data,
 
     if (isTRUE(show_supplementary)) {
       p <- .add_sa_overlay(p, reads_plot, arrow_w * 1.5, half_height,
-                           region_start, region_end, variant_overlay,
+                           variant_overlay,
                            needs_new_scale = TRUE)
     }
     p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
@@ -446,7 +437,7 @@ build_read_panel <- function(data,
 
       if (isTRUE(show_supplementary)) {
         p <- .add_sa_overlay(p, reads_plot, arrow_w, half_height,
-                             region_start, region_end, variant_overlay,
+                             variant_overlay,
                              needs_new_scale = TRUE)
       }
       p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
@@ -468,7 +459,7 @@ build_read_panel <- function(data,
 
       if (isTRUE(show_supplementary)) {
         p <- .add_sa_overlay(p, reads_plot, arrow_w, half_height,
-                             region_start, region_end, variant_overlay,
+                             variant_overlay,
                              needs_new_scale = FALSE)
       }
       p <- .add_mod_prob_segments(p, sites_plot, half_height, line_width,
@@ -576,13 +567,11 @@ build_read_panel <- function(data,
 # replace the read-bar fill scale already on the plot.  The plain branch omits
 # it because the read bars are drawn with a fixed colour, not a scale.
 .add_sa_overlay <- function(p, reads_plot, arrow_w, half_height,
-                             region_start, region_end, variant_overlay,
+                             variant_overlay,
                              needs_new_scale = TRUE) {
   if (!("sa_chrom" %in% names(reads_plot))) return(p)
 
-  sa_polys <- .make_sa_overlay_polygons(
-    reads_plot, arrow_w, half_height, region_start, region_end
-  )
+  sa_polys <- .make_sa_overlay_polygons(reads_plot, arrow_w, half_height)
   if (nrow(sa_polys) == 0L) return(p)
 
   if (needs_new_scale) p <- p + ggnewscale::new_scale_fill()

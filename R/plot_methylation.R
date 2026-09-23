@@ -175,31 +175,6 @@
   .insert_deletion_breaks(smoothed, ranges, group_col)
 }
 
-# Shapes used for multi-code plots: circle, square, triangle, diamond.
-.DEFAULT_SHAPES <- c(16L, 15L, 17L, 18L)
-
-# Resolve a mod_code -> shape mapping from a vector of codes.
-# Returns a named integer vector of the same length as `codes`.
-.resolve_mod_code_shapes <- function(codes, mod_code_shapes) {
-  if (length(codes) > length(.DEFAULT_SHAPES)) {
-    stop("More than 4 mod codes present; supply mod_code_shapes explicitly.", call. = FALSE)
-  }
-  if (is.null(mod_code_shapes)) {
-    return(stats::setNames(.DEFAULT_SHAPES[seq_along(codes)], codes))
-  }
-  missing_codes <- setdiff(codes, names(mod_code_shapes))
-  if (length(missing_codes) > 0L) {
-    warning(
-      "mod_code_shapes has no entry for code(s): ",
-      paste(missing_codes, collapse = ", "),
-      ". Using default shapes.", call. = FALSE
-    )
-    extras <- stats::setNames(.DEFAULT_SHAPES[seq_along(missing_codes)], missing_codes)
-    mod_code_shapes <- c(mod_code_shapes, extras)
-  }
-  mod_code_shapes
-}
-
 # Add a CI ribbon behind the smooth line(s) when requested and columns exist.
 # `fill_aes` controls the visual fill colour (tracking the matching line
 # colour aesthetic). `group_aes` controls polygon separation and defaults to
@@ -266,6 +241,16 @@
   }
 }
 
+# Stop early on a `sort_by` column that doesn't exist: order() on a NULL column
+# returns integer(0) and would silently drop every read.
+.check_sort_by = function(sort_by, reads) {
+  missing_cols = setdiff(sort_by, names(reads))
+  if (length(missing_cols) > 0L) {
+    stop("`sort_by` column(s) not found in `data$reads`: ",
+         paste(missing_cols, collapse = ", "), call. = FALSE)
+  }
+}
+
 #' Plot read-level methylation data
 #'
 #' Creates a ggplot2 visualisation of read-level base modification data. When
@@ -277,8 +262,9 @@
 #'
 #' @param data A `methylation_data` object returned by [read_methylation()].
 #' @param sort_by Character vector of column names from `data$reads` used
-#'   to sort reads before packing into lanes. Default NULL uses `c("start")`
-#'   when ungrouped or `c("group", "start", "mean_mod_prob")` when grouped.
+#'   to sort reads before packing into lanes (reads are always packed per
+#'   group, so group order is fixed). Default NULL uses `"start"` when
+#'   ungrouped or `c("start", "group", "mean_mod_prob")` when grouped.
 #'   `mean_mod_prob` is the per-read mean modification probability, or the
 #'   per-read fraction of methylated calls when `call_mode = "binary"`.
 #' @param colour_low Colour for low modification probability (default
@@ -324,11 +310,6 @@
 #'   lines are added at every variant position across all panels. Requires
 #'   that `data` was produced by a current version of [read_methylation()] that
 #'   stores sequences and CIGARs in the object.
-#' @param mod_code_shapes Named integer vector mapping modification codes to
-#'   point shapes used in the legend when multiple modification codes are
-#'   present. Names must match the mod codes in `data$sites$mod_code`. If
-#'   `NULL` (default), shapes are assigned automatically (circle, square,
-#'   triangle, diamond for up to four codes).
 #' @param show_cigar Logical. When `TRUE` (default), structural variants from
 #'   CIGAR strings (insertions, deletions) are displayed on reads. Insertions
 #'   appear as purple I-beam markers spanning the full height of the read bar;
@@ -410,14 +391,13 @@
 #'
 #' @export
 plot_methylation <- function(data, sort_by = NULL,
-                             colour_low = "#BDBDBD",
-                             colour_high = "#C62828",
+                             colour_low = .PROB_GRADIENT$low,
+                             colour_high = .PROB_GRADIENT$high,
                              colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
                              line_width = 0.2,
                              colour_strand = FALSE,
                              strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
                              group_colours = .GROUP_PALETTE_DEFAULT,
-                             mod_code_shapes = NULL,
                              smooth_span = NULL,
                              panel_heights = NULL,
                              annotations = NULL,
@@ -445,7 +425,6 @@ plot_methylation <- function(data, sort_by = NULL,
       colour_strand      = colour_strand,
       strand_colours     = strand_colours,
       group_colours      = group_colours,
-      mod_code_shapes    = mod_code_shapes,
       smooth_span        = smooth_span,
       panel_heights      = panel_heights,
       annotations        = annotations,
@@ -481,10 +460,8 @@ plot_methylation <- function(data, sort_by = NULL,
   region_start <- GenomicRanges::start(data$region)
   region_end <- GenomicRanges::end(data$region)
 
-  # --- 1b. Resolve mod_code shape mapping ---
-  codes           <- unique(data$sites$mod_code)
-  mod_code_shapes <- .resolve_mod_code_shapes(codes, mod_code_shapes)
-  multi_code      <- length(codes) > 1L
+  codes      <- unique(data$sites$mod_code)
+  multi_code <- length(codes) > 1L
 
   # --- 2. Handle empty data ---
   if (nrow(data$reads) == 0L) {
@@ -527,6 +504,7 @@ plot_methylation <- function(data, sort_by = NULL,
     }
   }
 
+  .check_sort_by(sort_by, data$reads)
   sort_args <- lapply(sort_by, function(col) data$reads[[col]])
   ord <- do.call(order, sort_args)
   data$reads <- data$reads[ord, , drop = FALSE]
@@ -575,7 +553,6 @@ plot_methylation <- function(data, sort_by = NULL,
     colour_strand      = colour_strand,
     strand_colours     = strand_colours,
     group_colours      = group_colours,
-    mod_code_shapes    = mod_code_shapes,
     show_x_axis        = FALSE,
     variant_overlay    = variant_ov,
     show_cigar         = show_cigar,
@@ -613,7 +590,7 @@ plot_methylation <- function(data, sort_by = NULL,
         smoothed,
         ggplot2::aes(x = .data$position, y = .data$mean_prob)
       ) +
-        ggplot2::geom_line(linewidth = 1, colour = "#C62828") +
+        ggplot2::geom_line(linewidth = 1, colour = .PROB_GRADIENT$high) +
         .smooth_panel_base(region_start, region_end, smooth_y_label) +
         ggplot2::labs(x = "Genomic position (bp)")
       p_bottom <- .add_ci_ribbon(p_bottom, smoothed, show_ci)
@@ -852,7 +829,7 @@ plot_methylation <- function(data, sort_by = NULL,
 .plot_multi_methylation <- function(data, sort_by, colour_low, colour_high,
                                     colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
                                     line_width, colour_strand, strand_colours,
-                                    group_colours, mod_code_shapes,
+                                    group_colours,
                                     smooth_span, panel_heights, annotations,
                                     variants, show_cigar = FALSE,
                                     min_indel_size = 50L,
@@ -871,10 +848,6 @@ plot_methylation <- function(data, sort_by = NULL,
   region_start <- GenomicRanges::start(data$region)
   region_end   <- GenomicRanges::end(data$region)
   smooth_y_label <- .smooth_y_label(call_mode)
-
-  # Resolve mod_code shapes from combined codes across all samples
-  all_codes       <- unique(unlist(lapply(data$samples, function(s) unique(s$sites$mod_code))))
-  mod_code_shapes <- .resolve_mod_code_shapes(all_codes, mod_code_shapes)
 
   # --- 1. Build per-sample read panels ---
   sample_names  <- names(data$samples)
@@ -925,6 +898,7 @@ plot_methylation <- function(data, sort_by = NULL,
         sort_by_s <- c("start", "group", "mean_mod_prob")
       }
     }
+    .check_sort_by(sort_by_s, s$reads)
     sort_args <- lapply(sort_by_s, function(col) s$reads[[col]])
     ord <- do.call(order, sort_args)
     s$reads <- s$reads[ord, , drop = FALSE]
@@ -974,7 +948,6 @@ plot_methylation <- function(data, sort_by = NULL,
       colour_strand      = colour_strand,
       strand_colours     = strand_colours,
       group_colours      = group_colours,
-      mod_code_shapes    = mod_code_shapes,
       show_x_axis        = FALSE,
       variant_overlay    = s_variant_ov,
       show_cigar         = show_cigar,

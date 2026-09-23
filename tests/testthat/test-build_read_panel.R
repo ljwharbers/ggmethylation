@@ -101,8 +101,7 @@ test_that("build_read_panel does not warn about removed polygon rows", {
       line_width      = 1,
       colour_strand   = FALSE,
       strand_colours  = c("+" = "grey60", "-" = "grey60"),
-      group_colours   = NULL,
-      mod_code_shapes = c(m = 16L)
+      group_colours   = NULL
     )
   )
   expect_s3_class(p, "gg")
@@ -154,7 +153,6 @@ test_that("build_read_panel excludes dots in deletion gaps with show_cigar=TRUE"
     colour_strand   = FALSE,
     strand_colours  = c("+" = "grey60", "-" = "grey60"),
     group_colours   = NULL,
-    mod_code_shapes = c(m = 16L),
     show_cigar      = TRUE,
     cigar_features  = cigar_features,
     min_indel_size  = 50L

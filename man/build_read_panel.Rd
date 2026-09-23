@@ -16,7 +16,6 @@ build_read_panel(
   colour_strand,
   strand_colours,
   group_colours,
-  mod_code_shapes,
   show_x_axis = FALSE,
   variant_overlay = NULL,
   show_cigar = FALSE,
@@ -54,9 +53,6 @@ dashed separator lines should be drawn (between groups). Pass
 \item{strand_colours}{Named character vector with \code{"+"} and \code{"-"} entries.}
 
 \item{group_colours}{Named character vector of colours per group, or NULL.}
-
-\item{mod_code_shapes}{Named integer vector mapping mod codes to point
-shapes.}
 
 \item{show_x_axis}{Logical. When \code{FALSE} (default), x-axis text and ticks
 are hidden. Set to \code{TRUE} for the bottom-most read panel.}
