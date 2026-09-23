@@ -1,7 +1,7 @@
 # Internal helpers for interrupting the smooth line at consensus deletion regions
 
-.ordered_plot_groups <- function(groups) {
-  ordered <- sort(unique(groups[!is.na(groups)]))
+.ordered_plot_groups = function(groups) {
+  ordered = sort(unique(groups[!is.na(groups)]))
   if (any(is.na(groups))) {
     c(ordered, NA_character_)
   } else {
@@ -9,7 +9,7 @@
   }
 }
 
-.match_plot_group <- function(values, group) {
+.match_plot_group = function(values, group) {
   if (is.na(group)) {
     is.na(values)
   } else {
@@ -21,66 +21,66 @@
 # `threshold` fraction of reads in that group carry a deletion.
 # cigar_features: pre-filtered to type == "D" and min_indel_size by caller
 # reads: data.frame with read_name and the group column
-.consensus_deletion_ranges <- function(cigar_features, reads, group_col,
+.consensus_deletion_ranges = function(cigar_features, reads, group_col,
                                        threshold = 0.75) {
-  empty <- data.frame(
+  empty = data.frame(
     del_start = integer(0L),
     del_end   = integer(0L),
     stringsAsFactors = FALSE
   )
-  empty[[group_col]] <- character(0L)
+  empty[[group_col]] = character(0L)
 
-  dels <- cigar_features[cigar_features$type == "D", , drop = FALSE]
+  dels = cigar_features[cigar_features$type == "D", , drop = FALSE]
   if (nrow(dels) == 0L) return(empty)
 
   # Attach group membership to each deletion row
-  dels <- merge(
+  dels = merge(
     dels,
     reads[, c("read_name", group_col), drop = FALSE],
     by = "read_name", all.x = FALSE
   )
   if (nrow(dels) == 0L) return(empty)
 
-  groups <- unique(dels[[group_col]])
-  groups <- groups[!is.na(groups)]
-  result_list <- vector("list", length(groups))
+  groups = unique(dels[[group_col]])
+  groups = groups[!is.na(groups)]
+  result_list = vector("list", length(groups))
 
   for (k in seq_along(groups)) {
-    grp  <- groups[k]
-    grp_mask <- .match_plot_group(dels[[group_col]], grp)
-    sub  <- dels[grp_mask, , drop = FALSE]
-    n_reads <- sum(.match_plot_group(reads[[group_col]], grp))
+    grp  = groups[k]
+    grp_mask = .match_plot_group(dels[[group_col]], grp)
+    sub  = dels[grp_mask, , drop = FALSE]
+    n_reads = sum(.match_plot_group(reads[[group_col]], grp))
     if (n_reads == 0L) next
 
-    sub <- sub[order(sub$ref_start), , drop = FALSE]
+    sub = sub[order(sub$ref_start), , drop = FALSE]
 
     # Sweep-merge overlapping deletion intervals, accumulating read names
-    merged_starts <- integer(0L)
-    merged_ends   <- integer(0L)
-    merged_reads  <- list()
+    merged_starts = integer(0L)
+    merged_ends   = integer(0L)
+    merged_reads  = list()
 
-    cur_start <- sub$ref_start[1L]
-    cur_end   <- sub$ref_end[1L]
-    cur_rds   <- sub$read_name[1L]
+    cur_start = sub$ref_start[1L]
+    cur_end   = sub$ref_end[1L]
+    cur_rds   = sub$read_name[1L]
 
     for (i in seq_len(nrow(sub))[-1L]) {
       if (sub$ref_start[i] <= cur_end + 1L) {
-        cur_end <- max(cur_end, sub$ref_end[i])
-        cur_rds <- c(cur_rds, sub$read_name[i])
+        cur_end = max(cur_end, sub$ref_end[i])
+        cur_rds = c(cur_rds, sub$read_name[i])
       } else {
-        merged_starts <- c(merged_starts, cur_start)
-        merged_ends   <- c(merged_ends,   cur_end)
-        merged_reads  <- c(merged_reads,  list(unique(cur_rds)))
-        cur_start <- sub$ref_start[i]
-        cur_end   <- sub$ref_end[i]
-        cur_rds   <- sub$read_name[i]
+        merged_starts = c(merged_starts, cur_start)
+        merged_ends   = c(merged_ends,   cur_end)
+        merged_reads  = c(merged_reads,  list(unique(cur_rds)))
+        cur_start = sub$ref_start[i]
+        cur_end   = sub$ref_end[i]
+        cur_rds   = sub$read_name[i]
       }
     }
-    merged_starts <- c(merged_starts, cur_start)
-    merged_ends   <- c(merged_ends,   cur_end)
-    merged_reads  <- c(merged_reads,  list(unique(cur_rds)))
+    merged_starts = c(merged_starts, cur_start)
+    merged_ends   = c(merged_ends,   cur_end)
+    merged_reads  = c(merged_reads,  list(unique(cur_rds)))
 
-    keep <- vapply(
+    keep = vapply(
       merged_reads,
       function(rds) length(rds) / n_reads >= threshold,
       logical(1L)
@@ -88,76 +88,76 @@
 
     if (!any(keep)) next
 
-    df <- data.frame(
+    df = data.frame(
       del_start = merged_starts[keep],
       del_end   = merged_ends[keep],
       stringsAsFactors = FALSE
     )
-    df[[group_col]] <- grp
-    result_list[[k]] <- df
+    df[[group_col]] = grp
+    result_list[[k]] = df
   }
 
-  out <- do.call(rbind, Filter(Negate(is.null), result_list))
+  out = do.call(rbind, Filter(Negate(is.null), result_list))
   if (is.null(out)) return(empty)
-  rownames(out) <- NULL
+  rownames(out) = NULL
   out
 }
 
 # Insert NA breaks into a smoothed data frame at each consensus deletion interval.
 # Sentinel NA rows are added at del_start - 0.5 and del_end + 0.5 to guarantee
 # a visible gap even when no grid point falls inside the deletion.
-.insert_deletion_breaks <- function(smoothed, deletion_ranges, group_col) {
+.insert_deletion_breaks = function(smoothed, deletion_ranges, group_col) {
   if (nrow(deletion_ranges) == 0L) return(smoothed)
 
-  id_cols <- setdiff(names(smoothed), c("position", "mean_prob", "lower", "upper"))
-  sentinel_list <- vector("list", nrow(deletion_ranges))
+  id_cols = setdiff(names(smoothed), c("position", "mean_prob", "lower", "upper"))
+  sentinel_list = vector("list", nrow(deletion_ranges))
 
   for (i in seq_len(nrow(deletion_ranges))) {
-    grp_val   <- deletion_ranges[[group_col]][i]
-    del_start <- deletion_ranges$del_start[i]
-    del_end   <- deletion_ranges$del_end[i]
+    grp_val   = deletion_ranges[[group_col]][i]
+    del_start = deletion_ranges$del_start[i]
+    del_end   = deletion_ranges$del_end[i]
 
     # Mask grid points within the deletion
-    in_grp <- smoothed[[group_col]] == grp_val
-    in_del <- smoothed$position >= del_start & smoothed$position <= del_end
-    smoothed$mean_prob[in_grp & in_del] <- NA_real_
-    if ("lower" %in% names(smoothed)) smoothed$lower[in_grp & in_del] <- NA_real_
-    if ("upper" %in% names(smoothed)) smoothed$upper[in_grp & in_del] <- NA_real_
+    in_grp = smoothed[[group_col]] == grp_val
+    in_del = smoothed$position >= del_start & smoothed$position <= del_end
+    smoothed$mean_prob[in_grp & in_del] = NA_real_
+    if ("lower" %in% names(smoothed)) smoothed$lower[in_grp & in_del] = NA_real_
+    if ("upper" %in% names(smoothed)) smoothed$upper[in_grp & in_del] = NA_real_
 
     # Build sentinel rows — one pair per unique line-identity combo in this group
-    grp_rows  <- smoothed[in_grp, id_cols, drop = FALSE]
-    templates <- unique(grp_rows)
+    grp_rows  = smoothed[in_grp, id_cols, drop = FALSE]
+    templates = unique(grp_rows)
 
     if (nrow(templates) == 0L) next
 
-    sentinels <- vector("list", nrow(templates) * 2L)
+    sentinels = vector("list", nrow(templates) * 2L)
     for (j in seq_len(nrow(templates))) {
-      s1 <- templates[j, , drop = FALSE]
-      s1$position  <- del_start - 0.5
-      s1$mean_prob <- NA_real_
+      s1 = templates[j, , drop = FALSE]
+      s1$position  = del_start - 0.5
+      s1$mean_prob = NA_real_
       # NOTE: `templates` is derived from `id_cols`, which now excludes
       # lower/upper, so s1/s2 never carry those columns yet at this point.
       # Check against `smoothed` (the source of truth for which columns
       # exist) rather than `s1`/`s2`, then add the columns as NA so the
       # final rbind()/column-select against names(smoothed) succeeds.
-      if ("lower" %in% names(smoothed)) { s1$lower <- NA_real_; s1$upper <- NA_real_ }
-      s2 <- templates[j, , drop = FALSE]
-      s2$position  <- del_end + 0.5
-      s2$mean_prob <- NA_real_
-      if ("lower" %in% names(smoothed)) { s2$lower <- NA_real_; s2$upper <- NA_real_ }
-      sentinels[[2L * j - 1L]] <- s1
-      sentinels[[2L * j]]      <- s2
+      if ("lower" %in% names(smoothed)) { s1$lower = NA_real_; s1$upper = NA_real_ }
+      s2 = templates[j, , drop = FALSE]
+      s2$position  = del_end + 0.5
+      s2$mean_prob = NA_real_
+      if ("lower" %in% names(smoothed)) { s2$lower = NA_real_; s2$upper = NA_real_ }
+      sentinels[[2L * j - 1L]] = s1
+      sentinels[[2L * j]]      = s2
     }
-    sentinel_list[[i]] <- do.call(rbind, sentinels)
+    sentinel_list[[i]] = do.call(rbind, sentinels)
   }
 
-  all_sentinels <- do.call(rbind, Filter(Negate(is.null), sentinel_list))
+  all_sentinels = do.call(rbind, Filter(Negate(is.null), sentinel_list))
   if (!is.null(all_sentinels) && nrow(all_sentinels) > 0L) {
-    smoothed <- rbind(smoothed, all_sentinels[, names(smoothed), drop = FALSE])
+    smoothed = rbind(smoothed, all_sentinels[, names(smoothed), drop = FALSE])
   }
 
-  smoothed <- smoothed[order(smoothed[[group_col]], smoothed$position), , drop = FALSE]
-  rownames(smoothed) <- NULL
+  smoothed = smoothed[order(smoothed[[group_col]], smoothed$position), , drop = FALSE]
+  rownames(smoothed) = NULL
   smoothed
 }
 
@@ -204,17 +204,17 @@
 # `fill_aes`; pass an explicit interaction() when a branch has more than one
 # identity variable (e.g. group + mod_code) so overlapping CI bands don't
 # collapse into a single self-crossing polygon.
-.add_ci_ribbon <- function(p, smoothed, show_ci, fill_aes = NULL, group_aes = NULL) {
+.add_ci_ribbon = function(p, smoothed, show_ci, fill_aes = NULL, group_aes = NULL) {
   if (!isTRUE(show_ci)) return(p)
   if (!all(c("lower", "upper") %in% names(smoothed))) return(p)
-  rib <- smoothed[!is.na(smoothed$lower) & !is.na(smoothed$upper), , drop = FALSE]
+  rib = smoothed[!is.na(smoothed$lower) & !is.na(smoothed$upper), , drop = FALSE]
   if (nrow(rib) == 0L) return(p)
-  aes_args <- list(x = quote(.data$position),
+  aes_args = list(x = quote(.data$position),
                    ymin = quote(.data$lower),
                    ymax = quote(.data$upper))
-  if (!is.null(fill_aes)) aes_args$fill <- fill_aes
-  if (!is.null(group_aes)) aes_args$group <- group_aes
-  ribbon <- ggplot2::geom_ribbon(
+  if (!is.null(fill_aes)) aes_args$fill = fill_aes
+  if (!is.null(group_aes)) aes_args$group = group_aes
+  ribbon = ggplot2::geom_ribbon(
     data = rib,
     mapping = do.call(ggplot2::aes, aes_args),
     alpha = 0.2, colour = NA,
@@ -222,7 +222,7 @@
     show.legend = FALSE
   )
   # Insert ribbon *before* existing line layers so it renders behind them.
-  p$layers <- c(list(ribbon), p$layers)
+  p$layers = c(list(ribbon), p$layers)
   p
 }
 
@@ -230,7 +230,7 @@
 # Returns a list of scales/coords/theme components shared by every branch.
 # `y_label` differs between call modes: continuous mode plots a mean probability,
 # binary mode plots a fraction of methylated calls (see .smooth_y_label()).
-.smooth_panel_base <- function(region_start, region_end,
+.smooth_panel_base = function(region_start, region_end,
                                y_label = "Mean modification\nprobability") {
   list(
     ggplot2::scale_y_continuous(limits = c(0, 1), name = y_label),
@@ -606,10 +606,10 @@
 #'
 #' @examples
 #' \dontrun{
-#' md <- read_methylation("sample.bam", "chr1:1000-2000")
+#' md = read_methylation("sample.bam", "chr1:1000-2000")
 #' plot_methylation(md)
 #'
-#' md <- read_methylation("sample.bam", "chr1:1000-2000", group_tag = "HP")
+#' md = read_methylation("sample.bam", "chr1:1000-2000", group_tag = "HP")
 #' plot_methylation(md, group_colours = c("1" = "steelblue", "2" = "coral"))
 #' }
 #'

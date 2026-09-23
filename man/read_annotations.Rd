@@ -71,20 +71,20 @@ free cached objects or force re-parsing.
 \examples{
 \dontrun{
 # Recommended: auto-download UCSC ncbiRefSeq GTF (canonical gene symbols)
-ann <- read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
-ann <- read_annotations(genome = "chm13", region = "chr8:127730000-127760000")
+ann = read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
+ann = read_annotations(genome = "chm13", region = "chr8:127730000-127760000")
 
 # Change cache directory (e.g. to scratch on HPC)
 options(ggmethylation.cache_dir = "/scratch/myproject/gtf_cache")
-ann <- read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
+ann = read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
 
 # From a local GTF file — parsed once, cached for subsequent calls
-ann1 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr1:1000000-2000000")
-ann2 <- read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr2:5000000-6000000")
+ann1 = read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr1:1000000-2000000")
+ann2 = read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr2:5000000-6000000")
 
 # From a pre-built TxDb package
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-ann <- read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
+ann = read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
                         region = "chr1:1000000-2000000")
 }
 

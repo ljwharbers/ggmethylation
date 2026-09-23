@@ -1,12 +1,12 @@
 # Tests for grouped plotting when reads with missing group labels are retained
 
-make_grouped_plot_data <- function() {
-  gr <- GenomicRanges::GRanges(
+make_grouped_plot_data = function() {
+  gr = GenomicRanges::GRanges(
     seqnames = "chr1",
     ranges   = IRanges::IRanges(start = 100L, end = 300L)
   )
 
-  reads <- data.frame(
+  reads = data.frame(
     read_name = c("r1", "r2", "r3"),
     start     = c(100L, 120L, 180L),
     end       = c(170L, 190L, 260L),
@@ -15,7 +15,7 @@ make_grouped_plot_data <- function() {
     stringsAsFactors = FALSE
   )
 
-  sites <- data.frame(
+  sites = data.frame(
     read_name = c("r1", "r1", "r2", "r2", "r3", "r3"),
     position  = c(105L, 130L, 125L, 150L, 200L, 230L),
     mod_prob  = c(0.1, 0.3, 0.4, 0.6, 0.5, 0.7),
@@ -24,7 +24,7 @@ make_grouped_plot_data <- function() {
     stringsAsFactors = FALSE
   )
 
-  cigar_features <- data.frame(
+  cigar_features = data.frame(
     type        = c("D", "D", "D"),
     ref_start   = c(135L, 140L, 210L),
     ref_end     = c(145L, 150L, 220L),
@@ -52,16 +52,16 @@ make_grouped_plot_data <- function() {
 }
 
 test_that("plot_methylation handles retained NA groups when showing CIGAR deletions", {
-  md <- make_grouped_plot_data()
+  md = make_grouped_plot_data()
 
-  p <- expect_no_error(
+  p = expect_no_error(
     plot_methylation(md, show_cigar = TRUE, min_indel_size = 1L)
   )
 
   expect_s3_class(p, "patchwork")
 
-  top_panel <- p$patches$plots[[1L]]
-  poly_data <- ggplot2::layer_data(top_panel, 1L)
+  top_panel = p$patches$plots[[1L]]
+  poly_data = ggplot2::layer_data(top_panel, 1L)
 
   expect_true(nrow(poly_data) > 0L)
   expect_true("grey50" %in% poly_data$fill)

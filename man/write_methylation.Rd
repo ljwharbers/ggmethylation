@@ -59,7 +59,7 @@ column contains \code{mod_prob} (float in \verb{[0, 1]}).
 }
 \examples{
 \dontrun{
-md <- read_methylation("sample.bam", "chr1:1000-2000")
+md = read_methylation("sample.bam", "chr1:1000-2000")
 
 # Write both TSV files to the current directory
 write_methylation(md, prefix = "output/sample_chr1")

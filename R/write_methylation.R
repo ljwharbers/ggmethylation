@@ -38,7 +38,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' md <- read_methylation("sample.bam", "chr1:1000-2000")
+#' md = read_methylation("sample.bam", "chr1:1000-2000")
 #'
 #' # Write both TSV files to the current directory
 #' write_methylation(md, prefix = "output/sample_chr1")
@@ -59,7 +59,7 @@
 #'
 #' @seealso [read_methylation()]
 #' @export
-write_methylation <- function(data,
+write_methylation = function(data,
                               prefix,
                               format = c("tsv", "bed"),
                               reads  = TRUE,
@@ -71,26 +71,26 @@ write_methylation <- function(data,
     stop("'data' must be a methylation_data object.", call. = FALSE)
   if (!is.character(prefix) || length(prefix) != 1L || nchar(prefix) == 0L)
     stop("'prefix' must be a non-empty character string.", call. = FALSE)
-  format <- match.arg(format)
+  format = match.arg(format)
   if (!reads && !sites) {
     warning("Nothing to write: both 'reads' and 'sites' are FALSE.")
     return(invisible(data))
   }
 
   # --- Create output directory if needed ---
-  out_dir <- dirname(prefix)
+  out_dir = dirname(prefix)
   if (!is.na(out_dir) && out_dir != "." && !dir.exists(out_dir))
     dir.create(out_dir, recursive = TRUE)
 
   # --- Compute mean_mod_prob per read ---
-  data$reads$mean_mod_prob <- .read_mean_mod_prob(data$sites, data$reads$read_name)
+  data$reads$mean_mod_prob = .read_mean_mod_prob(data$sites, data$reads$read_name)
 
   # --- Write reads ---
   if (reads) {
-    read_cols <- c("read_name", "start", "end", "strand")
+    read_cols = c("read_name", "start", "end", "strand")
     if (!is.null(data$group_tag) && "group" %in% names(data$reads))
-      read_cols <- c(read_cols, "group")
-    read_cols <- c(read_cols, "mean_mod_prob")
+      read_cols = c(read_cols, "group")
+    read_cols = c(read_cols, "mean_mod_prob")
     .write_table_maybe_gz(data$reads[, read_cols, drop = FALSE],
                           paste0(prefix, "_reads.tsv"), gzip)
   }
@@ -98,17 +98,17 @@ write_methylation <- function(data,
   # --- Write sites ---
   if (sites) {
     if (format == "tsv") {
-      site_cols <- c("position", "mod_prob", "read_name", "mod_code")
+      site_cols = c("position", "mod_prob", "read_name", "mod_code")
       if ("group" %in% names(data$sites))
-        site_cols <- c(site_cols, "group")
+        site_cols = c(site_cols, "group")
       .write_table_maybe_gz(data$sites[, site_cols, drop = FALSE],
                             paste0(prefix, "_sites.tsv"), gzip)
     } else {
       # BED format
-      chrom <- as.character(GenomicRanges::seqnames(data$region))
-      strand_map <- data$reads$strand
-      names(strand_map) <- data$reads$read_name
-      bed <- data.frame(
+      chrom = as.character(GenomicRanges::seqnames(data$region))
+      strand_map = data$reads$strand
+      names(strand_map) = data$reads$read_name
+      bed = data.frame(
         chrom      = chrom,
         chromStart = data$sites$position - 1L,
         chromEnd   = data$sites$position,
@@ -137,9 +137,9 @@ write_methylation <- function(data,
 #' @return `path` (with `.gz` suffix if applicable), invisibly.
 #'
 #' @keywords internal
-.write_table_maybe_gz <- function(df, path, gzip, header = TRUE) {
-  if (gzip) path <- paste0(path, ".gz")
-  con <- if (gzip) gzfile(path, "w") else file(path, "w")
+.write_table_maybe_gz = function(df, path, gzip, header = TRUE) {
+  if (gzip) path = paste0(path, ".gz")
+  con = if (gzip) gzfile(path, "w") else file(path, "w")
   on.exit(close(con))
   utils::write.table(df, con, sep = "\t", quote = FALSE,
               row.names = FALSE, col.names = header)

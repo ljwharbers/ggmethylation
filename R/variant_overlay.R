@@ -20,7 +20,7 @@
 #'   `lane` (integer).
 #'
 #' @keywords internal
-extract_variant_bases <- function(reads, sequences, cigars, variants) {
+extract_variant_bases = function(reads, sequences, cigars, variants) {
   # Handle empty variants immediately
   if (is.null(variants) || nrow(variants) == 0L) {
     return(data.frame(
@@ -33,25 +33,25 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
     ))
   }
 
-  result_list <- vector("list", nrow(reads) * nrow(variants))
-  result_idx  <- 0L
+  result_list = vector("list", nrow(reads) * nrow(variants))
+  result_idx  = 0L
 
   for (i in seq_len(nrow(reads))) {
-    read_name <- reads$read_name[i]
+    read_name = reads$read_name[i]
 
     # Skip reads without a stored sequence
     if (!read_name %in% names(sequences)) next
     if (!read_name %in% names(cigars))    next
 
-    seq_str  <- sequences[[read_name]]
-    cigar    <- cigars[[read_name]]
-    r_start  <- reads$start[i]
-    r_end    <- reads$end[i]
-    bam_pos  <- reads$bam_pos[i]
-    lane     <- reads$lane[i]
+    seq_str  = sequences[[read_name]]
+    cigar    = cigars[[read_name]]
+    r_start  = reads$start[i]
+    r_end    = reads$end[i]
+    bam_pos  = reads$bam_pos[i]
+    lane     = reads$lane[i]
 
     for (v in seq_len(nrow(variants))) {
-      var_pos <- variants$position[v]
+      var_pos = variants$position[v]
 
       # Skip if variant is outside this read's clipped span
       if (var_pos < r_start || var_pos > r_end) next
@@ -59,7 +59,7 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
       # Map genomic position to query position via CIGAR.
       # Use bam_pos (original unclipped alignment start), not the clipped
       # reads$start, so the CIGAR walk begins from the correct reference offset.
-      q_pos <- ref_to_seq(
+      q_pos = ref_to_seq(
         cigar          = cigar,
         ref_start      = bam_pos,
         target_ref_pos = var_pos
@@ -67,14 +67,14 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
 
       if (is.na(q_pos)) {
         # Position falls in a deletion
-        base          <- "-"
-        variant_class <- "del"
+        base          = "-"
+        variant_class = "del"
       } else {
-        base <- substr(seq_str, q_pos, q_pos)
+        base = substr(seq_str, q_pos, q_pos)
         if (nchar(base) == 0L || base == "") {
           next  # q_pos out of sequence length — skip
         }
-        variant_class <- if (toupper(base) == toupper(variants$ref[v])) {
+        variant_class = if (toupper(base) == toupper(variants$ref[v])) {
           "ref"
         } else if (toupper(base) == toupper(variants$alt[v])) {
           "alt"
@@ -83,8 +83,8 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
         }
       }
 
-      result_idx <- result_idx + 1L
-      result_list[[result_idx]] <- data.frame(
+      result_idx = result_idx + 1L
+      result_list[[result_idx]] = data.frame(
         read_name     = read_name,
         position      = var_pos,
         base          = base,
@@ -126,28 +126,28 @@ extract_variant_bases <- function(reads, sequences, cigars, variants) {
 #'   `variants` is `NULL` or not a `variant_data` object.
 #'
 #' @keywords internal
-build_variant_overlay <- function(data, variants) {
+build_variant_overlay = function(data, variants) {
   if (is.null(variants) || !inherits(variants, "variant_data")) {
     return(NULL)
   }
 
-  vdf <- variants$variants
+  vdf = variants$variants
 
   # Partition by type
   # Only single-nucleotide variants are supported by the asterisk overlay.
   # Insertions and deletions cannot be resolved to a single reference base, so
   # routing them through extract_variant_bases() would classify every spanning
   # read as "other" and mark all reads (issue #20).
-  snv_rows <- vdf[vdf$type == "SNV", , drop = FALSE]
-  sv_rows  <- vdf[vdf$type %in% c("DEL", "DUP", "INV"),           , drop = FALSE]
-  bnd_rows <- vdf[vdf$type == "BND",                               , drop = FALSE]
+  snv_rows = vdf[vdf$type == "SNV", , drop = FALSE]
+  sv_rows  = vdf[vdf$type %in% c("DEL", "DUP", "INV"),           , drop = FALSE]
+  bnd_rows = vdf[vdf$type == "BND",                               , drop = FALSE]
 
   # --- SNV layer ---
-  snv_layers <- NULL
+  snv_layers = NULL
   if (nrow(snv_rows) > 0L) {
     if (!is.null(data$sequences) && length(data$sequences) > 0L) {
-      vbases     <- extract_variant_bases(data$reads, data$sequences, data$cigars, snv_rows)
-      snv_layers <- build_snv_layer(vbases)
+      vbases     = extract_variant_bases(data$reads, data$sequences, data$cigars, snv_rows)
+      snv_layers = build_snv_layer(vbases)
     } else {
       warning(
         "VCF overlay requires sequences stored in methylation_data. ",
@@ -158,16 +158,16 @@ build_variant_overlay <- function(data, variants) {
   }
 
   # --- SV layer ---
-  region_start <- GenomicRanges::start(data$region)
-  region_end   <- GenomicRanges::end(data$region)
-  sv_layers    <- build_sv_layer(data$reads, sv_rows, region_start, region_end)
+  region_start = GenomicRanges::start(data$region)
+  region_end   = GenomicRanges::end(data$region)
+  sv_layers    = build_sv_layer(data$reads, sv_rows, region_start, region_end)
 
   # --- BND layer and SA matching ---
-  bnd_layers         <- build_bnd_layer(bnd_rows)
-  sa_reads_validated <- NULL
+  bnd_layers         = build_bnd_layer(bnd_rows)
+  sa_reads_validated = NULL
   if ("sa_chrom" %in% names(data$reads)) {
-    tol <- if (is.null(variants$bnd_match_tol)) 50L else variants$bnd_match_tol
-    sa_reads_validated <- match_sa_to_vcf_bnd(data$reads, bnd_rows, tol = tol)
+    tol = if (is.null(variants$bnd_match_tol)) 50L else variants$bnd_match_tol
+    sa_reads_validated = match_sa_to_vcf_bnd(data$reads, bnd_rows, tol = tol)
   }
 
   list(

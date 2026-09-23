@@ -38,9 +38,9 @@ or via the \code{.list} parameter (\code{merge_methylation(.list = list(A = md1,
 }
 \examples{
 \dontrun{
-md1 <- read_methylation("sample1.bam", "chr1:1000-2000")
-md2 <- read_methylation("sample2.bam", "chr1:1000-2000")
-merged <- merge_methylation(sampleA = md1, sampleB = md2)
+md1 = read_methylation("sample1.bam", "chr1:1000-2000")
+md2 = read_methylation("sample2.bam", "chr1:1000-2000")
+merged = merge_methylation(sampleA = md1, sampleB = md2)
 print(merged)
 plot_methylation(merged)
 }

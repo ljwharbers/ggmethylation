@@ -25,6 +25,10 @@ devtools::document()
 devtools::check()
 ```
 
+## Code style
+
+Use `=` for assignment, not `<-`. The one exception is an assignment inside a call's arguments (e.g. `expect_silent(p <- plot_methylation(md))`), where `=` would pass a named argument instead.
+
 ## Architecture
 
 The package has three layers:

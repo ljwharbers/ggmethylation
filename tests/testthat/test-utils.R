@@ -3,14 +3,14 @@
 # --- parse_region ---
 
 test_that("parse_region parses standard region", {
-  result <- ggmethylation:::parse_region("chr1:1000-2000")
+  result = ggmethylation:::parse_region("chr1:1000-2000")
   expect_equal(result$chrom, "chr1")
   expect_equal(result$start, 1000L)
   expect_equal(result$end, 2000L)
 })
 
 test_that("parse_region strips commas", {
-  result <- ggmethylation:::parse_region("chr1:1,000-2,000")
+  result = ggmethylation:::parse_region("chr1:1,000-2,000")
   expect_equal(result$chrom, "chr1")
   expect_equal(result$start, 1000L)
   expect_equal(result$end, 2000L)
@@ -29,7 +29,7 @@ test_that("parse_region rejects empty string", {
 })
 
 test_that("parse_region accepts dotted chromosome names", {
-  result <- ggmethylation:::parse_region("chr1.1:100-200")
+  result = ggmethylation:::parse_region("chr1.1:100-200")
   expect_equal(result$chrom, "chr1.1")
   expect_equal(result$start, 100L)
   expect_equal(result$end, 200L)
@@ -72,23 +72,23 @@ test_that("ref_to_seq soft clip shifts effective query positions", {
 # --- parse_sa_tag ---
 
 test_that("parse_sa_tag returns empty data.frame for NULL input", {
-  result <- ggmethylation:::parse_sa_tag(NULL)
+  result = ggmethylation:::parse_sa_tag(NULL)
   expect_equal(nrow(result), 0L)
   expect_equal(names(result), c("rname", "pos", "strand", "cigar", "mapq", "nm"))
 })
 
 test_that("parse_sa_tag returns empty data.frame for NA input", {
-  result <- ggmethylation:::parse_sa_tag(NA_character_)
+  result = ggmethylation:::parse_sa_tag(NA_character_)
   expect_equal(nrow(result), 0L)
 })
 
 test_that("parse_sa_tag returns empty data.frame for empty string", {
-  result <- ggmethylation:::parse_sa_tag("")
+  result = ggmethylation:::parse_sa_tag("")
   expect_equal(nrow(result), 0L)
 })
 
 test_that("parse_sa_tag parses a single SA entry", {
-  result <- ggmethylation:::parse_sa_tag("chr5,45000,+,50M,60,0;")
+  result = ggmethylation:::parse_sa_tag("chr5,45000,+,50M,60,0;")
   expect_equal(nrow(result), 1L)
   expect_equal(result$rname,  "chr5")
   expect_equal(result$pos,    45000L)
@@ -99,7 +99,7 @@ test_that("parse_sa_tag parses a single SA entry", {
 })
 
 test_that("parse_sa_tag parses multiple SA entries", {
-  result <- ggmethylation:::parse_sa_tag("chr5,45000,+,50M,60,0;chr8,12000,-,30M,0,1;")
+  result = ggmethylation:::parse_sa_tag("chr5,45000,+,50M,60,0;chr8,12000,-,30M,0,1;")
   expect_equal(nrow(result), 2L)
   expect_equal(result$rname,  c("chr5", "chr8"))
   expect_equal(result$pos,    c(45000L, 12000L))
@@ -109,7 +109,7 @@ test_that("parse_sa_tag parses multiple SA entries", {
 
 test_that("parse_sa_tag silently skips malformed entries", {
   # Only second entry is valid
-  result <- ggmethylation:::parse_sa_tag("bad;chr8,12000,-,30M,0,1;")
+  result = ggmethylation:::parse_sa_tag("bad;chr8,12000,-,30M,0,1;")
   expect_equal(nrow(result), 1L)
   expect_equal(result$rname, "chr8")
 })
@@ -194,7 +194,7 @@ test_that("detect_clip_side returns NA for NA input", {
 # --- region_to_granges ---
 
 test_that("region_to_granges returns GRanges with correct coordinates", {
-  gr <- ggmethylation:::region_to_granges("chr1:1000-2000")
+  gr = ggmethylation:::region_to_granges("chr1:1000-2000")
   expect_s4_class(gr, "GRanges")
   expect_equal(as.character(GenomicRanges::seqnames(gr)), "chr1")
   expect_equal(GenomicRanges::start(gr), 1000L)
@@ -202,7 +202,7 @@ test_that("region_to_granges returns GRanges with correct coordinates", {
 })
 
 test_that("region_to_granges handles comma-formatted positions", {
-  gr <- ggmethylation:::region_to_granges("chr2:1,000-2,000")
+  gr = ggmethylation:::region_to_granges("chr2:1,000-2,000")
   expect_equal(GenomicRanges::start(gr), 1000L)
   expect_equal(GenomicRanges::end(gr), 2000L)
 })

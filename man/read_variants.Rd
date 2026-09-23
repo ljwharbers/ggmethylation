@@ -44,7 +44,7 @@ Bioconductor. Install them with:
 }
 \examples{
 \dontrun{
-vd <- read_variants("calls.vcf.gz", "chr1:1000000-1050000")
+vd = read_variants("calls.vcf.gz", "chr1:1000000-1050000")
 print(vd)
 }
 

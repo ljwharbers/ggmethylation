@@ -22,9 +22,9 @@
 #'   - `FALSE` otherwise (including reads with no SA tag, i.e., `is.na(sa_chrom)`).
 #'
 #' @keywords internal
-match_sa_to_vcf_bnd <- function(reads, bnd_df, tol = 50L) {
+match_sa_to_vcf_bnd = function(reads, bnd_df, tol = 50L) {
   # Default: all reads are not validated
-  reads$vcf_validated <- FALSE
+  reads$vcf_validated = FALSE
 
   # Early exit when there are no BND records to match against
   if (is.null(bnd_df) || nrow(bnd_df) == 0L) {
@@ -32,7 +32,7 @@ match_sa_to_vcf_bnd <- function(reads, bnd_df, tol = 50L) {
   }
 
   # Only consider reads that have an SA tag (non-NA sa_chrom and sa_pos)
-  has_sa <- !is.na(reads$sa_chrom) & !is.na(reads$sa_pos)
+  has_sa = !is.na(reads$sa_chrom) & !is.na(reads$sa_pos)
 
   if (!any(has_sa)) {
     return(reads)
@@ -40,17 +40,17 @@ match_sa_to_vcf_bnd <- function(reads, bnd_df, tol = 50L) {
 
   # For each SA-carrying read, check whether ANY BND row satisfies both
   # the chromosome and position conditions simultaneously.
-  sa_indices <- which(has_sa)
+  sa_indices = which(has_sa)
 
   for (i in sa_indices) {
-    r_chrom <- reads$sa_chrom[i]
-    r_pos   <- reads$sa_pos[i]
+    r_chrom = reads$sa_chrom[i]
+    r_pos   = reads$sa_pos[i]
 
-    chrom_match <- bnd_df$mate_chrom == r_chrom
-    pos_match   <- abs(bnd_df$position - r_pos) <= tol
+    chrom_match = bnd_df$mate_chrom == r_chrom
+    pos_match   = abs(bnd_df$position - r_pos) <= tol
 
     if (any(chrom_match & pos_match)) {
-      reads$vcf_validated[i] <- TRUE
+      reads$vcf_validated[i] = TRUE
     }
   }
 
@@ -76,11 +76,11 @@ match_sa_to_vcf_bnd <- function(reads, bnd_df, tol = 50L) {
 #'   or `NULL` when `bnd_df` is `NULL` or zero-row.
 #'
 #' @keywords internal
-build_bnd_layer <- function(bnd_df) {
+build_bnd_layer = function(bnd_df) {
   if (is.null(bnd_df) || nrow(bnd_df) == 0L) return(NULL)
 
   # Pre-format the full mate location label (done outside aes for clarity)
-  bnd_df$mate_label <- paste0(
+  bnd_df$mate_label = paste0(
     "\u22c8 ",
     bnd_df$mate_chrom,
     ":",

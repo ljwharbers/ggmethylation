@@ -1,25 +1,25 @@
 # Compute a signed methylation difference between exactly two groups over a
 # shared position grid. Returns NULL (with a message) when != 2 groups.
-.compute_group_delta <- function(sites, group_col, span = NULL, n_grid = 200L) {
-  groups <- unique(sites[[group_col]])
-  groups <- sort(groups[!is.na(groups)])
+.compute_group_delta = function(sites, group_col, span = NULL, n_grid = 200L) {
+  groups = unique(sites[[group_col]])
+  groups = sort(groups[!is.na(groups)])
   if (length(groups) != 2L) {
     message("Delta track requires exactly two groups; skipping.")
     return(NULL)
   }
 
-  all_pos <- sites$position[!is.na(sites$position)]
-  grid <- seq(min(all_pos), max(all_pos), length.out = n_grid)
+  all_pos = sites$position[!is.na(sites$position)]
+  grid = seq(min(all_pos), max(all_pos), length.out = n_grid)
 
-  smoothed <- smooth_methylation(sites, group_col = group_col, span = span, grid = grid)
-  v1 <- smoothed$mean_prob[smoothed[[group_col]] == groups[1L]]
-  v2 <- smoothed$mean_prob[smoothed[[group_col]] == groups[2L]]
-  delta <- v2 - v1
-  out <- data.frame(position = grid, delta = delta, sign = .delta_sign(delta),
+  smoothed = smooth_methylation(sites, group_col = group_col, span = span, grid = grid)
+  v1 = smoothed$mean_prob[smoothed[[group_col]] == groups[1L]]
+  v2 = smoothed$mean_prob[smoothed[[group_col]] == groups[2L]]
+  delta = v2 - v1
+  out = data.frame(position = grid, delta = delta, sign = .delta_sign(delta),
                     stringsAsFactors = FALSE)
   # The sorted group names, so callers can colour "pos"/"neg" by the group each
   # sign belongs to (delta = groups[2] - groups[1]).
-  attr(out, "groups") <- groups
+  attr(out, "groups") = groups
   out
 }
 
@@ -34,11 +34,11 @@
 # `fill_pos`/`fill_neg` default to the standalone diverging palette; callers
 # with a group palette in hand pass the two group colours instead, so the delta
 # area matches the groups in the panels above (pos = group 2, neg = group 1).
-.build_delta_panel <- function(delta_df, region_start, region_end,
+.build_delta_panel = function(delta_df, region_start, region_end,
                                y_label = "\u0394 methylation",
                                fill_pos = .DELTA_DIVERGING$pos,
                                fill_neg = .DELTA_DIVERGING$neg) {
-  df <- delta_df[!is.na(delta_df$delta), , drop = FALSE]
+  df = delta_df[!is.na(delta_df$delta), , drop = FALSE]
   ggplot2::ggplot(df, ggplot2::aes(x = .data$position, y = .data$delta)) +
     ggplot2::geom_area(
       ggplot2::aes(fill = .data$sign),

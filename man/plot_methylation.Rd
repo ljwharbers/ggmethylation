@@ -172,10 +172,10 @@ panel plots the fraction of methylated calls instead of the mean probability.
 }
 \examples{
 \dontrun{
-md <- read_methylation("sample.bam", "chr1:1000-2000")
+md = read_methylation("sample.bam", "chr1:1000-2000")
 plot_methylation(md)
 
-md <- read_methylation("sample.bam", "chr1:1000-2000", group_tag = "HP")
+md = read_methylation("sample.bam", "chr1:1000-2000", group_tag = "HP")
 plot_methylation(md, group_colours = c("1" = "steelblue", "2" = "coral"))
 }
 

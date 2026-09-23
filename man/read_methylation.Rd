@@ -99,11 +99,11 @@ a given genomic region. This is the main entry point for data extraction
 }
 \examples{
 \dontrun{
-md <- read_methylation("sample.bam", "chr1:1000-2000")
-md <- read_methylation("sample.bam", "chr1:1000-2000",
+md = read_methylation("sample.bam", "chr1:1000-2000")
+md = read_methylation("sample.bam", "chr1:1000-2000",
   group_tag = "HP", max_reads = 100
 )
-md <- read_methylation("sample.bam", "chr1:1000-2000",
+md = read_methylation("sample.bam", "chr1:1000-2000",
   snv = list(position = 1500, ref = "C", alt = "T")
 )
 }

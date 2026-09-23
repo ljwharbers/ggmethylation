@@ -81,7 +81,7 @@
 #'   raw per-x means when fewer than 4 unique x values are present.
 #'
 #' @keywords internal
-.smooth_xy <- function(x, y, span = NULL) {
+.smooth_xy = function(x, y, span = NULL) {
   .smooth_group(data.frame(position = x, mod_prob = y), span)[c("position", "mean_prob")]
 }
 
@@ -124,7 +124,7 @@
 #'   values for every group instead (see `grid` above).
 #'
 #' @keywords internal
-smooth_methylation <- function(sites, group_col = "group",
+smooth_methylation = function(sites, group_col = "group",
                                mod_code_col = NULL, span = NULL, grid = NULL) {
   # One line per group, or per (group, mod_code) pair when mod_code_col is set.
   # Sites without a group are not smoothed.

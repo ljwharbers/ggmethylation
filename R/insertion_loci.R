@@ -11,7 +11,7 @@
 #'   `group`. Zero rows when no inserted-base modifications were found.
 #'
 #' @export
-insertion_sites <- function(data) {
+insertion_sites = function(data) {
   if (!inherits(data, "methylation_data")) {
     stop("'data' must be a methylation_data object.", call. = FALSE)
   }
@@ -64,25 +64,25 @@ insertion_sites <- function(data) {
 #'
 #' @examples
 #' \dontrun{
-#' md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
-#' loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
+#' md   = read_methylation("sample.bam", "chr21:34500000-34510000")
+#' loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
 #' loci$locus_id
 #' plot_insertion_locus(md, loci[1, ])
 #' }
 #'
 #' @export
-list_insertion_loci <- function(data, tol_pos = 10L, tol_len = 0.20,
+list_insertion_loci = function(data, tol_pos = 10L, tol_len = 0.20,
                                 min_reads = 2L) {
   if (!inherits(data, "methylation_data")) {
     stop("'data' must be a methylation_data object.", call. = FALSE)
   }
-  tol_pos   <- as.integer(tol_pos)
-  min_reads <- as.integer(min_reads)
+  tol_pos   = as.integer(tol_pos)
+  min_reads = as.integer(min_reads)
 
-  cf <- data$cigar_features
-  ins <- cf[cf$type == "I" & !is.na(cf$ref_start), , drop = FALSE]
+  cf = data$cigar_features
+  ins = cf[cf$type == "I" & !is.na(cf$ref_start), , drop = FALSE]
 
-  empty_out <- data.frame(
+  empty_out = data.frame(
     locus_id         = character(0L),
     chrom            = character(0L),
     anchor_pos       = integer(0L),
@@ -94,89 +94,89 @@ list_insertion_loci <- function(data, tol_pos = 10L, tol_len = 0.20,
     mean_ins_mod_prob = numeric(0L),
     stringsAsFactors = FALSE
   )
-  empty_out$carriers    <- list()
-  empty_out$noncarriers <- list()
-  empty_out$tol_pos     <- integer(0L)
-  empty_out$tol_len     <- numeric(0L)
+  empty_out$carriers    = list()
+  empty_out$noncarriers = list()
+  empty_out$tol_pos     = integer(0L)
+  empty_out$tol_len     = numeric(0L)
 
   if (nrow(ins) == 0L) return(empty_out)
 
-  chrom <- as.character(GenomicRanges::seqnames(data$region))
+  chrom = as.character(GenomicRanges::seqnames(data$region))
 
   # Sort by ref_start for single-pass greedy clustering
-  ord <- order(ins$ref_start)
-  ins <- ins[ord, , drop = FALSE]
+  ord = order(ins$ref_start)
+  ins = ins[ord, , drop = FALSE]
 
-  cluster_id  <- integer(nrow(ins))
-  current_id  <- 1L
-  cluster_id[1L] <- current_id
-  prev_anchor  <- ins$ref_start[1L]
-  cluster_lens <- ins$length[1L]
+  cluster_id  = integer(nrow(ins))
+  current_id  = 1L
+  cluster_id[1L] = current_id
+  prev_anchor  = ins$ref_start[1L]
+  cluster_lens = ins$length[1L]
 
   for (i in seq_len(nrow(ins))[-1L]) {
-    cur_pos <- ins$ref_start[i]
-    cur_len <- ins$length[i]
-    med_len <- stats::median(cluster_lens)
+    cur_pos = ins$ref_start[i]
+    cur_len = ins$length[i]
+    med_len = stats::median(cluster_lens)
 
-    frac_diff <- if (med_len > 0) abs(cur_len - med_len) / med_len else 0
+    frac_diff = if (med_len > 0) abs(cur_len - med_len) / med_len else 0
 
     if ((cur_pos - prev_anchor) > tol_pos || frac_diff > tol_len) {
-      current_id  <- current_id + 1L
-      cluster_lens <- cur_len
+      current_id  = current_id + 1L
+      cluster_lens = cur_len
     } else {
-      cluster_lens <- c(cluster_lens, cur_len)
+      cluster_lens = c(cluster_lens, cur_len)
     }
-    cluster_id[i] <- current_id
-    prev_anchor   <- cur_pos
+    cluster_id[i] = current_id
+    prev_anchor   = cur_pos
   }
 
-  n_clusters <- max(cluster_id)
-  result_list <- vector("list", n_clusters)
+  n_clusters = max(cluster_id)
+  result_list = vector("list", n_clusters)
 
-  all_read_names <- data$reads$read_name
-  ins_sites <- data$insertion_sites
+  all_read_names = data$reads$read_name
+  ins_sites = data$insertion_sites
 
   for (cid in seq_len(n_clusters)) {
-    rows <- ins[cluster_id == cid, , drop = FALSE]
+    rows = ins[cluster_id == cid, , drop = FALSE]
 
     if (nrow(rows) < min_reads) next
 
-    med_len <- as.integer(stats::median(rows$length))
+    med_len = as.integer(stats::median(rows$length))
 
     # Post-filter to match plot_insertion_locus() carrier definition: within
     # tol_len of the final cluster median, not the running merge median.
-    carrier_rows  <- rows[abs(rows$length - med_len) / pmax(med_len, 1L) <= tol_len,
+    carrier_rows  = rows[abs(rows$length - med_len) / pmax(med_len, 1L) <= tol_len,
                           , drop = FALSE]
-    carrier_names <- unique(carrier_rows$read_name)
-    n_carriers    <- length(carrier_names)
+    carrier_names = unique(carrier_rows$read_name)
+    n_carriers    = length(carrier_names)
     if (n_carriers < min_reads) next
 
-    anchor  <- as.integer(stats::median(carrier_rows$ref_start))
-    med_len <- as.integer(stats::median(carrier_rows$length))
+    anchor  = as.integer(stats::median(carrier_rows$ref_start))
+    med_len = as.integer(stats::median(carrier_rows$length))
 
     # Non-carriers: reads spanning anchor_pos +/- tol_pos, not in carrier set
-    read_start <- pmin(data$reads$bam_pos, data$reads$start)
-    read_end   <- data$reads$end
-    spans_locus <- read_start <= (anchor + tol_pos) & read_end >= (anchor - tol_pos)
-    noncarrier_mask <- spans_locus & !(all_read_names %in% carrier_names)
-    noncarriers   <- all_read_names[noncarrier_mask]
+    read_start = pmin(data$reads$bam_pos, data$reads$start)
+    read_end   = data$reads$end
+    spans_locus = read_start <= (anchor + tol_pos) & read_end >= (anchor - tol_pos)
+    noncarrier_mask = spans_locus & !(all_read_names %in% carrier_names)
+    noncarriers   = all_read_names[noncarrier_mask]
 
     # Mean mod_prob from insertion_sites for carrier reads at this locus
-    mean_mod <- NA_real_
+    mean_mod = NA_real_
     if (!is.null(ins_sites) && nrow(ins_sites) > 0L) {
-      ins_sub <- ins_sites[
+      ins_sub = ins_sites[
         ins_sites$read_name %in% carrier_names &
         ins_sites$ref_anchor >= (anchor - tol_pos) &
         ins_sites$ref_anchor <= (anchor + tol_pos), , drop = FALSE
       ]
       if (nrow(ins_sub) > 0L) {
-        mean_mod <- mean(ins_sub$mod_prob, na.rm = TRUE)
+        mean_mod = mean(ins_sub$mod_prob, na.rm = TRUE)
       }
     }
 
-    locus_id <- sprintf("INS_%s_%d_%dbp", chrom, anchor, med_len)
+    locus_id = sprintf("INS_%s_%d_%dbp", chrom, anchor, med_len)
 
-    row <- data.frame(
+    row = data.frame(
       locus_id          = locus_id,
       chrom             = chrom,
       anchor_pos        = anchor,
@@ -189,19 +189,19 @@ list_insertion_loci <- function(data, tol_pos = 10L, tol_len = 0.20,
       stringsAsFactors  = FALSE
     )
     # Insertion length per carrier read (its first matching insertion)
-    first <- !duplicated(carrier_rows$read_name)
-    row$carriers    <- list(stats::setNames(carrier_rows$length[first],
+    first = !duplicated(carrier_rows$read_name)
+    row$carriers    = list(stats::setNames(carrier_rows$length[first],
                                             carrier_rows$read_name[first]))
-    row$noncarriers <- list(noncarriers)
-    row$tol_pos     <- tol_pos
-    row$tol_len     <- tol_len
-    result_list[[cid]] <- row
+    row$noncarriers = list(noncarriers)
+    row$tol_pos     = tol_pos
+    row$tol_len     = tol_len
+    result_list[[cid]] = row
   }
 
-  result_list <- Filter(Negate(is.null), result_list)
+  result_list = Filter(Negate(is.null), result_list)
   if (length(result_list) == 0L) return(empty_out)
 
-  out <- do.call(rbind, result_list)
-  rownames(out) <- NULL
+  out = do.call(rbind, result_list)
+  rownames(out) = NULL
   out[order(out$anchor_pos), , drop = FALSE]
 }

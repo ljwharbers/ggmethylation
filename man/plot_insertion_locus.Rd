@@ -51,8 +51,8 @@ Use \code{\link[=list_insertion_loci]{list_insertion_loci()}} to find loci; pass
 }
 \examples{
 \dontrun{
-md   <- read_methylation("sample.bam", "chr21:34500000-34510000")
-loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
+md   = read_methylation("sample.bam", "chr21:34500000-34510000")
+loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
 plot_insertion_locus(md, loci[1, ])
 }
 

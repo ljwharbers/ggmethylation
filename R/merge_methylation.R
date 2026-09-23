@@ -27,24 +27,24 @@
 #'
 #' @examples
 #' \dontrun{
-#' md1 <- read_methylation("sample1.bam", "chr1:1000-2000")
-#' md2 <- read_methylation("sample2.bam", "chr1:1000-2000")
-#' merged <- merge_methylation(sampleA = md1, sampleB = md2)
+#' md1 = read_methylation("sample1.bam", "chr1:1000-2000")
+#' md2 = read_methylation("sample2.bam", "chr1:1000-2000")
+#' merged = merge_methylation(sampleA = md1, sampleB = md2)
 #' print(merged)
 #' plot_methylation(merged)
 #' }
 #'
 #' @export
-merge_methylation <- function(..., .list = NULL) {
+merge_methylation = function(..., .list = NULL) {
   # --- 1. Collect samples ---
   if (!is.null(.list)) {
-    samples_list <- .list
+    samples_list = .list
   } else {
-    samples_list <- list(...)
+    samples_list = list(...)
   }
 
   # --- 2. Validate names ---
-  nms <- names(samples_list)
+  nms = names(samples_list)
   if (is.null(nms) || any(!nzchar(nms))) {
     stop(
       "All samples passed to `merge_methylation()` must be named.",
@@ -67,17 +67,17 @@ merge_methylation <- function(..., .list = NULL) {
   }
 
   # --- 4. Validate shared region ---
-  chroms <- vapply(
+  chroms = vapply(
     samples_list,
     function(x) as.character(GenomicRanges::seqnames(x$region)),
     character(1L)
   )
-  starts <- vapply(
+  starts = vapply(
     samples_list,
     function(x) GenomicRanges::start(x$region),
     integer(1L)
   )
-  ends <- vapply(
+  ends = vapply(
     samples_list,
     function(x) GenomicRanges::end(x$region),
     integer(1L)
@@ -85,7 +85,7 @@ merge_methylation <- function(..., .list = NULL) {
 
   if (length(unique(chroms)) > 1L || length(unique(starts)) > 1L ||
       length(unique(ends)) > 1L) {
-    region_strs <- sprintf(
+    region_strs = sprintf(
       "%s:%d-%d", chroms, starts, ends
     )
     stop(
@@ -96,7 +96,7 @@ merge_methylation <- function(..., .list = NULL) {
   }
 
   # --- 5. Validate shared mod_code ---
-  first_code <- samples_list[[1L]]$mod_code
+  first_code = samples_list[[1L]]$mod_code
   for (nm in nms[-1L]) {
     if (!identical(samples_list[[nm]]$mod_code, first_code)) {
       stop(
@@ -132,10 +132,10 @@ merge_methylation <- function(..., .list = NULL) {
 #' @return `x`, invisibly.
 #'
 #' @export
-print.multi_methylation_data <- function(x, ...) {
-  chrom <- as.character(GenomicRanges::seqnames(x$region))
-  start <- GenomicRanges::start(x$region)
-  end   <- GenomicRanges::end(x$region)
+print.multi_methylation_data = function(x, ...) {
+  chrom = as.character(GenomicRanges::seqnames(x$region))
+  start = GenomicRanges::start(x$region)
+  end   = GenomicRanges::end(x$region)
 
   cat("multi_methylation_data object\n")
   cat(sprintf("Region:   %s:%d-%d\n", chrom, start, end))
@@ -144,15 +144,15 @@ print.multi_methylation_data <- function(x, ...) {
   cat("\nPer-sample summary:\n")
 
   for (nm in names(x$samples)) {
-    s <- x$samples[[nm]]
-    n_reads <- nrow(s$reads)
+    s = x$samples[[nm]]
+    n_reads = nrow(s$reads)
 
     if (!is.null(s$group_tag) && "group" %in% names(s$reads)) {
-      grps <- sort(unique(s$reads$group[!is.na(s$reads$group)]))
-      grp_counts <- vapply(grps, function(g) {
+      grps = sort(unique(s$reads$group[!is.na(s$reads$group)]))
+      grp_counts = vapply(grps, function(g) {
         sum(s$reads$group == g, na.rm = TRUE)
       }, integer(1L))
-      grp_str <- paste(
+      grp_str = paste(
         sprintf("%s=%d", grps, grp_counts),
         collapse = ", "
       )
@@ -174,11 +174,11 @@ print.multi_methylation_data <- function(x, ...) {
 #'   the list returned by [summary.methylation_data()].
 #'
 #' @export
-summary.multi_methylation_data <- function(object, ...) {
-  out <- lapply(names(object$samples), function(nm) {
+summary.multi_methylation_data = function(object, ...) {
+  out = lapply(names(object$samples), function(nm) {
     cat(sprintf("\n=== Sample: %s ===\n", nm))
     summary(object$samples[[nm]])
   })
-  names(out) <- names(object$samples)
+  names(out) = names(object$samples)
   invisible(out)
 }

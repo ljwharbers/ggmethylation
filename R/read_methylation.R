@@ -68,17 +68,17 @@
 #'
 #' @examples
 #' \dontrun{
-#' md <- read_methylation("sample.bam", "chr1:1000-2000")
-#' md <- read_methylation("sample.bam", "chr1:1000-2000",
+#' md = read_methylation("sample.bam", "chr1:1000-2000")
+#' md = read_methylation("sample.bam", "chr1:1000-2000",
 #'   group_tag = "HP", max_reads = 100
 #' )
-#' md <- read_methylation("sample.bam", "chr1:1000-2000",
+#' md = read_methylation("sample.bam", "chr1:1000-2000",
 #'   snv = list(position = 1500, ref = "C", alt = "T")
 #' )
 #' }
 #'
 #' @export
-read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
+read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
                              snv = NULL, max_reads = 200L,
                              per_group_downsample = FALSE,
                              min_mapq = 0L,
@@ -482,7 +482,7 @@ read_methylation <- function(bam, region, mod_code = "m", group_tag = NULL,
 #' @return An empty `methylation_data` object.
 #'
 #' @keywords internal
-empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL) {
+empty_methylation_data = function(gr, mod_code, group_tag, snv_position = NULL) {
   reads = .empty_reads()
   sites = .empty_sites()
   insertion_sites = .empty_insertion_sites()
@@ -523,16 +523,16 @@ empty_methylation_data <- function(gr, mod_code, group_tag, snv_position = NULL)
 #' @return `x`, invisibly.
 #'
 #' @export
-print.methylation_data <- function(x, ...) {
-  chrom <- as.character(GenomicRanges::seqnames(x$region))
-  start <- GenomicRanges::start(x$region)
-  end <- GenomicRanges::end(x$region)
+print.methylation_data = function(x, ...) {
+  chrom = as.character(GenomicRanges::seqnames(x$region))
+  start = GenomicRanges::start(x$region)
+  end = GenomicRanges::end(x$region)
 
-  n_plus  <- sum(x$reads$strand == "+", na.rm = TRUE)
-  n_minus <- sum(x$reads$strand == "-", na.rm = TRUE)
+  n_plus  = sum(x$reads$strand == "+", na.rm = TRUE)
+  n_minus = sum(x$reads$strand == "-", na.rm = TRUE)
 
-  read_lengths <- x$reads$end - x$reads$start + 1L
-  med_len <- if (length(read_lengths) > 0L) as.integer(stats::median(read_lengths)) else NA_integer_
+  read_lengths = x$reads$end - x$reads$start + 1L
+  med_len = if (length(read_lengths) > 0L) as.integer(stats::median(read_lengths)) else NA_integer_
 
   cat("methylation_data object\n")
   cat(sprintf("Region: %s:%d-%d\n", chrom, start, end))
@@ -544,8 +544,8 @@ print.methylation_data <- function(x, ...) {
   cat(sprintf("Modification code(s): %s\n", paste(x$mod_code, collapse = ", ")))
 
   if (!is.null(x$group_tag)) {
-    stats_df <- .group_stats(x)
-    n_groups <- if (is.null(stats_df)) 0L else nrow(stats_df)
+    stats_df = .group_stats(x)
+    n_groups = if (is.null(stats_df)) 0L else nrow(stats_df)
     cat(sprintf("Group tag: %s (%d groups)\n", x$group_tag, n_groups))
     for (i in seq_len(n_groups)) {
       cat(sprintf("  %s: %d reads, mean methylation %.2f\n", stats_df$group[i],
@@ -562,34 +562,34 @@ print.methylation_data <- function(x, ...) {
 #' @param ... Unused.
 #' @return A named list with summary statistics (invisibly).
 #' @export
-summary.methylation_data <- function(object, ...) {
-  chrom <- as.character(GenomicRanges::seqnames(object$region))
-  reg_str <- sprintf("%s:%d-%d", chrom,
+summary.methylation_data = function(object, ...) {
+  chrom = as.character(GenomicRanges::seqnames(object$region))
+  reg_str = sprintf("%s:%d-%d", chrom,
                      GenomicRanges::start(object$region),
                      GenomicRanges::end(object$region))
 
-  strand_df <- as.data.frame(table(strand = object$reads$strand),
+  strand_df = as.data.frame(table(strand = object$reads$strand),
                               stringsAsFactors = FALSE)
-  names(strand_df)[2] <- "n_reads"
+  names(strand_df)[2] = "n_reads"
 
-  lens <- object$reads$end - object$reads$start + 1L
-  rl <- if (length(lens) > 0L)
+  lens = object$reads$end - object$reads$start + 1L
+  rl = if (length(lens) > 0L)
     list(median = as.integer(stats::median(lens)), min = min(lens), max = max(lens))
   else
     list(median = NA_integer_, min = NA_integer_, max = NA_integer_)
 
-  overall_mean <- if (nrow(object$sites) > 0L)
+  overall_mean = if (nrow(object$sites) > 0L)
     round(mean(object$sites$mod_prob, na.rm = TRUE), 4L)
   else NA_real_
 
-  groups_df <- NULL
+  groups_df = NULL
   if (!is.null(object$group_tag)) {
-    groups_df <- .group_stats(object)
-    groups_df$mean_mod_prob   <- round(groups_df$mean_mod_prob, 4L)
-    groups_df$median_mod_prob <- round(groups_df$median_mod_prob, 4L)
+    groups_df = .group_stats(object)
+    groups_df$mean_mod_prob   = round(groups_df$mean_mod_prob, 4L)
+    groups_df$median_mod_prob = round(groups_df$median_mod_prob, 4L)
   }
 
-  out <- list(
+  out = list(
     region                = reg_str,
     n_reads               = nrow(object$reads),
     n_sites               = nrow(object$sites),

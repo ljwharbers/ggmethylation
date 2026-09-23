@@ -32,12 +32,12 @@
 #'
 #' @examples
 #' \dontrun{
-#' vd <- read_variants("calls.vcf.gz", "chr1:1000000-1050000")
+#' vd = read_variants("calls.vcf.gz", "chr1:1000000-1050000")
 #' print(vd)
 #' }
 #'
 #' @export
-read_variants <- function(vcf, region, bnd_match_tol = 50L) {
+read_variants = function(vcf, region, bnd_match_tol = 50L) {
   if (!requireNamespace("VariantAnnotation", quietly = TRUE)) {
     stop(
       "Package 'VariantAnnotation' is required to read VCF files. ",
@@ -54,10 +54,10 @@ read_variants <- function(vcf, region, bnd_match_tol = 50L) {
   }
 
   # Parse region string
-  region_gr <- region_to_granges(region)
+  region_gr = region_to_granges(region)
 
   # Read VCF for the requested region
-  vcf_obj <- tryCatch(
+  vcf_obj = tryCatch(
     VariantAnnotation::readVcf(
       vcf,
       param = VariantAnnotation::ScanVcfParam(which = region_gr)
@@ -72,7 +72,7 @@ read_variants <- function(vcf, region, bnd_match_tol = 50L) {
 
   # Handle empty result (no variants in region)
   if (length(vcf_obj) == 0L) {
-    variants_df <- data.frame(
+    variants_df = data.frame(
       position   = integer(0L),
       ref        = character(0L),
       alt        = character(0L),
@@ -86,16 +86,16 @@ read_variants <- function(vcf, region, bnd_match_tol = 50L) {
   }
 
   # Extract per-variant data
-  rr      <- SummarizedExperiment::rowRanges(vcf_obj)
-  pos     <- GenomicRanges::start(rr)
-  ref_vec <- as.character(VariantAnnotation::ref(vcf_obj))
-  alt_list <- VariantAnnotation::alt(vcf_obj)
-  alt_vec  <- as.character(unlist(lapply(alt_list, function(x) as.character(x)[1L])))
+  rr      = SummarizedExperiment::rowRanges(vcf_obj)
+  pos     = GenomicRanges::start(rr)
+  ref_vec = as.character(VariantAnnotation::ref(vcf_obj))
+  alt_list = VariantAnnotation::alt(vcf_obj)
+  alt_vec  = as.character(unlist(lapply(alt_list, function(x) as.character(x)[1L])))
 
   # Extract INFO fields (may be NULL if absent in VCF)
-  info_df   <- VariantAnnotation::info(vcf_obj)
-  svtype_vec <- if ("SVTYPE" %in% names(info_df)) {
-    sv <- info_df[["SVTYPE"]]
+  info_df   = VariantAnnotation::info(vcf_obj)
+  svtype_vec = if ("SVTYPE" %in% names(info_df)) {
+    sv = info_df[["SVTYPE"]]
     if (is.list(sv)) {
       vapply(sv, function(x) if (length(x) > 0L) as.character(x[[1L]]) else NA_character_, character(1L))
     } else {
@@ -104,8 +104,8 @@ read_variants <- function(vcf, region, bnd_match_tol = 50L) {
   } else {
     NULL
   }
-  end_info   <- if ("END" %in% names(info_df)) {
-    ei <- info_df[["END"]]
+  end_info   = if ("END" %in% names(info_df)) {
+    ei = info_df[["END"]]
     if (is.list(ei)) {
       vapply(ei, function(x) if (length(x) > 0L) as.integer(x[[1L]]) else NA_integer_, integer(1L))
     } else {
@@ -114,16 +114,16 @@ read_variants <- function(vcf, region, bnd_match_tol = 50L) {
   } else {
     NULL
   }
-  svlen_info <- if ("SVLEN"  %in% names(info_df)) info_df[["SVLEN"]]  else NULL
+  svlen_info = if ("SVLEN"  %in% names(info_df)) info_df[["SVLEN"]]  else NULL
 
   # Classify each variant
-  n <- length(pos)
-  classified <- vector("list", n)
+  n = length(pos)
+  classified = vector("list", n)
   for (i in seq_len(n)) {
-    svtype_i <- if (!is.null(svtype_vec)) svtype_vec[i] else NA_character_
-    end_i    <- if (!is.null(end_info))   end_info[i]   else NA_integer_
-    svlen_i  <- if (!is.null(svlen_info)) svlen_info[i] else NA_real_
-    classified[[i]] <- classify_variant_row(
+    svtype_i = if (!is.null(svtype_vec)) svtype_vec[i] else NA_character_
+    end_i    = if (!is.null(end_info))   end_info[i]   else NA_integer_
+    svlen_i  = if (!is.null(svlen_info)) svlen_info[i] else NA_real_
+    classified[[i]] = classify_variant_row(
       alt    = alt_vec[i],
       ref    = ref_vec[i],
       pos    = pos[i],
@@ -133,12 +133,12 @@ read_variants <- function(vcf, region, bnd_match_tol = 50L) {
     )
   }
 
-  type       <- vapply(classified, `[[`, character(1L), "type")
-  end_vec    <- vapply(classified, `[[`, integer(1L),   "end")
-  mate_chrom <- vapply(classified, `[[`, character(1L), "mate_chrom")
-  mate_pos   <- vapply(classified, `[[`, integer(1L),   "mate_pos")
+  type       = vapply(classified, `[[`, character(1L), "type")
+  end_vec    = vapply(classified, `[[`, integer(1L),   "end")
+  mate_chrom = vapply(classified, `[[`, character(1L), "mate_chrom")
+  mate_pos   = vapply(classified, `[[`, integer(1L),   "mate_pos")
 
-  variants_df <- data.frame(
+  variants_df = data.frame(
     position   = pos,
     ref        = ref_vec,
     alt        = alt_vec,
@@ -148,7 +148,7 @@ read_variants <- function(vcf, region, bnd_match_tol = 50L) {
     mate_pos   = mate_pos,
     stringsAsFactors = FALSE
   )
-  rownames(variants_df) <- NULL
+  rownames(variants_df) = NULL
 
   .new_variant_data(variants_df, region_gr, bnd_match_tol)
 }
@@ -177,26 +177,26 @@ read_variants <- function(vcf, region, bnd_match_tol = 50L) {
 #'   (integer), `mate_chrom` (character), `mate_pos` (integer).
 #'
 #' @keywords internal
-classify_variant_row <- function(alt, ref, pos, svtype = NA_character_,
+classify_variant_row = function(alt, ref, pos, svtype = NA_character_,
                                  end = NA_integer_, svlen = NA_real_) {
   # --- Symbolic SVs: <DEL>, <DUP>, <INV> ---
   if (!is.na(alt) && grepl("^<(DEL|DUP|INV)>$", alt)) {
-    sv_symbol <- sub("^<(.+)>$", "\\1", alt)
+    sv_symbol = sub("^<(.+)>$", "\\1", alt)
 
     # Determine end: prefer INFO/END, fall back to pos + abs(SVLEN)
-    end_i <- NA_integer_
+    end_i = NA_integer_
     if (length(end) == 1L && !is.na(end)) {
-      end_i <- as.integer(end)
+      end_i = as.integer(end)
     }
     if (is.na(end_i)) {
       # SVLEN may be a list (list-type INFO field) — unlist safely
-      sl <- svlen
-      if (is.list(sl)) sl <- sl[[1L]]
+      sl = svlen
+      if (is.list(sl)) sl = sl[[1L]]
       if (length(sl) >= 1L && !is.na(sl[1L])) {
-        end_i <- as.integer(pos + abs(sl[1L]))
+        end_i = as.integer(pos + abs(sl[1L]))
       }
     }
-    if (is.na(end_i)) end_i <- as.integer(pos)
+    if (is.na(end_i)) end_i = as.integer(pos)
 
     return(list(
       type       = sv_symbol,
@@ -218,11 +218,11 @@ classify_variant_row <- function(alt, ref, pos, svtype = NA_character_,
   }
 
   # --- BND: SVTYPE == "BND" or ALT matches a breakend bracket pattern ---
-  is_bnd <- (!is.na(svtype) && svtype == "BND") ||
+  is_bnd = (!is.na(svtype) && svtype == "BND") ||
             (!is.na(alt) && grepl("[\\[\\]]", alt, perl = TRUE))
 
   if (is_bnd) {
-    parsed_bnd <- parse_bnd_alt(alt)
+    parsed_bnd = parse_bnd_alt(alt)
     return(list(
       type       = "BND",
       end        = as.integer(pos),
@@ -242,7 +242,7 @@ classify_variant_row <- function(alt, ref, pos, svtype = NA_character_,
   }
 
   # --- Standard SNV / insertion / deletion ---
-  tp <- ifelse(
+  tp = ifelse(
     nchar(ref) == 1L & nchar(alt) == 1L, "SNV",
     ifelse(nchar(ref) < nchar(alt), "insertion", "deletion")
   )
@@ -275,30 +275,30 @@ classify_variant_row <- function(alt, ref, pos, svtype = NA_character_,
 #'   }
 #'
 #' @keywords internal
-parse_bnd_alt <- function(alt_str) {
+parse_bnd_alt = function(alt_str) {
   if (is.na(alt_str) || !grepl("[\\[\\]]", alt_str, perl = TRUE)) {
     return(list(mate_chrom = NA_character_, mate_pos = NA_integer_))
   }
 
   # Match bracket-enclosed chr:pos in any of the four orientations.
   # Pattern: one or more characters inside [ ] that contain at least one colon.
-  m <- regmatches(alt_str, regexpr("[\\[\\]]([^\\[\\]]+:[0-9]+)[\\[\\]]",
+  m = regmatches(alt_str, regexpr("[\\[\\]]([^\\[\\]]+:[0-9]+)[\\[\\]]",
                                    alt_str, perl = TRUE))
   if (length(m) == 0L || nchar(m) == 0L) {
     return(list(mate_chrom = NA_character_, mate_pos = NA_integer_))
   }
 
   # Strip the surrounding brackets to get "chr:pos"
-  inner <- sub("^[\\[\\]]", "", sub("[\\[\\]]$", "", m, perl = TRUE), perl = TRUE)
-  parts <- strsplit(inner, ":", fixed = TRUE)[[1L]]
+  inner = sub("^[\\[\\]]", "", sub("[\\[\\]]$", "", m, perl = TRUE), perl = TRUE)
+  parts = strsplit(inner, ":", fixed = TRUE)[[1L]]
 
   if (length(parts) < 2L) {
     return(list(mate_chrom = NA_character_, mate_pos = NA_integer_))
   }
 
   # chromosome is everything except the last part (handles "chr1", "chr_Un_gl000220" etc.)
-  mate_chrom <- paste(parts[-length(parts)], collapse = ":")
-  mate_pos   <- suppressWarnings(as.integer(parts[length(parts)]))
+  mate_chrom = paste(parts[-length(parts)], collapse = ":")
+  mate_pos   = suppressWarnings(as.integer(parts[length(parts)]))
 
   if (is.na(mate_pos)) {
     return(list(mate_chrom = NA_character_, mate_pos = NA_integer_))
@@ -315,19 +315,19 @@ parse_bnd_alt <- function(alt_str) {
 #' @return `x`, invisibly.
 #'
 #' @export
-print.variant_data <- function(x, ...) {
-  chrom      <- as.character(GenomicRanges::seqnames(x$region))
-  start      <- GenomicRanges::start(x$region)
-  region_end <- GenomicRanges::end(x$region)
+print.variant_data = function(x, ...) {
+  chrom      = as.character(GenomicRanges::seqnames(x$region))
+  start      = GenomicRanges::start(x$region)
+  region_end = GenomicRanges::end(x$region)
 
   cat("variant_data object\n")
   cat(sprintf("Region: %s:%d-%d\n", chrom, start, region_end))
   cat(sprintf("Variants: %d total\n", nrow(x$variants)))
 
   if (nrow(x$variants) > 0L) {
-    type_counts <- table(x$variants$type)
+    type_counts = table(x$variants$type)
     for (tp in c("SNV", "insertion", "deletion", "BND", "DEL", "DUP", "INV")) {
-      n <- if (tp %in% names(type_counts)) type_counts[[tp]] else 0L
+      n = if (tp %in% names(type_counts)) type_counts[[tp]] else 0L
       cat(sprintf("  %s: %d\n", tp, n))
     }
   }
