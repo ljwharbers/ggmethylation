@@ -33,7 +33,7 @@ The package has three layers:
 `read_methylation()` is the main entry point. It queries a BAM file via Rsamtools, applies filters (MAPQ, strand, read length, downsampling), and calls `parse_mm_ml()` to extract per-base modification probabilities from MM/ML tags. It also handles optional grouping by BAM tag (e.g., HP for haplotype) or by SNV genotype. Returns an S3 object of class `methylation_data` with data frames for reference-aligned sites (`$sites`), insertion-based sites (`$insertion_sites`), and per-read summaries (`$reads`).
 
 **Layer 2 — Processing**
-- `parse_mm_ml.R`: Parses MM/ML SAM auxiliary tags. `seq_to_ref()` maps query positions to reference coordinates by walking the CIGAR string; positions inside CIGAR `I` operations return `NA` and are classified as insertion sites. `parse_mm_ml()` now returns a named list with `$sites` and `$insertion_sites`.
+- `parse_mm_ml.R`: Parses MM/ML SAM auxiliary tags. `seq_to_ref()` maps query positions to reference coordinates by walking the CIGAR string; positions inside CIGAR `I` operations return `NA` and are classified as insertion sites. `parse_mm_ml()` returns a named list with `$sites` and `$insertion_sites`.
 - `pack_reads.R`: Greedy interval scheduling algorithm that assigns reads to horizontal display lanes (like a genome browser). Used internally by `plot_methylation()` and `plot_insertion_locus()`.
 - `smooth_methylation.R`: Aggregates per-site modification probabilities and fits a loess curve on a 200-point grid for the smoothed lower panel. The shared `.smooth_xy(x, y)` helper is used by both `plot_methylation()` and `plot_insertion_locus()`.
 - `insertion_loci.R`: `list_insertion_loci()` clusters insertion events across reads into loci using a greedy single-pass algorithm. `insertion_sites()` is a convenience accessor for `$insertion_sites`.
@@ -59,7 +59,7 @@ The package has three layers:
 
 `$sites` does **not** contain every canonical base in the region for every read. Five mechanisms explain why a reference position may be absent for a given read:
 
-1. **MM tag flag** — the basecaller's MM entry may use `?` (or no flag), meaning unlisted canonical bases carry no information; only listed bases are emitted. When the entry uses `.`, unlisted canonical bases are emitted with `mod_prob = 0` (implicit-unmodified). `parse_mm_ml()` now honours the flag: `.` → emit zeros, `?` / none → omit.
+1. **MM tag flag** — the basecaller's MM entry may use `?` (or no flag), meaning unlisted canonical bases carry no information; only listed bases are emitted. When the entry uses `.`, unlisted canonical bases are emitted with `mod_prob = 0` (implicit-unmodified).
 2. **Basecaller convention** — dorado 5mC typically lists all CpGs (high and low ML values); 6mA basecallers typically only list modified adenines.
 3. **Sequence differences** — a SNV or sequencing error makes the base non-canonical at that position in a specific read; the MM delta walk never reaches it.
 4. **CIGAR effects** — positions inside `D`/`N` have no query base; positions inside `I` have no reference coordinate (appear in `$insertion_sites` instead).
