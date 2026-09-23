@@ -253,3 +253,21 @@ test_that("smooth_methylation grid path: two groups produce row-aligned output o
   expect_equal(pos_a, grid)
   expect_equal(pos_b, grid)
 })
+
+test_that("smooth_methylation drops NA groups with and without mod_code_col", {
+  # The multi-code path used to paste group and code into one key, which turned
+  # an NA group into a real "NA" line.
+  sites <- data.frame(
+    position = rep(1:6 * 100, 3),
+    mod_prob = seq(0.05, 0.9, length.out = 18),
+    group    = rep(c("1", "2", NA), each = 6),
+    mod_code = rep(c("m", "h"), 9),
+    stringsAsFactors = FALSE
+  )
+  single <- ggmethylation:::smooth_methylation(sites)
+  multi  <- ggmethylation:::smooth_methylation(sites, mod_code_col = "mod_code")
+  expect_setequal(unique(single$group), c("1", "2"))
+  expect_setequal(unique(multi$group), c("1", "2"))
+  expect_setequal(unique(multi$mod_code), c("m", "h"))
+  expect_named(multi, c("position", "mean_prob", "lower", "upper", "group", "mod_code"))
+})

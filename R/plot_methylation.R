@@ -423,11 +423,10 @@
                                opts) {
   smoothed = do.call(rbind, Map(function(s, prep, nm) {
     if (is.null(prep) || nrow(prep$sites_agg) == 0L) return(NULL)
-    # One line per group of a grouped sample (unphased reads get their own
-    # "NA" line), or a single line for an ungrouped one.
+    # One line per group of a grouped sample (unphased reads get no line, as
+    # in single-sample plots), or a single line for an ungrouped one.
     line_key = function(df) {
-      if (is.null(s$group_tag)) rep(nm, nrow(df)) else
-        ifelse(is.na(df$group), "NA", as.character(df$group))
+      if (is.null(s$group_tag)) rep(nm, nrow(df)) else as.character(df$group)
     }
     sites = prep$sites_agg
     reads = s$reads
