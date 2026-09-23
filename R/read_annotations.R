@@ -78,7 +78,7 @@
     return(.annotation_cache[[key]])
   }
 
-  message("Importing GTF/GFF file — this may take a moment for large files ...")
+  message("Importing GTF/GFF file - this may take a moment for large files ...")
   gr_gtf <- rtracklayer::import(gtf)
   txdb   <- GenomicFeatures::makeTxDbFromGRanges(gr_gtf)
   result <- list(txdb = txdb, granges = gr_gtf)

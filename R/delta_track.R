@@ -35,7 +35,7 @@
 # with a group palette in hand pass the two group colours instead, so the delta
 # area matches the groups in the panels above (pos = group 2, neg = group 1).
 .build_delta_panel <- function(delta_df, region_start, region_end,
-                               y_label = "Δ methylation",
+                               y_label = "\u0394 methylation",
                                fill_pos = .DELTA_DIVERGING$pos,
                                fill_neg = .DELTA_DIVERGING$neg) {
   df <- delta_df[!is.na(delta_df$delta), , drop = FALSE]

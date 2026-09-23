@@ -141,7 +141,7 @@ write_methylation <- function(data,
   if (gzip) path <- paste0(path, ".gz")
   con <- if (gzip) gzfile(path, "w") else file(path, "w")
   on.exit(close(con))
-  write.table(df, con, sep = "\t", quote = FALSE,
+  utils::write.table(df, con, sep = "\t", quote = FALSE,
               row.names = FALSE, col.names = header)
   invisible(path)
 }

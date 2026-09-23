@@ -258,9 +258,9 @@
 # higher, so the sign is readable off the plot itself.
 .delta_y_label = function(binary) {
   if (binary) {
-    "Δ fraction\nmethylated"
+    "\u0394 fraction\nmethylated"
   } else {
-    "Δ methylation"
+    "\u0394 methylation"
   }
 }
 

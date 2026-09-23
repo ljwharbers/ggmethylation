@@ -532,7 +532,7 @@ print.methylation_data <- function(x, ...) {
   n_minus <- sum(x$reads$strand == "-", na.rm = TRUE)
 
   read_lengths <- x$reads$end - x$reads$start + 1L
-  med_len <- if (length(read_lengths) > 0L) as.integer(median(read_lengths)) else NA_integer_
+  med_len <- if (length(read_lengths) > 0L) as.integer(stats::median(read_lengths)) else NA_integer_
 
   cat("methylation_data object\n")
   cat(sprintf("Region: %s:%d-%d\n", chrom, start, end))
@@ -574,7 +574,7 @@ summary.methylation_data <- function(object, ...) {
 
   lens <- object$reads$end - object$reads$start + 1L
   rl <- if (length(lens) > 0L)
-    list(median = as.integer(median(lens)), min = min(lens), max = max(lens))
+    list(median = as.integer(stats::median(lens)), min = min(lens), max = max(lens))
   else
     list(median = NA_integer_, min = NA_integer_, max = NA_integer_)
 
