@@ -83,12 +83,7 @@ write_methylation <- function(data,
     dir.create(out_dir, recursive = TRUE)
 
   # --- Compute mean_mod_prob per read ---
-  if (nrow(data$sites) > 0L) {
-    mp <- tapply(data$sites$mod_prob, data$sites$read_name, mean, na.rm = TRUE)
-    data$reads$mean_mod_prob <- as.numeric(mp[data$reads$read_name])
-  } else {
-    data$reads$mean_mod_prob <- NA_real_
-  }
+  data$reads$mean_mod_prob <- .read_mean_mod_prob(data$sites, data$reads$read_name)
 
   # --- Write reads ---
   if (reads) {

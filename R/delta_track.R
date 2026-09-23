@@ -15,14 +15,18 @@
   v1 <- smoothed$mean_prob[smoothed[[group_col]] == groups[1L]]
   v2 <- smoothed$mean_prob[smoothed[[group_col]] == groups[2L]]
   delta <- v2 - v1
-  sign <- ifelse(is.na(delta), NA_character_,
-                 ifelse(delta > 0, "pos", ifelse(delta < 0, "neg", "zero")))
-  out <- data.frame(position = grid, delta = delta, sign = sign,
+  out <- data.frame(position = grid, delta = delta, sign = .delta_sign(delta),
                     stringsAsFactors = FALSE)
   # The sorted group names, so callers can colour "pos"/"neg" by the group each
   # sign belongs to (delta = groups[2] - groups[1]).
   attr(out, "groups") <- groups
   out
+}
+
+# "pos" / "neg" / "zero" (NA stays NA), used to fill the delta area.
+.delta_sign = function(delta) {
+  ifelse(is.na(delta), NA_character_,
+         ifelse(delta > 0, "pos", ifelse(delta < 0, "neg", "zero")))
 }
 
 # Render the signed delta as a diverging area around a zero baseline.

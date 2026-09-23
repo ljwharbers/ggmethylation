@@ -339,3 +339,11 @@ region_to_granges <- function(region) {
     ranges   = IRanges::IRanges(start = parsed$start, end = parsed$end)
   )
 }
+
+# Per-read mean modification probability, aligned to `read_names` (NA for reads
+# without sites). NB: tapply() output is indexed by read name.
+.read_mean_mod_prob = function(sites, read_names) {
+  if (is.null(sites) || nrow(sites) == 0L) return(rep(NA_real_, length(read_names)))
+  means = tapply(sites$mod_prob, sites$read_name, mean, na.rm = TRUE)
+  as.numeric(means[read_names])
+}
