@@ -109,6 +109,34 @@ extract_variant_bases = function(reads, sequences, cigars, variants) {
   do.call(rbind, result_list[seq_len(result_idx)])
 }
 
+# Warn when the region a variant_data object was read for is on another
+# chromosome than, or does not overlap, the plotted methylation_data region:
+# the overlay would then be silently empty. Mere inequality (e.g. variants read
+# for a wider window) is fine.
+.check_variant_region = function(data_region, variants_region) {
+  if (!inherits(data_region, "GRanges") || !inherits(variants_region, "GRanges")) {
+    return(invisible(NULL))
+  }
+  fmt = function(gr) {
+    sprintf("%s:%d-%d", as.character(GenomicRanges::seqnames(gr)),
+            GenomicRanges::start(gr), GenomicRanges::end(gr))
+  }
+  same_chrom = as.character(GenomicRanges::seqnames(data_region)) ==
+    as.character(GenomicRanges::seqnames(variants_region))
+  overlaps = same_chrom &&
+    GenomicRanges::start(variants_region) <= GenomicRanges::end(data_region) &&
+    GenomicRanges::end(variants_region) >= GenomicRanges::start(data_region)
+  if (!overlaps) {
+    warning(
+      "`variants` were read for region ", fmt(variants_region),
+      ", which does not overlap the plotted region ", fmt(data_region),
+      "; no variants will be shown.",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
 #' Compose all variant overlay layers for a single methylation_data object
 #'
 #' Dispatches to [build_snv_layer()], [build_sv_layer()], [build_bnd_layer()],
@@ -119,7 +147,8 @@ extract_variant_bases = function(reads, sequences, cigars, variants) {
 #' @param data A `methylation_data` object.
 #' @param variants A `variant_data` object returned by [read_variants()], or
 #'   `NULL`. Its `bnd_match_tol` sets the SA-to-BND matching tolerance
-#'   (50 bp when absent).
+#'   (50 bp when absent). A warning is issued when its `region` is on another
+#'   chromosome than, or does not overlap, `data$region`.
 #'
 #' @return A named list with elements `snv`, `sv`, `bnd`, and `sa_reads`
 #'   (each is a list of ggplot2 layer objects or `NULL`), or `NULL` when
@@ -130,6 +159,8 @@ build_variant_overlay = function(data, variants) {
   if (is.null(variants) || !inherits(variants, "variant_data")) {
     return(NULL)
   }
+
+  .check_variant_region(data$region, variants$region)
 
   vdf = variants$variants
 

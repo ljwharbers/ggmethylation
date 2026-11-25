@@ -18,6 +18,8 @@
 #' line.
 #'
 #' @param annotations A `gene_annotations` object from [read_annotations()].
+#'   A warning is issued when its `region` does not overlap
+#'   `region_start`-`region_end` (the chromosome cannot be checked here).
 #' @param region_start Integer. Start coordinate of the plot x-axis.
 #' @param region_end Integer. End coordinate of the plot x-axis.
 #' @param bottom_label Logical. When `TRUE` (default), the x-axis label
@@ -30,6 +32,24 @@
 build_gene_panel = function(annotations, region_start, region_end,
                              bottom_label = TRUE) {
   transcripts_df = annotations$transcripts
+
+  # Annotations read for a window that does not overlap the plotted one would
+  # silently give an empty track. Only coordinates can be compared here; the
+  # chromosome of the plotted data is not passed in.
+  ann_region = annotations$region
+  if (inherits(ann_region, "GRanges") && length(ann_region) == 1L &&
+      (GenomicRanges::start(ann_region) > region_end ||
+       GenomicRanges::end(ann_region) < region_start)) {
+    warning(
+      sprintf(
+        "`annotations` were read for region %s:%d-%d, which does not overlap the plotted range %d-%d.",
+        as.character(GenomicRanges::seqnames(ann_region)),
+        GenomicRanges::start(ann_region), GenomicRanges::end(ann_region),
+        as.integer(region_start), as.integer(region_end)
+      ),
+      call. = FALSE
+    )
+  }
 
   # Helper: clamp start/end columns to [region_start, region_end] and drop
   # zero-width rows (i.e. geometry that falls completely outside the view).
@@ -89,7 +109,7 @@ build_gene_panel = function(annotations, region_start, region_end,
           cds         = NULL,
           utr5        = NULL,
           utr3        = NULL,
-          region      = annotations$region
+          region      = NULL  # already checked above; do not warn twice
         ),
         class = "gene_annotations"
       ),

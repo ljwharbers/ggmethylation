@@ -70,8 +70,10 @@ match_sa_to_vcf_bnd = function(reads, bnd_df, tol = 50L) {
 #' showing the full mate location (chromosome:position with comma thousands
 #' separator) using the join symbol (⋈).
 #'
-#' Because the read panel uses `scale_y_reverse()`, `y = -Inf` places the
-#' text at the *top* of the panel (the intended position).
+#' The label is anchored at `y = -Inf` with `vjust = -0.3`, which (with the
+#' read panel's `scale_y_reverse()`) puts it just inside the *bottom* edge of
+#' the read panel, below the last lane, centred on the BND position. No
+#' vertical line is drawn at the breakpoint.
 #'
 #' @param bnd_df Data.frame — BND rows from `variant_data$variants` (columns:
 #'   `position` (int), `mate_chrom` (chr), `mate_pos` (int)). May be `NULL`
