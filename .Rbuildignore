@@ -5,3 +5,9 @@
 ^.*\.Rproj$
 ^data-raw$
 ^tools$
+^\.claude$
+^CLAUDE\.md$
+^showcase\.R$
+^test[^/]*\.R$
+^test[^/]*\.png$
+^\.github$

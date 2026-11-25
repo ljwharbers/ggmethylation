@@ -1,10 +1,8 @@
 Package: ggmethylation
 Title: Read-Level Methylation Visualisation from Long-Read Sequencing
-Version: 0.4.0
+Version: 0.5.0
 Authors@R: person("Luuk", "Harbers", role = c("aut", "cre"),
     email = "l.j.w.harbers@gmail.com")
-Author: Luuk Harbers [aut, cre]
-Maintainer: Luuk Harbers <l.j.w.harbers@gmail.com>
 Description: Visualise read-level base modification data from long-read
     sequencing (Oxford Nanopore, PacBio). Parses MM/ML tags from modBAM
     files and produces ggplot2 read-level methylation plots with optional
@@ -13,26 +11,36 @@ Description: Visualise read-level base modification data from long-read
     insertion loci across reads, and visualises per-locus modification
     patterns in a stitched coordinate system.
 License: MIT + file LICENSE
+URL: https://github.com/ljwharbers/ggmethylation
+BugReports: https://github.com/ljwharbers/ggmethylation/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
+Depends:
+    R (>= 4.0)
 Imports:
     Rsamtools,
     GenomicRanges,
     IRanges,
     ggplot2,
     ggnewscale,
+    grDevices,
     patchwork,
     rlang,
     scales,
     stats,
+    tools,
     utils
 Suggests:
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,
+    AnnotationDbi,
+    BiocGenerics,
     GenomicFeatures,
     rtracklayer,
+    SummarizedExperiment,
+    txdbmaker,
     VariantAnnotation
 VignetteBuilder: knitr
 Config/testthat/edition: 3
