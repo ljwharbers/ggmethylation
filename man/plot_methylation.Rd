@@ -118,7 +118,7 @@ CIGAR strings (insertions, deletions) are displayed on reads. Insertions
 appear as purple I-beam markers spanning the full height of the read bar;
 deletions open a gap in the read bar and draw a thin black line. Smooth
 lines (and the delta area) are interrupted where at least 75\% of a
-group's reads covering a deletion carry it. Set to \code{FALSE} to hide these
+group's reads spanning the whole deletion carry it. Set to \code{FALSE} to hide these
 features.}
 
 \item{min_indel_size}{Non-negative number. Minimum size (in bp) for

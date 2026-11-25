@@ -1,3 +1,183 @@
+# ggmethylation 0.5.0
+
+A correctness release from a full audit: MM/ML parsing follows the SAM
+specification, insertion loci are clustered and their non-carriers defined
+as documented, group colours are consistent across panels, VCF breakends are
+matched against the right coordinate, and the docs describe what the code
+does.
+
+## Breaking changes
+
+- `read_methylation()` skips secondary (FLAG 0x100), QC-fail (0x200) and
+  duplicate (0x400) alignments. Supplementary alignments (0x800) are still
+  read. There is no argument yet to include the skipped ones.
+- MM entries with a `-` strand field (e.g. `G-m`) are placed on the correct
+  base: bases are counted on the original read, and only the alignment
+  strand decides which base is searched and in which direction.
+- A read whose MM/ML tags are malformed or do not fit its sequence keeps no
+  modification calls, and one warning gives the number of such reads. This
+  covers a wrong number of ML values, a missing or non-numeric skip count,
+  an unparseable entry, skip counts running past SEQ, an empty SEQ, and an
+  `MN` tag that differs from the SEQ length. Previously these gave `NA`
+  probabilities, calls at wrong positions, or an error.
+- When `group_tag` is found in no read, the result is ungrouped
+  (`group_tag = NULL`, no `group` column) with a warning.
+- `write_methylation(format = "bed")` writes the integer score
+  `round(mod_prob * 1000)`, `<read_name>:<mod_code>` in the name column, and
+  rows sorted by chromosome and start.
+- `read_methylation(snv = )`: a position outside `region`, alleles other
+  than A/C/G/T, and `ref == alt` are errors.
+- `list_insertion_loci()`: a non-carrier must span the locus on both sides
+  (start <= `anchor_pos - tol_pos` and end >= `anchor_pos + tol_pos`);
+  previously any overlap counted, so reads clipped at the breakpoint were
+  non-carriers. The full alignment end (`bam_end`) is used, not the end
+  clipped to the region, so loci near the region edge get their
+  non-carriers. Reads with an insertion of a different length at the locus
+  are neither carriers nor non-carriers.
+- `list_insertion_loci()` and `plot_insertion_locus()` reject `NA`,
+  non-numeric, negative or (where a count is expected) non-whole `tol_pos`,
+  `tol_len`, `min_reads`, `min_length` and `flank`, and non-logical
+  `show_smoothed` / `include_noncarriers`.
+- `merge_methylation()` errors on duplicated or `NA` sample names, on no
+  samples, and on `.list` being a single object instead of a list.
+- `plot_methylation()` validates `call_threshold` (including `NA`),
+  `call_ambiguous`, `smooth_span`, `group_colours`, `line_width`,
+  `min_indel_size` and the `show_*` flags. An unnamed `group_colours` with
+  fewer colours than groups is an error.
+- `read_variants()` warns and returns an empty object when the region's
+  chromosome is not among the VCF's contigs (was a cryptic `readVcf()`
+  error). Equal-length multi-base variants are typed `"MNV"` (were
+  `"deletion"`), and records whose first ALT is `*` are dropped (were
+  `"SNV"`). `bnd_match_tol` must be a single finite non-negative number.
+
+## Behaviour changes
+
+- Groups that `group_colours` does not name (SNV `"REF"`/`"ALT"`, a third
+  haplotype) get further colour-blind-safe colours instead of grey, with a
+  message when you supplied the palette. An unnamed `group_colours` is
+  matched to the sorted groups by position. The read bars, smooth lines and
+  delta area use the same colours.
+- Legends shared by several panels are collected and shown once; the smooth
+  panel no longer repeats the group legend; supplementary-alignment (SA)
+  partner colours are identical across samples.
+- With several modification codes, each read bar is split into one strip
+  per code, multi-sample smooth panels draw one line per code, and the delta
+  panel is skipped with a message.
+- The delta area is filled by sign as ribbons that meet at the zero
+  crossings.
+- Smooth lines (and the delta area and CI ribbon) break at a deletion when at
+  least 75% of the group's reads spanning the whole deletion carry it
+  (previously: of all reads in the window).
+- Loess fits are clamped to `[0, 1]`.
+- `show_delta = TRUE` on ungrouped data gives a message.
+- `plot_methylation()` warns when `variants` or `annotations` do not overlap
+  the plotted region, or are on another chromosome.
+- `plot_insertion_locus()` has a labelled x axis: reference coordinates in
+  the flanks and `+1...+W bp` in the insertion. Non-carriers are drawn below
+  the carriers as documented, with a centred separator and no lane numbers.
+- The gene track uses `theme_ggmethylation()` like the other panels.
+
+## Bug fixes
+
+### Parsing and reading
+
+- Combined-code MM entries (`C+mh`) are supported, with interleaved ML
+  values and correct ML offsets for later entries; numeric ChEBI codes count
+  as one code.
+- Every MM entry carrying the requested code is used, not only the last.
+- Canonical base `N` matches any base, also on reverse-strand reads.
+- `summary()` works on an empty object and when every group is `NA`.
+- An `snv` request with no reads left still reports group tag `"SNV"`.
+- `parse_region()` handles contig names containing colons and rejects
+  reversed, out-of-range and non-scalar regions with a clear message.
+- `max_reads`, `min_mapq` and `min_read_length` are validated.
+- `.csi` BAM indexes are accepted.
+
+### Insertion loci
+
+- Insertions are clustered by position first and then by length, so a
+  single off-length insertion no longer splits a locus or turns its carriers
+  into non-carriers.
+- `mean_ins_mod_prob` uses only each carrier's own insertion.
+- `plot_insertion_locus()`: the reference base right after the insertion is
+  drawn in the right flank instead of on top of the first inserted base, and
+  both flanks show exactly `flank` bases. Inserted bases beyond the locus
+  median length are clipped at the insertion boundary. The read and smooth
+  panels share one x range, and each modification code gets its own smooth
+  line (line type) instead of being averaged.
+
+### Main plot
+
+- SNV and three-haplotype grouping are no longer drawn in grey with
+  "No shared levels" warnings.
+- An unnamed `group_colours` now reaches the delta panel.
+- The delta area and the CI ribbon are interrupted at consensus deletions.
+- Binary mode no longer loses smooth-line segments when the fit leaves
+  `[0, 1]`.
+- Multi-sample smooth panels no longer pool 5mC and 5hmC.
+- A read with an SA tag and a large deletion no longer gets a second SA
+  marker.
+- Sites next to a clipped read end are no longer dropped.
+- A group with a single position no longer crashes the delta track; `NA`
+  probabilities are ignored when smoothing.
+- Two ungrouped samples in a mixed merge no longer share one CI ribbon.
+- More than four modification codes or samples no longer give `NA` line
+  types (up to 13 are supported, with a clear error beyond).
+
+### Annotations and variants
+
+- Reads' SA positions are matched against the BND mate position. Previously
+  they were compared with the BND's own position, so correct breakpoints
+  were never validated.
+- The gene track's x axis lines up with the other panels (it was stretched
+  by about 10%); strand arrows at the region edge are clamped instead of
+  dropped.
+- `SVTYPE`/`END`/`SVLEN` declared `Number=.` are handled; VCFs without
+  `##contig` lines can be read; a declared contig with no records returns an
+  empty object.
+- `read_annotations()` warns clearly when the region's chromosome is not in
+  the annotation, and uses `txdbmaker` to build TxDbs when it is installed.
+
+## New
+
+- `read_methylation(seed = )` for reproducible downsampling; the caller's
+  random number stream is restored afterwards.
+- `$reads$bam_end`: the alignment end, next to `bam_pos`, not clipped to the
+  region.
+- The `MN` tag is read and checked against the SEQ length.
+- `read_methylation()` warns when no read carries MM/ML tags (mentioning
+  legacy `Mm`/`Ml` tags when those are present) and when a requested
+  `mod_code` is in no MM tag.
+- `list_insertion_loci(min_length = )` ignores insertions shorter than
+  `min_length` (default 1 keeps all; e.g. 50 for real ONT/PacBio data).
+- `read_variants()` reads only the INFO fields it uses and no genotypes.
+- The synthetic modBAM/VCF fixture is shipped in `inst/extdata/`, and the
+  vignette runs on it instead of a cache built from a non-public BAM.
+
+## Internal
+
+- MM/ML tags are parsed once per read for all requested codes (new core
+  `.parse_mods()`; `parse_mm_ml()` is a thin wrapper).
+- One resolver, `.resolve_group_colours()`, provides the group colours for
+  every panel.
+- DESCRIPTION: `Depends: R (>= 4.0)`, `URL`/`BugReports`, `grDevices` and
+  `tools` in Imports, the optional Bioconductor packages in Suggests; the
+  licence file is the standard MIT stub (full text in `LICENSE.md`).
+- GitHub Actions R-CMD-check workflow; shared test helper; integration tests
+  can be pointed at another BAM with `GGMETHYLATION_TEST_BAM` /
+  `GGMETHYLATION_TEST_REGION`.
+
+## Known limitations
+
+- Hard-clipped records without an `MN` tag whose skip counts still fit the
+  clipped sequence are placed without a warning; this cannot be detected.
+- `$sites` does not record which strand a modification call is on
+  (`C+m` vs `G-m`).
+- Secondary and duplicate alignments cannot be re-included yet.
+- An MM entry without a `?` or `.` flag is treated like `?` (unlisted bases
+  are not reported), deliberately deviating from the SAM specification,
+  because older basecallers that write no flag list only CpG sites.
+
 # ggmethylation 0.4.0
 
 A simplification release: fewer arguments, one code path per concept. Plots
@@ -11,7 +191,7 @@ changes".
 | `plot_methylation(call_mode = "binary", call_threshold = 0.5)` | `plot_methylation(call_threshold = 0.5)` |
 | `plot_methylation(call_mode = "continuous")` (default) | `plot_methylation()` (`call_threshold = NULL`) |
 | `read_methylation(snv_position = 1500, ref_base = "C", alt_base = "T")` | `read_methylation(snv = list(position = 1500, ref = "C", alt = "T"))` |
-| `plot_methylation(variants = vd, bnd_match_tol = 100)` | `vd <- read_variants(vcf, region, bnd_match_tol = 100)`; `plot_methylation(variants = vd)` |
+| `plot_methylation(variants = vd, bnd_match_tol = 100)` | `vd = read_variants(vcf, region, bnd_match_tol = 100)`; `plot_methylation(variants = vd)` |
 | `plot_insertion_locus(m, loci$locus_id[1], tol_pos = 10, tol_len = 0.2)` | `plot_insertion_locus(data, loci[1, ])` |
 | `insertion_sites(m)`, `list_insertion_loci(m, ...)` | `insertion_sites(data)`, `list_insertion_loci(data, ...)` |
 | `plot_methylation(mod_code_shapes = ...)` | removed (it was never drawn) |

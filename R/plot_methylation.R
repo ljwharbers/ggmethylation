@@ -19,8 +19,8 @@
 
 # For each group, returns genomic intervals [del_start, del_end] where at least
 # `threshold` fraction of the group's reads *covering* the interval carry a
-# deletion. A read covers the interval when its aligned span overlaps it
-# (reads$start/end); carriers always count. Reads that do not reach the
+# deletion. A read covers the interval when its span (reads$start/end) spans
+# the whole interval; carriers always count. Reads that do not reach the
 # deletion say nothing about it, so in a wide window with short reads they
 # must not dilute the fraction. No further minimum is applied: a lone carrier
 # that is the only read there has no sites inside the deletion, so the smooth
@@ -639,7 +639,7 @@
 #'   appear as purple I-beam markers spanning the full height of the read bar;
 #'   deletions open a gap in the read bar and draw a thin black line. Smooth
 #'   lines (and the delta area) are interrupted where at least 75% of a
-#'   group's reads covering a deletion carry it. Set to `FALSE` to hide these
+#'   group's reads spanning the whole deletion carry it. Set to `FALSE` to hide these
 #'   features.
 #' @param min_indel_size Non-negative number. Minimum size (in bp) for
 #'   insertions and deletions to be displayed when `show_cigar = TRUE`. Indels
