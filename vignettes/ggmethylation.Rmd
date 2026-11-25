@@ -140,10 +140,12 @@ With exactly two groups, `show_delta = TRUE` adds a panel below the smooth
 panel with the difference between the two smoothed curves (group 2 minus
 group 1), filled with the colour of whichever group is higher. Where most
 reads of a group carry the same large deletion, the smooth line and the
-delta area are interrupted.
+delta area are interrupted. Here `panel_heights` (read, smooth and delta
+panel, top to bottom) gives the two summary panels a little more room than
+the default.
 
 ```{r plot-delta, fig.height = 7}
-plot_methylation(meth_hp, show_delta = TRUE)
+plot_methylation(meth_hp, show_delta = TRUE, panel_heights = c(1, 0.4, 0.3))
 ```
 
 Group colours are set with `group_colours`, a vector named by group. Groups
