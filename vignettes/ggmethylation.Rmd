@@ -10,312 +10,348 @@ vignette: >
 ---
 
 ```{r setup, include = FALSE}
-cache_path <- system.file("extdata", "vignette_cache.rds",
-                           package = "ggmethylation")
-has_cache  <- nzchar(cache_path) && file.exists(cache_path)
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 8,
-  fig.height = 5,
-  eval = has_cache
+  fig.height = 5
 )
+has_variants = requireNamespace("VariantAnnotation", quietly = TRUE) &&
+  requireNamespace("SummarizedExperiment", quietly = TRUE)
 ```
 
 ## Introduction
 
-`ggmethylation` provides read-level visualisation of 5-methylcytosine (5mC)
-from long-read sequencing data stored in modBAM format. It parses the MM/ML
-auxiliary tags written by tools such as pb-CpG-tools or modkit and produces
-a two-panel `patchwork` figure:
+`ggmethylation` visualises base modifications (5mC, 5hmC, 6mA, ...) on
+individual long reads stored in modBAM format. It parses the MM/ML auxiliary
+tags written by basecallers and tools such as dorado, pb-CpG-tools or modkit,
+and `plot_methylation()` returns a `patchwork` figure with, from top to bottom:
 
-- **Top panel** — per-group methylation summary (mean smoothed curve or bar).
-- **Bottom panel** — individual read methylation tiles, coloured by per-site
-  modification probability.
+- an optional **gene track** (`annotations`);
+- the **read panel**: one horizontal bar per read, with a coloured mark at
+  each modification site (colour encodes the modification probability);
+- the **smooth panel**: the loess-smoothed mean modification probability per
+  position, one line per group (or one overall line when the reads are not
+  grouped), with a confidence ribbon;
+- an optional **delta panel** (`show_delta = TRUE`) with the difference
+  between two groups.
 
-Reads can be grouped by any BAM auxiliary tag (e.g. haplotype tag `HP`) or by
-the genotype at a user-supplied SNV position. Grouping drives both panels
-independently, so the relationship between haplotype/genotype and methylation
-state is immediately apparent.
+Reads can be grouped by any BAM auxiliary tag (e.g. the haplotype tag `HP`)
+or by the base they carry at a user-supplied SNV. Grouping colours the read
+bars and gives one smooth line per group, so the relationship between
+haplotype or genotype and methylation is immediately visible.
 
-**Index requirement.** `ggmethylation` uses `Rsamtools` to query reads by
-genomic region. A BAM index (`.bai` file, produced with `samtools index`) must
-be present alongside the BAM file before calling `read_methylation()`.
+**Index requirement.** `read_methylation()` queries reads by region with
+`Rsamtools`, so the BAM needs an index (`.bai` or `.csi`, e.g. from
+`samtools index`) next to it.
 
 ## Installation
 
 ```{r installation, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+  install.packages("BiocManager")
+}
 # Bioconductor dependencies
+BiocManager::install(c("Rsamtools", "GenomicRanges", "IRanges"))
+
+# Optional: VCF overlay and gene annotation track
 BiocManager::install(c(
-  "Rsamtools",
-  "GenomicRanges",
-  "GenomicAlignments",
-  "IRanges"
+  "VariantAnnotation", "SummarizedExperiment",
+  "GenomicFeatures", "txdbmaker", "rtracklayer", "AnnotationDbi"
 ))
 
 # Install ggmethylation from GitHub
-devtools::install_github("lharbers/ggmethylation")
+remotes::install_github("ljwharbers/ggmethylation")
 ```
 
-## Basic usage: ungrouped methylation plot
+## Example data
 
-`read_methylation()` fetches all reads overlapping a genomic region and
-returns a `methylation_data` S3 object containing tidy data frames ready for
-plotting.
+The package ships a small synthetic modBAM: about 70 reads on an 8 kb `chr1`
+with 5mC (`m`) and 5hmC (`h`) calls, haplotype tags (`HP` 1 and 2, some reads
+untagged), a 150 bp deletion carried by haplotype 1, a ~120 bp insertion at
+`chr1:6100`, soft-clipped reads with supplementary alignments (SA tags), and
+an A>G SNV at `chr1:3000` carried by haplotype 2. A matching VCF holds that
+SNV, the deletion and a breakend. Every example below runs on these files;
+replace the paths with your own BAM and VCF.
 
-```{r read-basic, eval = FALSE, echo = TRUE}
+```{r data}
 library(ggmethylation)
 
-bam    <- "path/to/sample.bam"
-region <- "chr21:34500000-34510000"
-
-meth_basic <- read_methylation(bam, region)
+bam    = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+vcf    = system.file("extdata", "synthetic.vcf.gz", package = "ggmethylation")
+region = "chr1:1000-7000"
 ```
 
-```{r load-cache, echo = FALSE}
-cache      <- readRDS(cache_path)
-meth_basic <- cache$meth_basic
+## Basic usage
+
+`read_methylation()` fetches the reads overlapping a region and returns a
+`methylation_data` object. Secondary, duplicate and QC-fail alignments are
+skipped; supplementary alignments are kept. When more than `max_reads`
+(default 200) reads overlap the region a random subset is kept; pass `seed`
+to make that choice reproducible.
+
+```{r read-basic}
+meth = read_methylation(bam, region, seed = 1)
+meth
 ```
 
-Printing the object gives a concise summary of the region, read count, and
-available grouping:
-
-```{r print-basic, echo = TRUE}
-print(meth_basic)
+```{r plot-basic}
+plot_methylation(meth)
 ```
 
-Pass the object directly to `plot_methylation()` to produce the two-panel
-figure:
+Without grouping the smooth panel has one overall line. Soft-clipped reads
+with a supplementary alignment get a small marker at the clipped end,
+coloured by the chromosome of the SA partner, and reads with a large
+deletion are drawn with a gap.
 
-```{r plot-basic, echo = TRUE}
-library(ggmethylation)
-plot_methylation(meth_basic)
+## The methylation_data object
+
+`methylation_data` is a named list. `$reads` has one row per read, with its
+displayed span (`start`/`end`, clipped to the region), its full alignment
+span (`bam_pos`/`bam_end`), strand and supplementary-alignment information.
+`$sites` has one row per read per modification call, with the reference
+position and the modification probability (`ML / 255`).
+
+```{r str-basic}
+names(meth)
+head(meth$reads)
+head(meth$sites)
 ```
 
-## Accessing the methylation_data object
+Calls on inserted bases have no reference coordinate and are kept separately
+in `$insertion_sites` (see [Insertion loci](#insertion-loci)).
 
-The `methylation_data` object is a named list. The two most useful elements
-are `$reads` (one row per read per CpG site) and `$sites` (genomic-coordinate
-summary).
+## Haplotype grouping (HP tag)
 
-```{r str-basic, echo = TRUE}
-str(meth_basic, max.level = 1)
+Phased reads (e.g. PacBio HiFi or ONT data haplotagged with WhatsHap) carry
+a per-read haplotype tag. `group_tag = "HP"` groups reads by it; reads
+without the tag form an `NA` group that is drawn in grey and not smoothed.
+
+```{r read-hp}
+meth_hp = read_methylation(bam, region, group_tag = "HP", seed = 1)
+meth_hp
 ```
 
-```{r head-reads, echo = TRUE}
-head(meth_basic$reads)
-```
-
-```{r head-sites, echo = TRUE}
-head(meth_basic$sites)
-```
-
-## Haplotype-based grouping (HP tag)
-
-PacBio HiFi data processed with DeepVariant + WhatsHap carries a per-read
-haplotype tag (`HP`). Supply `group_tag = "HP"` to stratify the plot by
-haplotype.
-
-```{r read-hp, eval = FALSE, echo = TRUE}
-meth_hp <- read_methylation(bam, region, group_tag = "HP")
-```
-
-```{r load-hp, echo = FALSE}
-meth_hp <- cache$meth_hp
-```
-
-```{r plot-hp, echo = TRUE}
+```{r plot-hp}
 plot_methylation(meth_hp)
 ```
 
-Group colours can be overridden with a named character vector passed to
-`group_colours`. Names must match the levels returned by the HP tag.
+With exactly two groups, `show_delta = TRUE` adds a panel below the smooth
+panel with the difference between the two smoothed curves (group 2 minus
+group 1), filled with the colour of whichever group is higher. Where most
+reads of a group carry the same large deletion, the smooth line and the
+delta area are interrupted.
 
-```{r plot-hp-colours, echo = TRUE}
-plot_methylation(
-  meth_hp,
-  group_colours = c("1" = "steelblue", "2" = "coral")
-)
+```{r plot-delta, fig.height = 7}
+plot_methylation(meth_hp, show_delta = TRUE)
 ```
 
-## SNV-based grouping
+Group colours are set with `group_colours`, a vector named by group. Groups
+it does not name get further colour-blind-safe colours.
 
-When a heterozygous SNV is present in the region, reads can be split by
-allele by passing `snv = list(position =, ref =, alt =)`. A dashed vertical
-line marks the SNV position in the read panel so the allele split is easy to
-locate visually.
+```{r plot-hp-colours}
+plot_methylation(meth_hp, group_colours = c("1" = "steelblue", "2" = "coral"))
+```
 
-```{r read-snv, eval = FALSE, echo = TRUE}
-# Replace the position with the actual coordinate of a heterozygous SNV
-meth_snv <- read_methylation(
+## SNV grouping
+
+Reads can also be split by the base they carry at a heterozygous SNV with
+`snv = list(position =, ref =, alt =)`. Reads with the `ref` base form group
+`"REF"`, reads with the `alt` base form `"ALT"`, and all other reads (those
+not covering the position, or carrying another base) are dropped.
+
+```{r read-snv}
+meth_snv = read_methylation(
   bam, region,
-  snv = list(position = 34505000L, ref = "C", alt = "T")
+  snv = list(position = 3000, ref = "A", alt = "G"),
+  seed = 1
 )
+meth_snv
 ```
 
-```{r load-snv, echo = FALSE}
-meth_snv <- cache$meth_snv
-```
-
-```{r plot-snv, echo = TRUE}
+```{r plot-snv}
 plot_methylation(meth_snv)
 ```
 
-The dashed vertical line in the lower panel marks the SNV position and
-visually anchors the two allele groups. In the top panel, the mean methylation
-curves for REF and ALT reads are overlaid for direct comparison.
+A dashed vertical line marks the SNV position in the read panel at the top
+and in the smooth panel below it, where the REF and ALT curves are overlaid
+for direct comparison.
 
-## Customising plot appearance
+## Binary calls
 
-`plot_methylation()` exposes several arguments for fine-tuning the figure.
-The examples below use `meth_hp` from the cache.
+By default sites are coloured by a continuous probability gradient and the
+smooth panel shows the mean probability. Setting `call_threshold` switches to
+binary calls: sites at or above the threshold are methylated, the rest
+unmethylated, and the smooth panel shows the fraction of methylated calls.
+`call_ambiguous = w` labels calls within `w` of the threshold as ambiguous
+and leaves them out of that fraction.
 
-```{r custom-colours, echo = TRUE}
-# Custom methylation colour gradient
-plot_methylation(
-  meth_hp,
-  colour_low  = "white",
-  colour_high = "darkgreen"
-)
+```{r plot-binary}
+plot_methylation(meth_hp, call_threshold = 0.5, call_ambiguous = 0.1)
 ```
 
-```{r custom-dots, echo = TRUE}
-# Larger dots and a wider smoother
-plot_methylation(
-  meth_hp,
-  dot_size    = 2.5,
-  smooth_span = 0.4
-)
+## Several modification codes
+
+`mod_code` takes several codes at once. Each read bar is then split into one
+strip per code (in the order given, top to bottom) and the smooth panel draws
+one line per code, distinguished by line type.
+
+```{r plot-two-codes}
+meth_mh = read_methylation(bam, region, mod_code = c("m", "h"),
+                           group_tag = "HP", seed = 1)
+plot_methylation(meth_mh)
 ```
 
-```{r custom-panels, echo = TRUE}
-# Taller summary panel relative to read panel
-plot_methylation(
-  meth_hp,
-  panel_heights = c(2, 3)
-)
+## Multi-sample comparison
+
+`merge_methylation()` combines named `methylation_data` objects for the same
+region and modification code(s); `plot_methylation()` then draws one read
+panel per sample above a shared smooth panel. Here two random subsets of the
+example BAM stand in for two samples (e.g. tumour and normal).
+
+```{r multi-sample, fig.height = 7}
+sample_a = read_methylation(bam, region, group_tag = "HP",
+                            max_reads = 40, seed = 1)
+sample_b = read_methylation(bam, region, group_tag = "HP",
+                            max_reads = 40, seed = 2)
+merged = merge_methylation(sample_A = sample_a, sample_B = sample_b)
+merged
+plot_methylation(merged)
 ```
 
-```{r custom-sort, echo = TRUE}
-# Sort reads by mean modification probability instead of start position
-plot_methylation(meth_hp, sort_by = "mean_mod_prob")
+## VCF variant overlay
+
+`read_variants()` reads the VCF records in a region (it needs the
+`VariantAnnotation` and `SummarizedExperiment` packages), and
+`plot_methylation(variants = )` overlays them on the read panel:
+
+- **SNV**: a small black asterisk on each read whose base equals the ALT
+  allele;
+- **DEL, DUP, INV** (symbolic SVs): a styled segment on every read
+  overlapping the SV span (DEL a dark red line with end ticks, DUP two teal
+  parallel lines, INV a purple dashed line), with chevrons where the span is
+  cut at the region edge;
+- **BND**: a label `⋈ mate_chrom:mate_pos` at the bottom of the read panel,
+  plus a coloured border on the SA marker of reads whose supplementary
+  alignment matches the breakend mate within `bnd_match_tol` (only with
+  `show_supplementary = TRUE`, the default).
+
+Short insertions, deletions and MNVs, and symbolic types other than
+DEL/DUP/INV, are not drawn.
+
+```{r vcf-overlay, eval = has_variants}
+vars = read_variants(vcf, region)
+vars
+plot_methylation(meth_hp, variants = vars)
 ```
 
-## Composing with ggplot2
+## Gene annotation track
 
-`plot_methylation()` returns a `patchwork` object, which can be modified with
-standard ggplot2 theme calls applied via `&` (applies to all panels) or `+`
-(applies to the last panel only).
+`read_annotations()` loads gene models from a `TxDb` object or a GTF/GFF file
+(via `GenomicFeatures`, `txdbmaker` and `rtracklayer`), and
+`plot_methylation(annotations = )` adds them as a track at the top of the
+figure. A parsed GTF is cached for the rest of the R session;
+`clear_annotation_cache()` frees it. The example data has no gene models, so
+this chunk is not run.
 
-```{r ggplot2-compose, echo = TRUE}
-library(ggplot2)
-
-p <- plot_methylation(meth_basic)
-
-# Increase base font size across both panels
-p & theme(text = element_text(size = 14))
-```
-
-Save to file with `ggplot2::ggsave()`. Supply explicit `width` and `height`
-because patchwork objects do not carry intrinsic dimensions.
-
-```{r ggsave, eval = FALSE, echo = TRUE}
-ggsave("my_methylation_plot.pdf", p, width = 10, height = 6)
-```
-
-Patchwork operators (`/`, `|`, `+`) can be used to combine a
-`plot_methylation()` output with other ggplot2 panels in a larger figure
-layout.
-
-## New features
-
-### Gene annotation track
-
-A gene model track can be added below the read panel by loading annotations
-with `read_annotations()` and passing them to `plot_methylation()`.
-
-```{r gene-track, eval=FALSE}
+```{r gene-track, eval = FALSE}
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 
-md <- read_methylation("sample.bam", "chr21:10000000-10050000")
-annot <- read_annotations(
+md = read_methylation("sample.bam", "chr21:10000000-10050000")
+annot = read_annotations(
   txdb   = TxDb.Hsapiens.UCSC.hg38.knownGene,
   region = "chr21:10000000-10050000"
 )
 plot_methylation(md, annotations = annot)
 ```
 
-`read_annotations()` also accepts a path to a GTF/GFF file via the `gtf`
-argument. The file is parsed once and the resulting `TxDb` is cached for the
-rest of the R session, so calling `read_annotations()` for multiple regions
-with the same GTF is efficient. Use `clear_annotation_cache()` to free the
-cached object or force re-parsing if the file changes.
+## Insertion loci
 
-### Multi-sample comparison
+`read_methylation()` keeps modification calls on inserted bases (CIGAR `I`)
+in `$insertion_sites`, also available through `insertion_sites()`.
+`list_insertion_loci()` clusters the insertions of all reads into loci
+(by position first, then by length) and reports, per locus, the reads that
+carry it and the non-carriers: reads that span the locus on both sides
+without an insertion there. For real ONT/PacBio data, `min_length = 50`
+ignores small sequencing-error insertions; the default `min_length = 1`
+keeps everything.
 
-`merge_methylation()` combines two or more `methylation_data` objects into a
-`multi_methylation_data` object. Samples must share the same genomic region
-and modification code. Pass named arguments to label each sample.
+```{r insertion-loci}
+head(insertion_sites(meth_hp))
 
-```{r multi-sample, eval=FALSE}
-md_tumor  <- read_methylation("tumor.bam",  "chr21:10000000-10050000", group_tag = "HP")
-md_normal <- read_methylation("normal.bam", "chr21:10000000-10050000", group_tag = "HP")
-
-merged <- merge_methylation(tumor = md_tumor, normal = md_normal)
-plot_methylation(merged)
+loci = list_insertion_loci(meth_hp, min_length = 50)
+loci[, c("locus_id", "anchor_pos", "n_carriers", "n_noncarriers",
+         "median_length", "mean_ins_mod_prob")]
 ```
 
-`plot_methylation()` detects the `multi_methylation_data` class and produces
-one subplot per sample, making cross-sample methylation comparisons easy.
+`plot_insertion_locus()` draws one locus in stitched coordinates: the left
+reference flank, the inserted bases (at the locus' median length) and the
+right reference flank side by side, with the reads in the top panel
+(non-carriers below the carriers) and smoothed modification probabilities
+below. The x axis shows reference coordinates in the flanks and the
+inserted-base offset in the middle.
 
-### VCF variant overlay
-
-Variants from a VCF file can be overlaid on the read panel with
-`read_variants()`. Each read base at a variant position is classified as
-`ref`, `alt`, `del`, or `other` and rendered as a coloured symbol.
-
-```{r vcf-overlay, eval=FALSE}
-md   <- read_methylation("sample.bam", "chr21:10000000-10050000")
-vars <- read_variants("variants.vcf.gz", "chr21:10000000-10050000")
-plot_methylation(md, variants = vars)
+```{r plot-insertion}
+plot_insertion_locus(meth_hp, loci[1, ], flank = 300)
 ```
 
-### Insertion-aware modifications
+## Customising and composing
 
-`read_methylation()` retains modification calls on inserted bases (bases
-present in the read but absent from the reference). These are stored in
-`m$insertion_sites` alongside the standard `m$sites` data frame.
+`plot_methylation()` exposes the colour gradient, line width, smoothing
+span, panel heights and sort order. `panel_heights` gives the relative
+heights from top to bottom (read panel, smooth panel, plus the gene track
+and delta panel when shown):
 
-Use `list_insertion_loci()` to discover recurrent insertion events across
-reads, then `plot_insertion_locus()` to visualise the per-locus modification
-pattern in a stitched coordinate system that shows the left reference flank,
-the insertion bases, and the right reference flank as contiguous tracks.
-
-```{r insertion-loci, eval=FALSE}
-md <- read_methylation("sample.bam", "chr21:10000000-10050000")
-
-# Discover insertion loci present in >= 2 reads
-loci <- list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
-print(loci)
-
-# Visualise the first locus
-plot_insertion_locus(md, loci[1L, ])
+```{r custom}
+plot_methylation(
+  meth_hp,
+  colour_low    = "white",
+  colour_high   = "darkgreen",
+  smooth_span   = 0.4,
+  panel_heights = c(2, 2)
+)
 ```
 
-The `n_carriers` column in the `loci` table reports how many reads carry the
-insertion; `n_noncarriers` counts reads that span the locus without an
-insertion. `mean_ins_mod_prob` is the mean modification probability across
-all inserted bases at the locus.
+Reads are packed into lanes per group. Within a group they are ordered by
+`sort_by`; the default is `"start"` for ungrouped data and
+`c("start", "group", "mean_mod_prob")` for grouped data. Any column of
+`$reads` can be used, plus `mean_mod_prob` (the per-read mean
+probability):
 
-Access the raw insertion-site data directly with the `insertion_sites()`
-accessor:
+```{r custom-sort}
+plot_methylation(meth_hp, sort_by = "mean_mod_prob")
+```
 
-```{r insertion-accessor, eval=FALSE}
-head(insertion_sites(md))
+The result is a `patchwork` object, so ggplot2 theme calls apply to every
+panel with `&`:
+
+```{r compose}
+library(ggplot2)
+p = plot_methylation(meth)
+p & theme(text = element_text(size = 14))
+```
+
+Save it with `ggplot2::ggsave()`, giving an explicit size:
+
+```{r ggsave, eval = FALSE}
+ggsave("my_methylation_plot.pdf", p, width = 10, height = 6)
+```
+
+## Exporting data
+
+`write_methylation()` writes `$reads` and `$sites` to TSV, or the sites to
+BED (0-based, score `round(mod_prob * 1000)`, name `<read_name>:<mod_code>`),
+optionally gzip-compressed.
+
+```{r write}
+prefix = file.path(tempdir(), "synthetic_chr1")
+write_methylation(meth_hp, prefix, format = "bed")
+list.files(dirname(prefix), pattern = "synthetic_chr1")
+readLines(paste0(prefix, "_sites.bed"), n = 3)
 ```
 
 ## Session info
 
-```{r session-info, eval = TRUE, echo = TRUE}
+```{r session-info}
 sessionInfo()
 ```
