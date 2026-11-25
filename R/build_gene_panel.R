@@ -47,10 +47,9 @@ build_gene_panel = function(annotations, region_start, region_end,
         "text", x = (region_start + region_end) / 2, y = 0.5,
         label = "No gene annotations in region", size = 3.5, colour = "grey50"
       ) +
-      ggplot2::scale_x_continuous(limits = c(region_start, region_end),
-                                  expand = c(0, 0)) +
       ggplot2::scale_y_continuous(limits = c(0, 1)) +
-      ggplot2::theme_minimal() +
+      ggplot2::coord_cartesian(xlim = c(region_start, region_end)) +
+      theme_ggmethylation() +
       ggplot2::theme(
         axis.text.y  = ggplot2::element_blank(),
         axis.ticks.y = ggplot2::element_blank(),
@@ -183,10 +182,13 @@ build_gene_panel = function(annotations, region_start, region_end,
     arrow_len  = pmax(200L, (intron_ends[wide_introns][in_view] -
                               intron_starts[wide_introns][in_view]) * 0.05)
 
+    # Clamp arrow tips to the region like the rest of the geometry
     if (tx$strand == "+") {
-      data.frame(x = positions, xend = positions + arrow_len, y = tx$row, yend = tx$row)
+      data.frame(x = positions, xend = pmin(positions + arrow_len, region_end),
+                 y = tx$row, yend = tx$row)
     } else {
-      data.frame(x = positions, xend = positions - arrow_len, y = tx$row, yend = tx$row)
+      data.frame(x = positions, xend = pmax(positions - arrow_len, region_start),
+                 y = tx$row, yend = tx$row)
     }
   }))
 
@@ -265,14 +267,15 @@ build_gene_panel = function(annotations, region_start, region_end,
       ggplot2::aes(x = .data$label_x, y = .data$label_y, label = .data$gene_name),
       vjust = 1, size = 2.5, colour = "black"
     ) +
-    ggplot2::coord_cartesian(clip = "off") +
-    ggplot2::scale_x_continuous(
-      limits = c(region_start, region_end), expand = c(0, 0)
-    ) +
+    # Same x coordinate system as the read/smooth/delta panels
+    # (coord_cartesian(xlim = ...) with default expansion) so that genes line
+    # up with the reads below. Geometry is pre-clipped above; clip = "off"
+    # keeps gene labels near the region edges from being cut.
+    ggplot2::coord_cartesian(xlim = c(region_start, region_end), clip = "off") +
     ggplot2::scale_y_continuous(
       limits = c(row_spacing - 0.8, n_rows * row_spacing + 0.5)
     ) +
-    ggplot2::theme_minimal() +
+    theme_ggmethylation() +
     ggplot2::theme(
       axis.text.y  = ggplot2::element_blank(),
       axis.ticks.y = ggplot2::element_blank(),
