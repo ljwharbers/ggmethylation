@@ -15,8 +15,8 @@ devtools::install()
 # Run all tests
 devtools::test()
 
-# Run a single test file
-devtools::test_file("tests/testthat/test-pack_reads.R")
+# Run a single test file (matches test-pack_reads.R)
+devtools::test(filter = "pack_reads")
 
 # Regenerate documentation (roxygen2)
 devtools::document()

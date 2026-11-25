@@ -121,7 +121,7 @@ does.
 - A group with a single position no longer crashes the delta track; `NA`
   probabilities are ignored when smoothing.
 - Two ungrouped samples in a mixed merge no longer share one CI ribbon.
-- More than four modification codes or samples no longer give `NA` line
+- More than four modification codes no longer give `NA` line
   types (up to 13 are supported, with a clear error beyond).
 
 ### Annotations and variants

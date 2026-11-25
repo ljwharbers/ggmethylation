@@ -301,8 +301,8 @@ plot_insertion_locus(meth_hp, loci[1, ], flank = 300)
 
 `plot_methylation()` exposes the colour gradient, line width, smoothing
 span, panel heights and sort order. `panel_heights` gives the relative
-heights from top to bottom (read panel, smooth panel, plus the gene track
-and delta panel when shown):
+heights from top to bottom (gene track when shown, read panel, smooth panel,
+delta panel when shown):
 
 ```{r custom}
 plot_methylation(
@@ -333,10 +333,12 @@ p = plot_methylation(meth)
 p & theme(text = element_text(size = 14))
 ```
 
-Save it with `ggplot2::ggsave()`, giving an explicit size:
+Save it with `ggplot2::ggsave()`, giving an explicit size. For PDF output use
+`device = cairo_pdf`: the default `pdf()` device cannot draw some of the
+symbols used in the plots (e.g. the breakend label `⋈`).
 
 ```{r ggsave, eval = FALSE}
-ggsave("my_methylation_plot.pdf", p, width = 10, height = 6)
+ggsave("my_methylation_plot.pdf", p, width = 10, height = 6, device = cairo_pdf)
 ```
 
 ## Exporting data
