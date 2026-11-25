@@ -35,6 +35,78 @@ test_that("parse_region accepts dotted chromosome names", {
   expect_equal(result$end, 200L)
 })
 
+test_that("parse_region splits on the last colon (contig names with colons)", {
+  result = ggmethylation:::parse_region("HLA-A*01:01:01:01:1-10")
+  expect_equal(result$chrom, "HLA-A*01:01:01:01")
+  expect_equal(result$start, 1L)
+  expect_equal(result$end, 10L)
+})
+
+test_that("parse_region rejects start > end", {
+  expect_error(ggmethylation:::parse_region("chr1:2000-1000"), "greater than end")
+})
+
+test_that("parse_region rejects coordinates beyond the integer range", {
+  expect_error(ggmethylation:::parse_region("chr1:1-3000000000"), "too large")
+})
+
+test_that("parse_region rejects a start of 0", {
+  expect_error(ggmethylation:::parse_region("chr1:0-100"), "1-based")
+})
+
+test_that("parse_region rejects anything but a single string", {
+  expect_error(ggmethylation:::parse_region(c("chr1:1-10", "chr2:1-10")), "single")
+  expect_error(ggmethylation:::parse_region(NA_character_), "single")
+  expect_error(ggmethylation:::parse_region(1000), "single")
+})
+
+test_that("parse_region asks for coordinates when given a bare contig name", {
+  expect_error(ggmethylation:::parse_region("chr1"), "chr1:start-end")
+})
+
+# --- validate_bam_index ---
+
+test_that("validate_bam_index accepts a .csi index", {
+  dir = tempfile("bamidx")
+  dir.create(dir)
+  bam = file.path(dir, "x.bam")
+  file.create(bam, paste0(bam, ".csi"))
+  expect_equal(ggmethylation:::validate_bam_index(bam), paste0(bam, ".csi"))
+  file.remove(paste0(bam, ".csi"))
+  file.create(file.path(dir, "x.csi"))
+  expect_equal(ggmethylation:::validate_bam_index(bam), file.path(dir, "x.csi"))
+  file.remove(file.path(dir, "x.csi"))
+  expect_error(ggmethylation:::validate_bam_index(bam), "index not found")
+})
+
+# --- .with_seed ---
+
+test_that(".with_seed is reproducible and leaves the global RNG state alone", {
+  set.seed(99)
+  expected_next = stats::runif(1)
+
+  set.seed(99)
+  a = ggmethylation:::.with_seed(7, sample(100, 5))
+  after = stats::runif(1)
+  b = ggmethylation:::.with_seed(7, sample(100, 5))
+  expect_identical(a, b)
+  expect_identical(after, expected_next)
+
+  # NULL seed: plain evaluation using the global stream.
+  set.seed(5)
+  x = ggmethylation:::.with_seed(NULL, stats::runif(1))
+  set.seed(5)
+  expect_identical(x, stats::runif(1))
+})
+
+test_that(".with_seed removes .Random.seed when there was none before", {
+  old = if (exists(".Random.seed", envir = globalenv())) get(".Random.seed", envir = globalenv())
+  on.exit(if (!is.null(old)) assign(".Random.seed", old, envir = globalenv()))
+  if (exists(".Random.seed", envir = globalenv())) rm(".Random.seed", envir = globalenv())
+  ggmethylation:::.with_seed(1, stats::runif(1))
+  expect_false(exists(".Random.seed", envir = globalenv()))
+})
+
 # --- ref_to_seq ---
 # ref_to_seq(cigar, ref_start, target_ref_pos) -> single integer query position or NA
 

@@ -58,4 +58,161 @@ test_that("snv is validated", {
   expect_error(read_fixture(snv = list(position = 3000, ref = "AT", alt = "G")), "snv")
   expect_error(read_fixture(snv = list(position = 3000, ref = "A", alt = "G"),
                             group_tag = "HP"), "mutually exclusive")
+  expect_error(read_fixture(snv = list(position = NA, ref = "A", alt = "G")), "snv")
+  expect_error(read_fixture(snv = list(position = 3000, ref = "X", alt = "G")), "A, C, G or T")
+  expect_error(read_fixture(snv = list(position = 3000, ref = "A", alt = "a")), "differ")
+  expect_error(read_fixture(snv = list(position = 9000, ref = "A", alt = "G")), "outside")
+})
+
+test_that("numeric arguments are validated", {
+  expect_error(read_fixture(max_reads = NA), "max_reads")
+  expect_error(read_fixture(max_reads = 0), "max_reads")
+  expect_error(read_fixture(max_reads = "10"), "max_reads")
+  expect_error(read_fixture(min_mapq = NA), "min_mapq")
+  expect_error(read_fixture(min_mapq = "a"), "min_mapq")
+  expect_error(read_fixture(min_read_length = NA), "min_read_length")
+  expect_error(read_fixture(min_read_length = c(1, 2)), "min_read_length")
+  expect_error(read_fixture(seed = "a"), "seed")
+})
+
+test_that("seed makes downsampling reproducible without touching the global RNG", {
+  run = function(seed) {
+    suppressWarnings(read_methylation(fixture_bam(), fixture_region, max_reads = 10,
+                                      seed = seed))$reads$read_name
+  }
+  expect_identical(run(42), run(42))
+  expect_length(run(42), 10L)
+
+  set.seed(3)
+  expected_next = stats::runif(1)
+  set.seed(3)
+  run(42)
+  expect_identical(stats::runif(1), expected_next)
+})
+
+test_that("a group tag absent from every read leaves a consistent ungrouped object", {
+  expect_warning(
+    md <- read_methylation(fixture_bam(), fixture_region, group_tag = "XX"),
+    "not found in any read"
+  )
+  expect_null(md$group_tag)
+  expect_false("group" %in% names(md$reads))
+  expect_false("group" %in% names(md$sites))
+  expect_false("group" %in% names(md$insertion_sites))
+})
+
+test_that("snv requests keep group_tag = 'SNV' when filters remove every read", {
+  md = read_fixture(snv = list(position = 3000, ref = "A", alt = "G"), min_mapq = 255)
+  expect_equal(nrow(md$reads), 0L)
+  expect_equal(md$group_tag, "SNV")
+  expect_identical(md$snv_position, 3000L)
+  expect_true("group" %in% names(md$sites))
+})
+
+test_that("a requested mod_code absent from every MM tag is reported", {
+  expect_warning(
+    read_methylation(fixture_bam(), fixture_region, mod_code = "a"),
+    "not found in any MM tag"
+  )
+})
+
+# --- Hand-written BAMs ---------------------------------------------------
+# SAM text -> sorted, indexed BAM via Rsamtools::asBam (no samtools needed).
+
+sam_record = function(qname, flag, pos, cigar, seq, tags = character(0)) {
+  paste(c(qname, flag, "chr1", pos, 60, cigar, "*", 0, 0, seq, "*", tags),
+        collapse = "\t")
+}
+
+make_bam = function(records) {
+  sam = tempfile(fileext = ".sam")
+  writeLines(c("@HD\tVN:1.6\tSO:unsorted", "@SQ\tSN:chr1\tLN:10000", records), sam)
+  Rsamtools::asBam(sam, tempfile("synthetic"), indexDestination = TRUE)
+}
+
+# Run `expr`, collecting warning messages instead of emitting them.
+collect_warnings = function(expr) {
+  msgs = character(0)
+  value = withCallingHandlers(expr, warning = function(w) {
+    msgs <<- c(msgs, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  })
+  list(value = value, warnings = msgs)
+}
+
+# SEQ with C's at query 2, 6, 10.
+seq10 = "ACGTACGTAC"
+mm3 = c("MM:Z:C+m?,0,0,0;", "ML:B:C,10,20,30")
+
+test_that("secondary, duplicate and QC-fail alignments are excluded", {
+  bam = make_bam(c(
+    sam_record("primary", 0, 100, "10M", seq10, mm3),
+    sam_record("secondary", 256, 100, "10M", seq10, mm3),
+    sam_record("qcfail", 512, 110, "10M", seq10, mm3),
+    sam_record("duplicate", 1024, 120, "10M", seq10, mm3),
+    sam_record("supplementary", 2048, 150, "10M", seq10, mm3)
+  ))
+  md = read_methylation(bam, "chr1:100-200")
+  expect_setequal(md$reads$read_name, c("primary", "supplementary"))
+  expect_equal(sort(md$sites$position), c(101L, 105L, 109L, 151L, 155L, 159L))
+})
+
+test_that("reads with malformed MM/ML are skipped with one aggregated warning", {
+  bam = make_bam(c(
+    # Good: C's at ref 101, 105, 109.
+    sam_record("good", 0, 100, "10M", seq10, mm3),
+    # Two ML values for three deltas.
+    sam_record("short_ml", 0, 120, "10M", seq10,
+               c("MM:Z:C+m?,0,0,0;", "ML:B:C,10,20")),
+    # Empty delta on a reverse read.
+    sam_record("bad_delta", 16, 130, "10M", seq10,
+               c("MM:Z:C+m?,0,,1;", "ML:B:C,1,2,3")),
+    # Hard-clipped record whose MM still describes the 15-base read.
+    sam_record("hard_clipped", 0, 140, "5H10M", seq10,
+               c("MM:Z:C+m?,0,0,0;", "ML:B:C,10,20,30", "MN:i:15")),
+    # MN agrees with SEQ: first C at query 2 -> ref 161.
+    sam_record("mn_ok", 0, 160, "10M", seq10,
+               c("MM:Z:C+m?,0;", "ML:B:C,99", "MN:i:10"))
+  ))
+  res = collect_warnings(read_methylation(bam, "chr1:100-200"))
+  md = res$value
+  skip_msgs = grep("malformed", res$warnings, value = TRUE)
+  expect_length(skip_msgs, 1L)
+  expect_match(skip_msgs, "3 read")
+  # Skipped reads stay in $reads, without calls.
+  expect_setequal(md$reads$read_name,
+                  c("good", "short_ml", "bad_delta", "hard_clipped", "mn_ok"))
+  expect_setequal(unique(md$sites$read_name), c("good", "mn_ok"))
+  expect_false(anyNA(md$sites$mod_prob))
+  expect_equal(md$sites$mod_prob[md$sites$read_name == "mn_ok"], 99 / 255)
+})
+
+test_that("a warning is given when no read carries MM/ML, naming legacy Mm/Ml tags", {
+  bam = make_bam(c(
+    sam_record("legacy", 0, 100, "10M", seq10, c("Mm:Z:C+m?,0;", "Ml:B:C,200")),
+    sam_record("plain", 0, 120, "10M", seq10)
+  ))
+  res = collect_warnings(read_methylation(bam, "chr1:100-200"))
+  expect_true(any(grepl("MM/ML", res$warnings)))
+  expect_true(any(grepl("Mm/Ml", res$warnings)))
+  expect_equal(nrow(res$value$sites), 0L)
+})
+
+test_that("snv requests keep group_tag = 'SNV' when the region has no reads", {
+  bam = make_bam(sam_record("r", 0, 100, "10M", seq10, mm3))
+  expect_warning(
+    md <- read_methylation(bam, "chr1:5000-5100",
+                           snv = list(position = 5050, ref = "A", alt = "G")),
+    "No reads"
+  )
+  expect_equal(md$group_tag, "SNV")
+  expect_identical(md$snv_position, 5050L)
+})
+
+test_that("read_methylation output on the fixture keeps its column layout", {
+  md = read_fixture(mod_code = c("m", "h"), group_tag = "HP")
+  expect_named(md$sites, c("position", "mod_prob", "read_name", "mod_code", "group"))
+  expect_named(md$insertion_sites, c("read_name", "ref_anchor", "query_pos", "ins_offset",
+                                     "ins_length", "mod_prob", "mod_code", "group"))
+  expect_setequal(unique(md$sites$mod_code), c("m", "h"))
 })
