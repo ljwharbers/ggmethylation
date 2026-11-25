@@ -71,7 +71,7 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
   }
 
   if (!is.numeric(bnd_match_tol) || length(bnd_match_tol) != 1L ||
-      is.na(bnd_match_tol) || bnd_match_tol < 0) {
+      !is.finite(bnd_match_tol) || bnd_match_tol < 0) {
     stop("`bnd_match_tol` must be a single non-negative number.", call. = FALSE)
   }
 

@@ -48,6 +48,23 @@ test_that("build_variant_overlay is silent for an overlapping or wider region", 
   expect_silent(ggmethylation:::build_variant_overlay(.md_chr1, .vd_for("chr1", 1, 100000)))
 })
 
+test_that("build_variant_overlay ignores NA-typed and MNV rows", {
+  # NA types (missing alleles) must not be turned into all-NA SNV / BND rows,
+  # which previously triggered the 'requires sequences' warning and an empty
+  # BND label layer. MNVs are not drawn.
+  vd = .vd_for("chr1", 1000, 7000)
+  vd$variants = data.frame(
+    position = c(2000L, 3000L), ref = c(NA, "GT"), alt = c(NA, "AC"),
+    type = c(NA, "MNV"), end = c(2000L, 3000L),
+    mate_chrom = c(NA_character_, NA_character_),
+    mate_pos = c(NA_integer_, NA_integer_), stringsAsFactors = FALSE
+  )
+  expect_silent(ov <- ggmethylation:::build_variant_overlay(.md_chr1, vd))
+  expect_null(ov$snv)
+  expect_null(ov$sv)
+  expect_null(ov$bnd)
+})
+
 .ann_at = function(start, end) {
   structure(
     list(

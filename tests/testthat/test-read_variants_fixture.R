@@ -30,7 +30,7 @@ test_that("read_variants returns the fixture variants exactly", {
 test_that("read_variants validates bnd_match_tol", {
   skip_if_not_installed("VariantAnnotation")
   vcf = testthat::test_path("fixtures", "synthetic.vcf.gz")
-  for (bad in list(-1, c(10, 20), NA_real_, "50", NULL)) {
+  for (bad in list(-1, c(10, 20), NA_real_, Inf, "50", NULL)) {
     expect_error(read_variants(vcf, "chr1:1000-7000", bnd_match_tol = bad),
                  "bnd_match_tol")
   }
