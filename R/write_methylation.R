@@ -22,8 +22,13 @@
 #'
 #' Always written as TSV with a header line. Columns: `read_name`, `start`,
 #' `end`, `strand`, `group` (only when the object carries a group tag),
-#' `mean_mod_prob`. `mean_mod_prob` is the per-read mean of `mod_prob` values
-#' across all sites; reads with no called sites receive `NA`.
+#' `mean_mod_prob`. `mean_mod_prob` is the per-read mean of `mod_prob` over
+#' all of the read's rows in `$sites`, pooling every modification code in the
+#' object: with `mod_code = c("m", "h")` it averages 5mC and 5hmC
+#' probabilities together. For a per-code mean, keep one code in
+#' `data$sites` before writing (e.g.
+#' `data$sites = data$sites[data$sites$mod_code == "m", ]`). Reads with no
+#' called sites receive `NA`.
 #'
 #' **Sites file — TSV** (`{prefix}_sites.tsv[.gz]`)
 #'
@@ -32,9 +37,12 @@
 #'
 #' **Sites file — BED** (`{prefix}_sites.bed[.gz]`)
 #'
-#' 6-column BED (no header). Coordinates are converted to 0-based half-open
-#' intervals (`chromStart = position - 1`, `chromEnd = position`). The `score`
-#' column contains `mod_prob` (float in `[0, 1]`).
+#' 6-column BED (no header), sorted by chromosome and start. Coordinates are
+#' converted to 0-based half-open intervals (`chromStart = position - 1`,
+#' `chromEnd = position`). `name` is `<read_name>:<mod_code>` (split on the
+#' last colon to recover both). `score` is the integer
+#' `round(mod_prob * 1000)`, in `0`--`1000` as BED requires. `strand` is the
+#' strand of the read's alignment (`.` if unknown).
 #'
 #' @examples
 #' \dontrun{
@@ -106,17 +114,18 @@ write_methylation = function(data,
     } else {
       # BED format
       chrom = as.character(GenomicRanges::seqnames(data$region))
-      strand_map = data$reads$strand
-      names(strand_map) = data$reads$read_name
+      strand = data$reads$strand[match(data$sites$read_name, data$reads$read_name)]
+      strand[is.na(strand) | !strand %in% c("+", "-")] = "."
       bed = data.frame(
-        chrom      = chrom,
-        chromStart = data$sites$position - 1L,
-        chromEnd   = data$sites$position,
-        name       = data$sites$read_name,
-        score      = data$sites$mod_prob,
-        strand     = strand_map[data$sites$read_name],
+        chrom      = rep(chrom, nrow(data$sites)),
+        chromStart = as.integer(data$sites$position - 1L),
+        chromEnd   = as.integer(data$sites$position),
+        name       = sprintf("%s:%s", data$sites$read_name, data$sites$mod_code),
+        score      = as.integer(round(pmin(pmax(data$sites$mod_prob, 0), 1) * 1000)),
+        strand     = strand,
         stringsAsFactors = FALSE
       )
+      bed = bed[order(bed$chrom, bed$chromStart, bed$name), , drop = FALSE]
       .write_table_maybe_gz(bed, paste0(prefix, "_sites.bed"), gzip,
                             header = FALSE)
     }

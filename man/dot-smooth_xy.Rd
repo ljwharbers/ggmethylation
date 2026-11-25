@@ -15,8 +15,10 @@
 \code{max(0.15, min(0.75, 15 / n_unique_x))}.}
 }
 \value{
-A data.frame with columns \code{position} and \code{mean_prob}. Returns
-raw per-x means when fewer than 4 unique x values are present.
+A data.frame with columns \code{position} and \code{mean_prob} (the loess
+fit, clamped to \verb{[0, 1]}). Returns raw per-x means when fewer than 4
+unique x values are present, and zero rows when every \code{y} is \code{NA}
+(pairs with an \code{NA} x or y are ignored).
 }
 \description{
 Single-group shortcut for \code{\link[=smooth_methylation]{smooth_methylation()}}, used by

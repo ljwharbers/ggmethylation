@@ -22,16 +22,20 @@
 .adaptive_span = function(n_positions) max(0.15, min(0.75, 15 / n_positions))
 
 # Loess fit of `mean_prob ~ position`, predicted at `grid` with a 95% band
-# (+/- 1.96 se) clamped to [0, 1]. With `mask_outside`, grid points outside the
-# data's own range are set to NA instead of being extrapolated.
+# (+/- 1.96 se). The fit and the band are clamped to [0, 1]: a loess fit to
+# probabilities (or 0/1 calls in binary mode) can overshoot near steep steps,
+# and values outside [0, 1] would otherwise be dropped by the panel's y scale.
+# With `mask_outside`, grid points outside the data's own range are set to NA
+# instead of being extrapolated.
 .loess_predict = function(agg, grid, span, mask_outside = FALSE) {
   fit = stats::loess(mean_prob ~ position, data = agg, span = span)
   pr  = stats::predict(fit, newdata = data.frame(position = grid), se = TRUE)
+  clamp01 = function(v) pmin(pmax(v, 0), 1)
   out = data.frame(
     position  = grid,
-    mean_prob = pr$fit,
-    lower     = pmin(pmax(pr$fit - 1.96 * pr$se.fit, 0), 1),
-    upper     = pmin(pmax(pr$fit + 1.96 * pr$se.fit, 0), 1)
+    mean_prob = clamp01(pr$fit),
+    lower     = clamp01(pr$fit - 1.96 * pr$se.fit),
+    upper     = clamp01(pr$fit + 1.96 * pr$se.fit)
   )
   if (mask_outside) {
     outside = grid < min(agg$position) | grid > max(agg$position)
@@ -43,15 +47,30 @@
 # Smooth one group's sites: per-position means, then loess on `grid` (or on a
 # 200-point grid over the group's own range when `grid` is NULL). Groups with
 # fewer than 4 unique positions return raw means (own grid) or a linear
-# interpolation (shared grid), without a confidence band.
+# interpolation (shared grid), without a confidence band. Sites with an NA
+# position or probability are ignored; a group left with no sites (or, on a
+# shared grid, a single position, which cannot be interpolated) contributes NA.
 .smooth_group = function(sites, span = NULL, grid = NULL) {
+  own_grid = is.null(grid)
+  sites = sites[!is.na(sites$position) & !is.na(sites$mod_prob), , drop = FALSE]
+  na_on_grid = function() {
+    data.frame(position = grid, mean_prob = NA_real_, lower = NA_real_, upper = NA_real_)
+  }
+  if (nrow(sites) == 0L) {
+    if (own_grid) {
+      return(data.frame(position = numeric(0L), mean_prob = numeric(0L),
+                        lower = numeric(0L), upper = numeric(0L)))
+    }
+    return(na_on_grid())
+  }
+
   agg = stats::aggregate(mod_prob ~ position, data = sites, FUN = mean)
   names(agg) = c("position", "mean_prob")
   if (is.null(span)) span = .adaptive_span(nrow(agg))
-  own_grid = is.null(grid)
 
   if (nrow(agg) < 4L) {
     if (own_grid) return(cbind(agg, lower = NA_real_, upper = NA_real_))
+    if (nrow(agg) < 2L) return(na_on_grid())
     interp = stats::approx(agg$position, agg$mean_prob, xout = grid, rule = 1)$y
     return(data.frame(position = grid, mean_prob = interp,
                       lower = NA_real_, upper = NA_real_))
@@ -77,8 +96,10 @@
 #' @param span Numeric or NULL. Loess span. When NULL, uses adaptive rule
 #'   `max(0.15, min(0.75, 15 / n_unique_x))`.
 #'
-#' @return A data.frame with columns `position` and `mean_prob`. Returns
-#'   raw per-x means when fewer than 4 unique x values are present.
+#' @return A data.frame with columns `position` and `mean_prob` (the loess
+#'   fit, clamped to `[0, 1]`). Returns raw per-x means when fewer than 4
+#'   unique x values are present, and zero rows when every `y` is `NA`
+#'   (pairs with an `NA` x or y are ignored).
 #'
 #' @keywords internal
 .smooth_xy = function(x, y, span = NULL) {
@@ -93,7 +114,8 @@
 #' of input positions.
 #'
 #' @param sites A data.frame with columns `position`, `mod_prob`, and a
-#'   grouping column (specified by `group_col`).
+#'   grouping column (specified by `group_col`). Rows with an `NA` position
+#'   or `mod_prob` are ignored.
 #' @param group_col Name of the grouping column (default `"group"`). Sites
 #'   whose group is `NA` are dropped.
 #' @param mod_code_col Optional name of a modification-code column; when set,
@@ -110,18 +132,20 @@
 #'   (e.g. for a delta track). Predicted `mean_prob`/`lower`/`upper` values
 #'   are set to `NA_real_` wherever a grid position falls outside that
 #'   group's own position range, since loess `predict()` would otherwise
-#'   extrapolate. Groups with fewer than 4 unique positions are interpolated
-#'   via `stats::approx(..., rule = 1)` instead (also `NA` outside range),
-#'   with `lower`/`upper` set to `NA_real_`.
+#'   extrapolate. Groups with 2 or 3 unique positions are interpolated via
+#'   `stats::approx(..., rule = 1)` instead (also `NA` outside range), with
+#'   `lower`/`upper` set to `NA_real_`; groups with a single position (or no
+#'   non-`NA` sites) are `NA` at every grid position.
 #'
 #' @return A data.frame with columns `position`, `mean_prob`, `lower`,
 #'   `upper`, and the grouping column. When `grid` is `NULL`, positions are a
 #'   regular grid of 200 points per group, spanning that group's own position
-#'   range, with loess-predicted values. `lower`/`upper` are the loess fit
-#'   `± 1.96 * se.fit`, clamped to `[0, 1]`. Groups with fewer than 4 unique
-#'   positions return raw per-site means instead, with `lower`/`upper` set
-#'   to `NA_real_`. When `grid` is supplied, positions are the shared `grid`
-#'   values for every group instead (see `grid` above).
+#'   range, with loess-predicted values. `mean_prob` is the loess fit and
+#'   `lower`/`upper` the fit `± 1.96 * se.fit`, all clamped to `[0, 1]`.
+#'   Groups with fewer than 4 unique positions return raw per-site means
+#'   instead, with `lower`/`upper` set to `NA_real_`; groups with no non-`NA`
+#'   sites contribute no rows. When `grid` is supplied, positions are the
+#'   shared `grid` values for every group instead (see `grid` above).
 #'
 #' @keywords internal
 smooth_methylation = function(sites, group_col = "group",
@@ -146,7 +170,7 @@ smooth_methylation = function(sites, group_col = "group",
   pieces = lapply(seq_len(nrow(keys)), function(k) {
     in_key = Reduce(`&`, lapply(id_cols, function(col) sites[[col]] == keys[[col]][k]))
     df = .smooth_group(sites[in_key, , drop = FALSE], span, grid)
-    for (col in id_cols) df[[col]] = keys[[col]][k]
+    for (col in id_cols) df[[col]] = rep(keys[[col]][k], nrow(df))
     df
   })
   out = do.call(rbind, pieces)

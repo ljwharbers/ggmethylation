@@ -1,4 +1,7 @@
-# Build the synthetic modBAM + VCF used by tests/testthat/fixtures/.
+# Build the synthetic modBAM + VCF used by the tests (tests/testthat/fixtures/)
+# and shipped with the package for the vignette and README examples
+# (inst/extdata/, read with system.file("extdata", ..., package =
+# "ggmethylation")). The two copies must stay identical.
 #
 # ~70 reads on a random 8 kb chr1 carrying HP tags (some reads untagged),
 # 5mC (m) and 5hmC (h) MM/ML calls, a 150 bp deletion shared by HP1 reads,
@@ -12,6 +15,9 @@
 #   samtools index tests/testthat/fixtures/synthetic.bam
 #   bgzip -c $TMPDIR/fx/vars.vcf > tests/testthat/fixtures/synthetic.vcf.gz
 #   tabix -p vcf tests/testthat/fixtures/synthetic.vcf.gz
+#   cp tests/testthat/fixtures/synthetic.bam tests/testthat/fixtures/synthetic.bam.bai \
+#      tests/testthat/fixtures/synthetic.vcf.gz tests/testthat/fixtures/synthetic.vcf.gz.tbi \
+#      inst/extdata/
 set.seed(42)
 out = commandArgs(trailingOnly = TRUE)[1]
 dir.create(out, showWarnings = FALSE, recursive = TRUE)

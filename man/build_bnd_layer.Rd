@@ -22,7 +22,9 @@ showing the full mate location (chromosome:position with comma thousands
 separator) using the join symbol (⋈).
 }
 \details{
-Because the read panel uses \code{scale_y_reverse()}, \code{y = -Inf} places the
-text at the \emph{top} of the panel (the intended position).
+The label is anchored at \code{y = -Inf} with \code{vjust = -0.3}, which (with the
+read panel's \code{scale_y_reverse()}) puts it just inside the \emph{bottom} edge of
+the read panel, below the last lane, centred on the BND position. No
+vertical line is drawn at the breakpoint.
 }
 \keyword{internal}

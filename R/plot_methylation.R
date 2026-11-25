@@ -18,9 +18,16 @@
 }
 
 # For each group, returns genomic intervals [del_start, del_end] where at least
-# `threshold` fraction of reads in that group carry a deletion.
+# `threshold` fraction of the group's reads *covering* the interval carry a
+# deletion. A read covers the interval when its span (reads$start/end) spans
+# the whole interval; carriers always count. Reads that do not reach the
+# deletion say nothing about it, so in a wide window with short reads they
+# must not dilute the fraction. No further minimum is applied: a lone carrier
+# that is the only read there has no sites inside the deletion, so the smooth
+# line has no data to draw across it either.
 # cigar_features: pre-filtered to type == "D" and min_indel_size by caller
-# reads: data.frame with read_name and the group column
+# reads: data.frame with read_name, start, end and the group column (without
+#   start/end every read of the group counts as covering)
 .consensus_deletion_ranges = function(cigar_features, reads, group_col,
                                        threshold = 0.75) {
   empty = data.frame(
@@ -49,8 +56,9 @@
     grp  = groups[k]
     grp_mask = .match_plot_group(dels[[group_col]], grp)
     sub  = dels[grp_mask, , drop = FALSE]
-    n_reads = sum(.match_plot_group(reads[[group_col]], grp))
-    if (n_reads == 0L) next
+    grp_reads = reads[.match_plot_group(reads[[group_col]], grp), , drop = FALSE]
+    if (nrow(grp_reads) == 0L) next
+    has_span = all(c("start", "end") %in% names(grp_reads))
 
     sub = sub[order(sub$ref_start), , drop = FALSE]
 
@@ -80,11 +88,18 @@
     merged_ends   = c(merged_ends,   cur_end)
     merged_reads  = c(merged_reads,  list(unique(cur_rds)))
 
-    keep = vapply(
-      merged_reads,
-      function(rds) length(rds) / n_reads >= threshold,
-      logical(1L)
-    )
+    keep = vapply(seq_along(merged_reads), function(m) {
+      carriers = merged_reads[[m]]
+      covering = if (has_span) {
+        # Reads that span the whole deletion: only they could show sequence
+        # across it, so only they count against the carriers.
+        grp_reads$read_name[grp_reads$start <= merged_starts[m] &
+                              grp_reads$end >= merged_ends[m]]
+      } else {
+        grp_reads$read_name
+      }
+      length(carriers) / length(union(carriers, covering)) >= threshold
+    }, logical(1L))
 
     if (!any(keep)) next
 
@@ -198,38 +213,25 @@
              sign = .delta_sign(line$mean_prob), stringsAsFactors = FALSE)
 }
 
-# Add a CI ribbon behind the smooth line(s) when requested and columns exist.
-# `fill_aes` controls the visual fill colour (tracking the matching line
-# colour aesthetic). `group_aes` controls polygon separation and defaults to
-# `fill_aes`; pass an explicit interaction() when a branch has more than one
-# identity variable (e.g. group + mod_code) so overlapping CI bands don't
-# collapse into a single self-crossing polygon.
-.add_ci_ribbon = function(p, smoothed, show_ci, fill_aes = NULL, group_aes = NULL) {
-  if (!isTRUE(show_ci)) return(p)
-  if (!all(c("lower", "upper") %in% names(smoothed))) return(p)
-  rib = smoothed[!is.na(smoothed$lower) & !is.na(smoothed$upper), , drop = FALSE]
-  if (nrow(rib) == 0L) return(p)
-  aes_args = list(x = quote(.data$position),
-                   ymin = quote(.data$lower),
-                   ymax = quote(.data$upper))
-  if (!is.null(fill_aes)) aes_args$fill = fill_aes
-  if (!is.null(group_aes)) aes_args$group = group_aes
-  ribbon = ggplot2::geom_ribbon(
-    data = rib,
-    mapping = do.call(ggplot2::aes, aes_args),
-    alpha = 0.2, colour = NA,
-    inherit.aes = FALSE,
-    show.legend = FALSE
-  )
-  # Insert ribbon *before* existing line layers so it renders behind them.
-  p$layers = c(list(ribbon), p$layers)
-  p
+# One identity string per smooth line, built from the columns that tell lines
+# apart (NA-safe: interaction() would turn every row with an NA group into a
+# single NA level, merging e.g. two ungrouped samples' CI ribbons into one
+# polygon). Used as the `group` of both the line and its CI ribbon.
+.line_id = function(df, cols) {
+  if (length(cols) == 0L || nrow(df) == 0L) return(rep("all", nrow(df)))
+  parts = lapply(cols, function(col) {
+    v = as.character(df[[col]])
+    ifelse(is.na(v), "<NA>", v)
+  })
+  do.call(paste, c(parts, sep = "\r"))
 }
 
 # Common ggplot2 layers for the smoothed modification probability panel.
 # Returns a list of scales/coords/theme components shared by every branch.
 # `y_label` differs between call modes: continuous mode plots a mean probability,
 # binary mode plots a fraction of methylated calls (see .smooth_y_label()).
+# Fitted values are clamped to [0, 1] in .loess_predict(), so the y limits
+# never drop part of a line.
 .smooth_panel_base = function(region_start, region_end,
                                y_label = "Mean modification\nprobability") {
   list(
@@ -329,53 +331,82 @@
 # `linetype` name columns of `smoothed` (or NULL); with no `colour` a single
 # line is drawn in `fixed_colour`. `labels` is passed to labs() (e.g.
 # list(colour = "Group")); `colour_values` feeds a manual colour (and matching
-# ribbon fill) scale.
+# ribbon fill) scale. `colour_guide = FALSE` hides the colour legend (used when
+# colour encodes the group, whose legend the read panel already shows).
+#
+# Every line gets its own `group` (see .line_id()), shared with its CI ribbon,
+# so overlapping bands never collapse into one self-crossing polygon. The
+# ribbon is layer 1 (drawn behind) and the lines layer 2; without a ribbon the
+# lines are layer 1. NA rows are kept: they are the breaks that
+# .insert_deletion_breaks() adds, and geom_line()/geom_ribbon() split there.
 .build_smooth_panel = function(smoothed, region_start, region_end, y_label,
                                show_ci, colour = NULL, linetype = NULL,
                                labels = list(), colour_values = NULL,
                                linetype_values = NULL, linetype_name = NULL,
-                               fixed_colour = .PROB_GRADIENT$high) {
+                               fixed_colour = .PROB_GRADIENT$high,
+                               colour_guide = TRUE) {
   col_sym = .data_col
-  aes_args = list(x = quote(.data$position), y = quote(.data$mean_prob))
+  smoothed$.line = .line_id(smoothed, c(colour, linetype))
+  aes_args = list(x = quote(.data$position), y = quote(.data$mean_prob),
+                  group = quote(.data$.line))
   if (!is.null(colour))   aes_args$colour   = col_sym(colour)
   if (!is.null(linetype)) aes_args$linetype = col_sym(linetype)
 
-  line = if (is.null(colour)) {
-    ggplot2::geom_line(linewidth = 1, colour = fixed_colour)
-  } else {
-    ggplot2::geom_line(linewidth = 1)
+  p = ggplot2::ggplot(smoothed, do.call(ggplot2::aes, aes_args))
+
+  has_ci = isTRUE(show_ci) && all(c("lower", "upper") %in% names(smoothed)) &&
+    any(!is.na(smoothed$lower) & !is.na(smoothed$upper))
+  if (has_ci) {
+    rib_aes = list(x = quote(.data$position), ymin = quote(.data$lower),
+                   ymax = quote(.data$upper), group = quote(.data$.line))
+    if (!is.null(colour)) rib_aes$fill = col_sym(colour)
+    rib_args = list(mapping = do.call(ggplot2::aes, rib_aes), alpha = 0.2,
+                    colour = NA, inherit.aes = FALSE, show.legend = FALSE,
+                    na.rm = TRUE)
+    if (is.null(colour)) rib_args$fill = fixed_colour
+    p = p + do.call(ggplot2::geom_ribbon, rib_args)
   }
-  p = ggplot2::ggplot(smoothed, do.call(ggplot2::aes, aes_args)) + line
-  if (!is.null(linetype_values)) {
-    p = p + ggplot2::scale_linetype_manual(values = linetype_values, name = linetype_name)
+
+  p = p + if (is.null(colour)) {
+    ggplot2::geom_line(linewidth = 1, colour = fixed_colour, na.rm = TRUE)
+  } else {
+    ggplot2::geom_line(linewidth = 1, na.rm = TRUE)
   }
   p = p +
     .smooth_panel_base(region_start, region_end, y_label) +
     do.call(ggplot2::labs, c(list(x = "Genomic position (bp)"), labels))
-  if (!is.null(colour_values)) {
-    p = p + ggplot2::scale_colour_manual(values = colour_values, na.value = "grey50")
+  if (!is.null(linetype_values)) {
+    # Keys in the given order, and wide enough to show the dash pattern.
+    p = p +
+      ggplot2::scale_linetype_manual(values = linetype_values, name = linetype_name,
+                                     limits = names(linetype_values)) +
+      ggplot2::theme(legend.key.width = ggplot2::unit(1.2, "cm"))
   }
-
-  # With two identity variables the ribbon needs both in `group`, or the
-  # overlapping bands collapse into one self-crossing polygon.
-  group_aes = if (!is.null(colour) && !is.null(linetype)) {
-    rlang::expr(interaction(!!col_sym(colour), !!col_sym(linetype)))
-  }
-  p = .add_ci_ribbon(p, smoothed, show_ci,
-                     fill_aes = if (!is.null(colour)) col_sym(colour),
-                     group_aes = group_aes)
+  guide = if (isTRUE(colour_guide)) "legend" else "none"
   if (!is.null(colour_values)) {
-    p = p + ggplot2::scale_fill_manual(values = colour_values, na.value = "grey50",
-                                       guide = "none")
+    p = p +
+      ggplot2::scale_colour_manual(values = colour_values, na.value = .GROUP_NA_COLOUR,
+                                   guide = guide) +
+      ggplot2::scale_fill_manual(values = colour_values, na.value = .GROUP_NA_COLOUR,
+                                 guide = "none")
+  } else if (!is.null(colour) && !isTRUE(colour_guide)) {
+    p = p + ggplot2::guides(colour = "none")
   }
   p
+}
+
+# Modification codes in display order: the object's `mod_code` order,
+# restricted to codes that actually occur in `sites` (plus any stray codes).
+.present_codes = function(mod_code, sites) {
+  seen = unique(as.character(sites$mod_code))
+  c(intersect(mod_code, seen), setdiff(seen, mod_code))
 }
 
 # Smooth panel for a single sample: one line per group (or one overall line),
 # with a linetype per modification code when several codes are present.
 .single_smooth_panel = function(data, sites_agg, region_start, region_end,
                                 opts) {
-  codes = unique(data$sites$mod_code)
+  codes = .present_codes(data$mod_code, data$sites)
   multi_code = length(codes) > 1L
   grouped = !is.null(data$group_tag)
 
@@ -399,10 +430,9 @@
       smoothed, region_start, region_end, y_label, opts$show_ci,
       colour = "group", linetype = if (multi_code) "mod_code",
       labels = list(colour = "Group"), colour_values = opts$group_colours,
-      linetype_values = if (multi_code) {
-        stats::setNames(c("solid", "dashed", "dotdash", "dotted")[seq_along(codes)], codes)
-      },
-      linetype_name = "Modification"
+      linetype_values = if (multi_code) .linetype_values(codes, "modification codes"),
+      linetype_name = "Modification",
+      colour_guide = FALSE
     )
   } else if (multi_code) {
     .build_smooth_panel(smoothed, region_start, region_end, y_label, opts$show_ci,
@@ -412,10 +442,14 @@
   }
 }
 
-# Shared smooth panel for multi-sample data: one line per sample, or, when any
-# sample is grouped, colour by group and linetype by sample.
+# Shared smooth panel for multi-sample data: one line per sample (and per
+# modification code when several are present), or, when any sample is
+# grouped, colour by group and linetype by sample (or sample x code).
 .multi_smooth_panel = function(samples, prepared, region_start, region_end,
                                opts) {
+  codes = unique(unlist(lapply(samples, function(s) .present_codes(s$mod_code, s$sites))))
+  multi_code = length(codes) > 1L
+
   smoothed = do.call(rbind, Map(function(s, prep, nm) {
     if (is.null(prep) || nrow(prep$sites_agg) == 0L) return(NULL)
     # One line per group of a grouped sample (unphased reads get no line, as
@@ -428,11 +462,14 @@
     sites$smooth_key = line_key(sites)
     reads$smooth_key = line_key(reads)
 
-    sm = smooth_methylation(sites, group_col = "smooth_key", span = opts$smooth_span)
+    sm = smooth_methylation(sites, group_col = "smooth_key",
+                            mod_code_col = if (multi_code) "mod_code",
+                            span = opts$smooth_span)
     sm = .apply_deletion_breaks(sm, s$cigar_features, reads, "smooth_key",
                                 opts$min_indel_size, opts$show_cigar)
     sm$sample = rep(nm, nrow(sm))
     sm$group = if (is.null(s$group_tag)) rep(NA_character_, nrow(sm)) else sm$smooth_key
+    if (!multi_code) sm$mod_code = rep(codes[1L], nrow(sm))
     sm$smooth_key = NULL
     sm
   }, samples, prepared, names(samples)))
@@ -441,21 +478,52 @@
     return(.message_plot("No methylation sites", size = 4))
   }
   rownames(smoothed) = NULL
+  sample_levels = names(samples)
+  smoothed$sample = factor(smoothed$sample, levels = sample_levels)
 
   y_label = .smooth_y_label(opts$binary)
   if (any(!vapply(samples, function(s) is.null(s$group_tag), logical(1L)))) {
+    # Colour = group; linetype = sample, or sample x code with several codes.
+    if (multi_code) {
+      lt_levels = as.vector(outer(codes, sample_levels,
+                                  function(cd, sm) paste(sm, cd)))
+      smoothed$sample_code = factor(paste(smoothed$sample, smoothed$mod_code),
+                                    levels = lt_levels)
+      lt_col = "sample_code"
+      lt_name = "Sample / modification"
+    } else {
+      lt_levels = sample_levels
+      lt_col = "sample"
+      lt_name = "Sample"
+    }
     .build_smooth_panel(smoothed, region_start, region_end, y_label, opts$show_ci,
-                        colour = "group", linetype = "sample",
-                        labels = list(colour = "Group", linetype = "Sample"),
-                        colour_values = opts$group_colours)
+                        colour = "group", linetype = lt_col,
+                        labels = list(colour = "Group"),
+                        colour_values = opts$group_colours,
+                        linetype_values = .linetype_values(lt_levels, "line types (samples x codes)"),
+                        linetype_name = lt_name,
+                        colour_guide = FALSE)
   } else {
     .build_smooth_panel(smoothed, region_start, region_end, y_label, opts$show_ci,
-                        colour = "sample", labels = list(colour = "Sample"))
+                        colour = "sample", linetype = if (multi_code) "mod_code",
+                        labels = list(colour = "Sample"),
+                        linetype_values = if (multi_code) .linetype_values(codes, "modification codes"),
+                        linetype_name = "Modification")
   }
 }
 
-# Delta panel for exactly two groups, or NULL (with a message) otherwise.
+# Delta panel for exactly two groups and one modification code, or NULL (with
+# a message) otherwise.
 .delta_panel = function(data, sites_agg, region_start, region_end, opts) {
+  codes = .present_codes(data$mod_code, sites_agg)
+  if (length(codes) > 1L) {
+    message(sprintf(
+      "Delta track needs a single modification code but the data has %s; skipping. %s",
+      paste(codes, collapse = ", "),
+      "Read the data with one `mod_code` to show it."
+    ))
+    return(NULL)
+  }
   delta_df = .compute_group_delta(sites_agg, "group", span = opts$smooth_span)
   if (is.null(delta_df)) return(NULL)
   # Read the group names off the attribute *now*: breaking the line on
@@ -465,33 +533,39 @@
     delta_df = .break_delta_on_deletions(delta_df, data$cigar_features, data$reads,
                                          opts$min_indel_size)
   }
-  # Colour the delta area by whichever group is higher, so it reads against
-  # the group colours in the panels above. Fall back to the standalone
-  # diverging pair only if *both* groups can't be resolved — a partial
-  # fallback would leave one half matching and one half not.
-  fill_neg = .DELTA_DIVERGING$neg
-  fill_pos = .DELTA_DIVERGING$pos
-  group_colours = opts$group_colours
-  if (!is.null(group_colours) && all(delta_groups %in% names(group_colours))) {
-    fill_neg = group_colours[[delta_groups[1L]]]
-    fill_pos = group_colours[[delta_groups[2L]]]
-  }
+  # Colour the delta area by whichever group is higher, using the same
+  # resolved group colours as the read and smooth panels.
+  group_colours = .resolve_group_colours(opts$group_colours, delta_groups)
   .build_delta_panel(delta_df, region_start, region_end,
                      .delta_y_label(opts$binary),
-                     fill_pos = fill_pos, fill_neg = fill_neg)
+                     fill_pos = unname(group_colours[delta_groups[2L]]),
+                     fill_neg = unname(group_colours[delta_groups[1L]]))
 }
 
 #' Plot read-level methylation data
 #'
-#' Creates a ggplot2 visualisation of read-level base modification data. When
-#' no grouping is present, produces a single panel showing reads as grey bars
-#' with coloured modification dots. When groups are present, adds a bottom
-#' panel with loess-smoothed mean modification probability per group and
-#' combines the panels using patchwork. Setting `call_threshold` switches to
+#' Creates a ggplot2 visualisation of read-level base modification data,
+#' returned as a [patchwork::patchwork] composite: an optional gene track, one
+#' read panel per sample (reads as bars with a coloured mark per modification
+#' site), a panel with the loess-smoothed mean modification probability (one
+#' line per group when the data is grouped, otherwise one overall line), and an
+#' optional delta panel (`show_delta`). Setting `call_threshold` switches to
 #' binary calls: sites are coloured methylated/unmethylated and the smooth
 #' panel plots the fraction of methylated calls instead of the mean probability.
 #'
-#' @param data A `methylation_data` object returned by [read_methylation()].
+#' Groups are coloured consistently in every panel (read bars, smooth lines,
+#' delta area) by one palette resolved from `group_colours`; reads whose group
+#' is `NA` (e.g. unphased) are drawn in grey. Legends shared by several panels
+#' are collected once at the right of the figure.
+#'
+#' When the data holds several modification codes (e.g.
+#' `mod_code = c("m", "h")`), each read bar is split into horizontal strips,
+#' one per code, in the order of `data$mod_code` from top to bottom (the read
+#' panel's y-axis title lists the order), and the smooth panel draws one line
+#' per code (by line type).
+#'
+#' @param data A `methylation_data` object returned by [read_methylation()],
+#'   or a `multi_methylation_data` object from [merge_methylation()].
 #' @param sort_by Character vector of column names from `data$reads` used
 #'   to sort reads before packing into lanes (reads are always packed per
 #'   group, so group order is fixed). Default NULL uses `"start"` when
@@ -506,58 +580,78 @@
 #'   slate blue-grey deliberately off the `colour_low`/`colour_high` ramp so it
 #'   reads as "no confident call" rather than "intermediate methylation"). Only
 #'   used when `call_threshold` and `call_ambiguous` are set.
-#' @param line_width Linewidth of modification site lines (default 0.2).
+#' @param line_width Positive number: linewidth of modification site lines
+#'   (default 0.2).
 #' @param colour_strand Logical. When `TRUE`, read bars are coloured by strand
 #'   (`"+"` = forward, `"-"` = reverse). Ignored when data is grouped; group
 #'   colour takes precedence. Default `FALSE`.
 #' @param strand_colours Named character vector with `"+"` and `"-"` entries
 #'   giving bar colours for each strand. Only used when `colour_strand = TRUE`
 #'   and data is ungrouped. Default `c("+" = "#4393C3", "-" = "#D6604D")`.
-#' @param group_colours Named character vector of colours per group. Defaults
-#'   to `c("1" = "#0072B2", "2" = "#E69F00")` (the Okabe-Ito colorblind-safe
-#'   blue/orange pair, see `.GROUP_PALETTE_DEFAULT`), matching the typical HP
-#'   haplotype tag output. Pass `NULL` to use ggplot2 defaults, or supply a
-#'   fully named vector for other group names.
-#' @param smooth_span Loess smoothing span for the bottom panel. When `NULL`
-#'   (default), an adaptive span is computed per group as
-#'   `max(0.15, min(0.75, 15 / n_unique_sites))`, targeting ~15 data points
-#'   per local fit regardless of region size or CpG density. Pass an explicit
-#'   numeric value (e.g. `0.3`) to use a fixed span.
-#' @param panel_heights Numeric vector giving relative heights of the panels.
-#'   When `annotations = NULL`, expects length 2 (`reads`, `smooth`); when
-#'   annotations are provided, expects length 3 (`gene track`, `reads`,
-#'   `smooth`) — the gene panel is placed at the top, reads in the middle, and
-#'   the smoothed probability curve at the bottom. When `show_delta = TRUE`
-#'   and grouping yields exactly two groups, an additional delta panel is
-#'   appended last, adding one to the expected length in each case above.
-#'   Pass `NULL` to use the built-in defaults.
+#' @param group_colours Character vector of colours per group, used for the
+#'   read bars, the smooth lines and the delta area alike. Defaults to
+#'   `c("1" = "#0072B2", "2" = "#E69F00")` (the Okabe-Ito colorblind-safe
+#'   blue/orange pair), matching HP haplotype tags. Groups the vector does not
+#'   name (e.g. `"REF"`/`"ALT"` from SNV grouping, or a third haplotype) get
+#'   further Okabe-Ito colours (with a message when you supplied the vector).
+#'   An unnamed vector is matched to the sorted group names by position and
+#'   needs at least one colour per group. Pass `NULL` to use ggplot2's default
+#'   hue palette.
+#' @param smooth_span `NULL` or a positive number: the loess smoothing span for
+#'   the smooth panel. When `NULL` (default), an adaptive span is computed per
+#'   group as `max(0.15, min(0.75, 15 / n_unique_sites))`, targeting ~15 data
+#'   points per local fit regardless of region size or CpG density. Pass an
+#'   explicit value (e.g. `0.3`) to use a fixed span.
+#' @param panel_heights Numeric vector giving relative heights of the panels,
+#'   top to bottom: the gene track (when `annotations` is given), one read
+#'   panel per sample, the smooth panel, and the delta panel (when shown).
+#'   Its length must equal the number of panels. Pass `NULL` (default) to use
+#'   the built-in defaults.
 #' @param annotations A `gene_annotations` object returned by
 #'   [read_annotations()], or `NULL` (default). When provided, a gene
 #'   annotation track is placed at the top of the composite figure (above the
 #'   read panel and the smooth panel).
 #' @param variants A `variant_data` object returned by [read_variants()], or
-#'   `NULL` (default). When provided, per-read base letters are drawn at
-#'   variant positions (coloured by match to ref/alt), and vertical dashed
-#'   lines are added at every variant position across all panels. Requires
-#'   that `data` was produced by a current version of [read_methylation()] that
-#'   stores sequences and CIGARs in the object.
+#'   `NULL` (default). When provided, VCF records are overlaid on the read
+#'   panel(s):
+#'   * **SNV**: a small black asterisk at the variant position on each read
+#'     whose base there equals the ALT allele. Reads with the REF or another
+#'     base are not marked; no base letters are drawn.
+#'   * **DEL, DUP, INV** (symbolic SVs with an `END`): a styled segment on
+#'     every read overlapping the SV span, clipped to the read and the region:
+#'     DEL a dark red line with end ticks, DUP two teal parallel lines, INV a
+#'     purple dashed line. Chevrons (« ») mark a span cut at the region
+#'     edge.
+#'   * **BND**: one text label `"⋈ mate_chrom:mate_pos"` at the bottom of
+#'     the read panel, centred on the breakend position. When
+#'     `show_supplementary = TRUE`, the SA marker of each read whose
+#'     supplementary alignment lies on the BND mate chromosome within the
+#'     object's `bnd_match_tol` of the mate position gets a dark magenta
+#'     border.
+#'   * Short insertions, deletions and MNVs, and symbolic types other than
+#'     DEL/DUP/INV (e.g. `<CNV>`), are not drawn.
+#'
+#'   No vertical lines are drawn for variants. Requires that `data` was
+#'   produced by a current version of [read_methylation()], which stores
+#'   sequences and CIGARs.
 #' @param show_cigar Logical. When `TRUE` (default), structural variants from
 #'   CIGAR strings (insertions, deletions) are displayed on reads. Insertions
 #'   appear as purple I-beam markers spanning the full height of the read bar;
-#'   deletions open a gap in the read bar and draw a thin black line. Set to
-#'   `FALSE` to hide these features.
-#' @param min_indel_size Integer. Minimum size (in bp) for insertions and
-#'   deletions to be displayed when `show_cigar = TRUE`. Indels smaller than
-#'   this threshold are hidden to reduce visual clutter from common small
-#'   indels. Default `50`.
-#' @param show_supplementary Logical. When `TRUE` (default), a coloured halo
-#'   is drawn around read bars indicating the chromosome of the supplementary
-#'   alignment partner (from the SA BAM tag). The original bar colouring
-#'   (group, strand, or default grey) is preserved inside the halo. Reads with
-#'   no supplementary alignment have no halo.
+#'   deletions open a gap in the read bar and draw a thin black line. Smooth
+#'   lines (and the delta area) are interrupted where at least 75% of a
+#'   group's reads spanning the whole deletion carry it. Set to `FALSE` to hide these
+#'   features.
+#' @param min_indel_size Non-negative number. Minimum size (in bp) for
+#'   insertions and deletions to be displayed when `show_cigar = TRUE`. Indels
+#'   smaller than this threshold are hidden to reduce visual clutter from
+#'   common small indels. Default `50`.
+#' @param show_supplementary Logical. When `TRUE` (default), reads with a
+#'   supplementary alignment (SA BAM tag) get a small marker at each clipped
+#'   end, filled by the chromosome of the SA partner. The marker is drawn
+#'   outside the read bar, so no modification site is hidden.
 #' @param show_ci Logical. When `TRUE` (default), a shaded ribbon showing the
 #'   loess confidence interval (`lower`/`upper` from [smooth_methylation()])
-#'   is drawn behind each smooth line in the bottom panel. Has no effect when
+#'   is drawn behind each smooth line in the smooth panel. Has no effect when
 #'   fewer than 4 unique positions are available for a group/code (no CI is
 #'   computed in that case). Set to `FALSE` to hide the ribbon.
 #' @param call_threshold `NULL` (default) or a number in `[0, 1]`. With
@@ -581,28 +675,34 @@
 #'
 #'   Because binarised values are 0 or 1, positions with thin coverage
 #'   contribute coarser values than with continuous probabilities, so the
-#'   binary curve is noisier where few reads overlap. The loess span still
-#'   averages over neighbouring positions and the confidence ribbon
-#'   (`show_ci`) widens where evidence is sparse.
-#' @param call_ambiguous `NULL` (default) for a hard threshold, or a numeric
-#'   half-width defining a band `[call_threshold - w, call_threshold + w)`
-#'   around `call_threshold` within which sites are labelled "ambiguous"
-#'   rather than methylated/unmethylated. Ambiguous sites are excluded from
-#'   both the numerator and the denominator of the methylated fraction, so the
-#'   smooth panel reports the fraction methylated *among confident calls*. The
-#'   default `NULL` discards nothing — every site is called at
-#'   `call_threshold`. Requires `call_threshold`.
+#'   binary curve is noisier where few reads overlap. The loess span averages
+#'   over neighbouring positions. Note that the loess fit weights every
+#'   position equally regardless of how many reads cover it, so the confidence
+#'   ribbon (`show_ci`) reflects the scatter and density of positions, not read
+#'   coverage: it does not widen where coverage is thin. Fitted values are
+#'   clamped to `[0, 1]`.
+#' @param call_ambiguous `NULL` (default) for a hard threshold, or a single
+#'   non-negative number `w`: sites whose probability lies in the open band
+#'   `(call_threshold - w, call_threshold + w)` are labelled "ambiguous"
+#'   rather than methylated/unmethylated, except a probability exactly equal
+#'   to `call_threshold`, which is always methylated. Ambiguous sites are
+#'   excluded from both the numerator and the denominator of the methylated
+#'   fraction, so the smooth panel reports the fraction methylated *among
+#'   confident calls*. The default `NULL` (or `0`) discards nothing — every
+#'   site is called at `call_threshold`. Requires `call_threshold`.
 #' @param show_delta Logical. When `TRUE`, and grouping yields exactly two
 #'   groups, an additional panel is appended below the smooth panel showing
 #'   the signed difference in loess-smoothed modification probability between
-#'   the two groups (group2 - group1), coloured by sign. Requires `data` to be
-#'   grouped (`data$group_tag` non-`NULL`) with exactly two distinct group
-#'   values; otherwise the panel is silently skipped (with a message). Not
+#'   the two groups (group2 - group1), filled with the colour of whichever
+#'   group is higher. Requires `data` to be grouped (`group_tag` or `snv` in
+#'   [read_methylation()]) with exactly two distinct group values and a single
+#'   modification code; otherwise the panel is skipped with a message. Not
 #'   supported for multi-sample data (`multi_methylation_data`); the argument
 #'   is accepted there but ignored (with a message). Default `FALSE`.
 #'
-#' @return A [ggplot2::ggplot] object (ungrouped) or a
-#'   [patchwork::patchwork] composite (grouped).
+#' @return A [patchwork::patchwork] composite (also for ungrouped data), or,
+#'   when a single-sample `data` has no reads, a placeholder [ggplot2::ggplot]
+#'   saying so.
 #'
 #' @examples
 #' \dontrun{
@@ -641,21 +741,14 @@ plot_methylation = function(data, sort_by = NULL,
       call. = FALSE
     )
   }
-  if (!is.logical(colour_strand) || length(colour_strand) != 1L) {
-    stop("'colour_strand' must be a single logical value.", call. = FALSE)
-  }
-  if (isTRUE(colour_strand) && !all(c("+", "-") %in% names(strand_colours))) {
-    stop("'strand_colours' must be a named vector with '+' and '-' entries.", call. = FALSE)
-  }
-  if (!is.null(call_threshold) &&
-      !(is.numeric(call_threshold) && length(call_threshold) == 1L &&
-        call_threshold >= 0 && call_threshold <= 1)) {
-    stop("`call_threshold` must be NULL or a single number in [0, 1].", call. = FALSE)
-  }
-  if (is.null(call_threshold) && !is.null(call_ambiguous)) {
-    stop("`call_ambiguous` only applies to binary calls; set `call_threshold` too.",
-         call. = FALSE)
-  }
+  .validate_plot_args(
+    colour_strand = colour_strand, strand_colours = strand_colours,
+    call_threshold = call_threshold, call_ambiguous = call_ambiguous,
+    smooth_span = smooth_span, group_colours = group_colours,
+    line_width = line_width, min_indel_size = min_indel_size,
+    show_cigar = show_cigar, show_supplementary = show_supplementary,
+    show_ci = show_ci, show_delta = show_delta
+  )
   if (!is.null(variants) && !inherits(variants, "variant_data")) {
     stop("`variants` must be a `variant_data` object returned by read_variants().",
          call. = FALSE)
@@ -666,12 +759,15 @@ plot_methylation = function(data, sort_by = NULL,
   }
 
   samples = if (multi) data$samples else list(data)
-  if (isTRUE(colour_strand) &&
-      any(!vapply(samples, function(s) is.null(s$group_tag), logical(1L)))) {
+  grouped_samples = !vapply(samples, function(s) is.null(s$group_tag), logical(1L))
+  if (isTRUE(colour_strand) && any(grouped_samples)) {
     message("'colour_strand = TRUE' is ignored when reads are grouped; group colour takes precedence.")
   }
   if (multi && isTRUE(show_delta)) {
     message("`show_delta` is not supported for multi-sample data; ignoring.")
+  }
+  if (!multi && isTRUE(show_delta) && is.null(data$group_tag)) {
+    message("`show_delta` needs grouped data (`group_tag` or `snv` in read_methylation()); skipping the delta panel.")
   }
   if (!multi && nrow(data$reads) == 0L) {
     return(.message_plot("No reads in region", size = 5))
@@ -679,9 +775,33 @@ plot_methylation = function(data, sort_by = NULL,
 
   region_start = GenomicRanges::start(data$region)
   region_end   = GenomicRanges::end(data$region)
+
+  # The gene panel only sees coordinates, so the chromosome is checked here.
+  ann_region = annotations$region
+  if (inherits(ann_region, "GRanges") && length(ann_region) == 1L) {
+    ann_chrom  = as.character(GenomicRanges::seqnames(ann_region))
+    data_chrom = as.character(GenomicRanges::seqnames(data$region))
+    if (!identical(ann_chrom, data_chrom)) {
+      warning(sprintf(
+        "`annotations` were read for chromosome '%s' but the data are on '%s'.",
+        ann_chrom, data_chrom
+      ), call. = FALSE)
+    }
+  }
+
+  # One group palette for every panel and sample, resolved over the union of
+  # the groups present in any sample's reads.
+  all_groups = unlist(lapply(samples[grouped_samples], function(s) s$reads$group))
+  resolved_colours = .resolve_group_colours(group_colours, all_groups)
+  # Legend keys shared by every read panel, so patchwork can merge them.
+  legend_levels = list(
+    group = names(resolved_colours),
+    group_na = any(is.na(all_groups)),
+    sa = .group_levels(unlist(lapply(samples, function(s) s$reads$sa_chrom)))
+  )
   opts = list(smooth_span = smooth_span, min_indel_size = min_indel_size,
               show_cigar = show_cigar, show_ci = show_ci, binary = !is.null(call_threshold),
-              group_colours = group_colours)
+              group_colours = resolved_colours)
 
   # --- 2. Sort and pack each sample's reads ---
   prepared = lapply(samples, function(s) {
@@ -708,14 +828,15 @@ plot_methylation = function(data, sort_by = NULL,
       line_width         = line_width,
       colour_strand      = colour_strand,
       strand_colours     = strand_colours,
-      group_colours      = group_colours,
+      group_colours      = resolved_colours,
       show_x_axis        = FALSE,
       variant_overlay    = build_variant_overlay(s, variants),
       show_cigar         = show_cigar,
       min_indel_size     = min_indel_size,
       show_supplementary = show_supplementary,
       call_threshold     = call_threshold,
-      call_ambiguous     = call_ambiguous
+      call_ambiguous     = call_ambiguous,
+      legend_levels      = legend_levels
     )
     if (multi) p + ggplot2::labs(title = nm) else p
   }, prepared, sample_names)
@@ -756,7 +877,13 @@ plot_methylation = function(data, sort_by = NULL,
     heights = if (multi) {
       c(if (!is.null(p_gene)) 0.6, rep(3, length(samples)), 1)
     } else {
-      c(if (!is.null(p_gene)) 0.08, 1, 0.25, if (!is.null(p_delta)) 0.2)
+      # With a delta panel the two summary panels get more room, or their
+      # y-axis titles run into each other at ordinary figure heights.
+      if (is.null(p_delta)) {
+        c(if (!is.null(p_gene)) 0.08, 1, 0.25)
+      } else {
+        c(if (!is.null(p_gene)) 0.08, 1, 0.35, 0.3)
+      }
     }
   } else if (length(heights) != length(panels)) {
     stop(sprintf(
@@ -765,5 +892,72 @@ plot_methylation = function(data, sort_by = NULL,
     ), call. = FALSE)
   }
 
-  patchwork::wrap_plots(panels, ncol = 1, heights = heights)
+  # Identical legends (modification scale, group, SA partner) from several
+  # panels are merged into one.
+  patchwork::wrap_plots(panels, ncol = 1, heights = heights, guides = "collect")
+}
+
+# Argument checks for plot_methylation(), each with a message naming the
+# argument (instead of an R-level "missing value where TRUE/FALSE needed" or
+# a silent fallback further down).
+.validate_plot_args = function(colour_strand, strand_colours, call_threshold,
+                               call_ambiguous, smooth_span, group_colours,
+                               line_width, min_indel_size, show_cigar,
+                               show_supplementary, show_ci, show_delta) {
+  is_number = function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
+  flags = list(colour_strand = colour_strand, show_cigar = show_cigar,
+               show_supplementary = show_supplementary, show_ci = show_ci,
+               show_delta = show_delta)
+  for (nm in names(flags)) {
+    x = flags[[nm]]
+    if (!is.logical(x) || length(x) != 1L || is.na(x)) {
+      stop(sprintf("`%s` must be TRUE or FALSE.", nm), call. = FALSE)
+    }
+  }
+  if (isTRUE(colour_strand) && !all(c("+", "-") %in% names(strand_colours))) {
+    stop("'strand_colours' must be a named vector with '+' and '-' entries.", call. = FALSE)
+  }
+  if (!is.null(call_threshold) &&
+      !(is_number(call_threshold) && call_threshold >= 0 && call_threshold <= 1)) {
+    stop("`call_threshold` must be NULL or a single number in [0, 1].", call. = FALSE)
+  }
+  if (!is.null(call_ambiguous)) {
+    if (is.null(call_threshold)) {
+      stop("`call_ambiguous` only applies to binary calls; set `call_threshold` too.",
+           call. = FALSE)
+    }
+    if (!(is_number(call_ambiguous) && call_ambiguous >= 0)) {
+      stop("`call_ambiguous` must be NULL or a single non-negative number.", call. = FALSE)
+    }
+  }
+  if (!is.null(smooth_span) && !(is_number(smooth_span) && smooth_span > 0)) {
+    stop("`smooth_span` must be NULL or a single positive number (e.g. 0.3).",
+         call. = FALSE)
+  }
+  if (!(is_number(line_width) && line_width > 0)) {
+    stop("`line_width` must be a single positive number.", call. = FALSE)
+  }
+  if (!(is_number(min_indel_size) && min_indel_size >= 0)) {
+    stop("`min_indel_size` must be a single non-negative number.", call. = FALSE)
+  }
+  if (!is.null(group_colours)) {
+    if (!is.character(group_colours) || length(group_colours) == 0L ||
+        anyNA(group_colours)) {
+      stop("`group_colours` must be NULL or a character vector of colours without NAs.",
+           call. = FALSE)
+    }
+    bad = group_colours[!vapply(group_colours, function(col) {
+      !inherits(tryCatch(grDevices::col2rgb(col), error = function(e) e), "error")
+    }, logical(1L))]
+    if (length(bad) > 0L) {
+      stop(sprintf("`group_colours` contains invalid colour(s): %s.",
+                   paste(bad, collapse = ", ")), call. = FALSE)
+    }
+    nms = names(group_colours)
+    if (!is.null(nms) && (any(is.na(nms) | !nzchar(nms)) || anyDuplicated(nms))) {
+      stop("`group_colours` must be either unnamed or named with unique, non-empty group names.",
+           call. = FALSE)
+    }
+  }
+  invisible(TRUE)
 }

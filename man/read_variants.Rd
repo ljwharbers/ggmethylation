@@ -13,19 +13,21 @@ corresponding tabix index (\code{.vcf.gz.tbi}).}
 \item{region}{Character. Genomic region string, e.g. \code{"chr1:1000-2000"}.
 The same format accepted by \code{\link[=read_methylation]{read_methylation()}}.}
 
-\item{bnd_match_tol}{Integer. Position tolerance (bp) used by
-\code{\link[=plot_methylation]{plot_methylation()}} when matching reads' supplementary-alignment (SA)
-breakpoints to the BND calls here; matched reads get a border on their SA
-indicator (requires \code{show_supplementary = TRUE}). Default \code{50}.}
+\item{bnd_match_tol}{Single non-negative number. Position tolerance (bp)
+used by \code{\link[=plot_methylation]{plot_methylation()}} when matching reads' supplementary-alignment
+(SA) position to the mate position of the BND calls here; matched reads
+get a border on their SA indicator (requires \code{show_supplementary = TRUE}).
+Default \code{50}.}
 }
 \value{
 A \code{variant_data} object (S3 list) with elements:
 \describe{
 \item{variants}{Data.frame with columns \code{position} (integer),
 \code{ref} (character), \code{alt} (character), \code{type} (character:
-\code{"SNV"}, \code{"insertion"}, \code{"deletion"}, \code{"BND"}, \code{"DEL"}, \code{"DUP"},
-or \code{"INV"}), \code{end} (integer), \code{mate_chrom} (character), and
-\code{mate_pos} (integer).}
+\code{"SNV"}, \code{"MNV"}, \code{"insertion"}, \code{"deletion"}, \code{"BND"}, \code{"DEL"},
+\code{"DUP"}, \code{"INV"}, another symbolic type such as \code{"CNV"}, or \code{NA}
+when the alleles are missing), \code{end} (integer), \code{mate_chrom}
+(character), and \code{mate_pos} (integer).}
 \item{region}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object for the queried region.}
 \item{bnd_match_tol}{The \code{bnd_match_tol} value.}
 }
@@ -41,6 +43,23 @@ Bioconductor. Install them with:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{BiocManager::install(c("VariantAnnotation", "SummarizedExperiment"))
 }\if{html}{\out{</div>}}
+
+Only the INFO fields \code{SVTYPE}, \code{END} and \code{SVLEN} are read; genotypes are
+not loaded. Fields declared with \code{Number=.} (as written by pbsv, SVIM or
+cuteSV) are supported; their first value is used.
+
+Limitations:
+\itemize{
+\item Only the \strong{first ALT allele} of a multi-allelic record is used.
+\item The \strong{FILTER column is ignored}: records failing filters are returned
+like \code{PASS} records. Pre-filter the VCF (e.g. \verb{bcftools view -f PASS})
+if needed.
+\item Records whose first ALT is a spanning deletion (\code{*}) are dropped.
+}
+
+If the region's chromosome is neither declared in the VCF header nor
+present in its tabix index (e.g. \code{"chr1"} vs \code{"1"}), a warning is issued
+and an empty \code{variant_data} object is returned.
 }
 \examples{
 \dontrun{

@@ -13,23 +13,29 @@ non-SA reads), \code{sa_pos} (int, \code{NA} for non-SA reads).}
 
 \item{bnd_df}{Data.frame — BND rows from \code{variant_data$variants}, with
 columns \code{position} (int), \code{mate_chrom} (chr), \code{mate_pos} (int). May be
-\code{NULL} or zero-row.}
+\code{NULL} or zero-row. Rows with an \code{NA} mate never match.}
 
 \item{tol}{Integer, default \code{50L} — position tolerance in bp. A read's SA
-position is considered matching when \code{abs(bnd_df$position - sa_pos) <= tol}.}
+position is considered matching when \code{abs(bnd_df$mate_pos - sa_pos) <= tol}.}
 }
 \value{
 \code{reads} with one new logical column \code{vcf_validated}:
 \itemize{
 \item \code{TRUE}  if \code{sa_chrom == bnd_df$mate_chrom} AND
-\code{abs(bnd_df$position - sa_pos) <= tol} for ANY BND row.
+\code{abs(bnd_df$mate_pos - sa_pos) <= tol} for ANY BND row.
 \item \code{FALSE} otherwise (including reads with no SA tag, i.e., \code{is.na(sa_chrom)}).
 }
 }
 \description{
 For each read carrying an SA (supplementary alignment) tag, checks whether
-the supplementary chromosome and position match any BND record in \code{bnd_df}
-within a position tolerance. Both the chromosome and position conditions must
-be satisfied simultaneously.
+the supplementary chromosome and position match the mate side of any BND
+record in \code{bnd_df} within a position tolerance. The SA position is a
+coordinate on the SA chromosome, so it is compared with the BND's
+\code{mate_pos}, not with its local \code{position}. Both the chromosome and position
+conditions must be satisfied simultaneously.
+}
+\details{
+Only the mate side is checked: the read's local clip position is not
+required to lie near the BND's local \code{position}.
 }
 \keyword{internal}

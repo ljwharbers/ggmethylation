@@ -21,15 +21,17 @@ plot_insertion_locus(
 for \code{data}, e.g. \code{loci[1, ]} or \code{loci[loci$locus_id == id, ]}. It carries
 the locus' carrier and non-carrier reads and the clustering tolerances.}
 
-\item{flank}{Integer. Number of reference base pairs to show on each side of
-the insertion (default 200).}
+\item{flank}{Positive integer. Number of reference base pairs to show on
+each side of the insertion (default 200).}
 
 \item{show_smoothed}{Logical. Whether to add a loess-smoothed modification
-probability panel below the read panel (default \code{TRUE}).}
+probability panel below the read panel (default \code{TRUE}). It has one line
+per carrier status and region, and per modification code (as linetype)
+when \code{data} holds more than one.}
 
 \item{include_noncarriers}{Logical. Whether to include reads that span the
 locus but do not carry the insertion (default \code{TRUE}). Non-carriers are
-shown below carriers with an empty middle region.}
+shown below carriers, separated by a line, with an empty middle region.}
 
 \item{colour_low}{Character. Colour for low modification probability
 (default \code{"#BDBDBD"}).}
@@ -38,7 +40,8 @@ shown below carriers with an empty middle region.}
 (default \code{"#C62828"}).}
 }
 \value{
-A \code{patchwork} object (or a single ggplot when \code{show_smoothed = FALSE}).
+A \code{patchwork} object (or a single ggplot when \code{show_smoothed = FALSE}
+or there are too few calls to smooth).
 }
 \description{
 Produces a composite ggplot / patchwork figure for a single insertion locus,
@@ -47,6 +50,16 @@ showing carrier and non-carrier reads in a stitched coordinate system
 with an optional loess-smoothed comparison panel below.
 }
 \details{
+With anchor \code{A} (\code{locus$anchor_pos}, the first reference base after the
+insertion) and \code{W = locus$median_length}, the stitched x axis has one
+column per base: reference bases \code{A - flank} to \code{A - 1} keep their
+coordinate, inserted bases 1 to \code{W} sit at \code{A} to \code{A + W - 1}, and reference
+bases \code{A} to \code{A + flank - 1} are shifted right by \code{W}. The axis labels give
+reference coordinates in the flanks and the inserted-base range in the
+middle; dashed lines mark the two insertion boundaries. Inserted bases
+beyond \code{W} (carriers with a longer insertion than the median) are not drawn;
+such carriers are marked with \code{>} at the right boundary.
+
 Use \code{\link[=list_insertion_loci]{list_insertion_loci()}} to find loci; pass one row of its output.
 }
 \examples{

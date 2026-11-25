@@ -1,35 +1,6 @@
 # Tests for CI ribbon rendering (show_ci) and .insert_deletion_breaks() CI
 # column handling in R/plot_methylation.R
 
-# Local minimal methylation_data constructor (mirrors
-# test-build_read_panel.R::make_test_data; not shared via a helper-*.R file,
-# so duplicated here per testthat edition-3 auto-sourcing rules).
-make_test_data = function(reads_df, sites_df,
-                            region_start = 1000L, region_end = 2000L) {
-  gr = GenomicRanges::GRanges(
-    seqnames = "chr1",
-    ranges   = IRanges::IRanges(start = region_start, end = region_end)
-  )
-  structure(
-    list(
-      reads        = reads_df,
-      sites        = sites_df,
-      region       = gr,
-      mod_code     = "m",
-      group_tag    = NULL,
-      cigar_features = data.frame(
-        read_name  = character(0),
-        type       = character(0),
-        ref_start  = integer(0),
-        ref_end    = integer(0),
-        length     = integer(0),
-        stringsAsFactors = FALSE
-      )
-    ),
-    class = "methylation_data"
-  )
-}
-
 test_that("insert_deletion_breaks nulls CI columns inside deletions", {
   smoothed = data.frame(
     position  = c(100, 150, 200, 250),
@@ -85,6 +56,15 @@ test_that("plot_methylation smooth panel gains a ribbon layer when grouped", {
   md$group_tag = "HP"
   p = ggmethylation::plot_methylation(md, show_ci = TRUE, show_supplementary = FALSE)
   expect_s3_class(p, "patchwork")
+  # The ribbon is the first layer (drawn behind the lines), one band per
+  # group, filled with the group's line colour.
+  p_bottom = p[[2]]
+  geom_classes = vapply(p_bottom$layers, function(l) class(l$geom)[1], character(1L))
+  expect_equal(unname(geom_classes[1:2]), c("GeomRibbon", "GeomLine"))
+  built = ggplot2::ggplot_build(p_bottom)
+  expect_equal(length(unique(built$data[[1]]$group)), 2L)
+  expect_setequal(unique(built$data[[1]]$fill), unique(built$data[[2]]$colour))
+  expect_true(all(built$data[[1]]$ymin <= built$data[[1]]$ymax, na.rm = TRUE))
 })
 
 test_that("plot_methylation omits ribbon layer when show_ci = FALSE", {
@@ -111,10 +91,10 @@ test_that("plot_methylation omits ribbon layer when show_ci = FALSE", {
 })
 
 test_that("grouped multi-code ribbon keeps (group, mod_code) polygons separate", {
-  # Regression test for the group_aes fix in the grouped + multi-mod-code
+  # Regression test for ribbon grouping in the grouped + multi-mod-code
   # branch of plot_methylation() (colour = group, linetype = mod_code).
-  # Without passing group_aes = interaction(group, mod_code) to
-  # .add_ci_ribbon(), ggplot2's default grouping collapses to fill = group
+  # Without an explicit per-line `group` (.line_id(): group x mod_code) on
+  # the ribbon, ggplot2's default grouping collapses to fill = group
   # only, so the "m" and "h" ribbon bands for a given group get drawn as a
   # single self-crossing polygon (x jumps backward where one band's grid
   # ends and the other's begins). 2 groups x 2 mod codes, 7 unique positions

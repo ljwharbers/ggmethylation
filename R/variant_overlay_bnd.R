@@ -3,22 +3,27 @@
 #' Flag SA-tagged reads whose breakpoint matches a VCF BND call
 #'
 #' For each read carrying an SA (supplementary alignment) tag, checks whether
-#' the supplementary chromosome and position match any BND record in `bnd_df`
-#' within a position tolerance. Both the chromosome and position conditions must
-#' be satisfied simultaneously.
+#' the supplementary chromosome and position match the mate side of any BND
+#' record in `bnd_df` within a position tolerance. The SA position is a
+#' coordinate on the SA chromosome, so it is compared with the BND's
+#' `mate_pos`, not with its local `position`. Both the chromosome and position
+#' conditions must be satisfied simultaneously.
+#'
+#' Only the mate side is checked: the read's local clip position is not
+#' required to lie near the BND's local `position`.
 #'
 #' @param reads Data.frame — the `$reads` element of a `methylation_data`
 #'   object. Relevant columns: `read_name` (chr), `sa_chrom` (chr, `NA` for
 #'   non-SA reads), `sa_pos` (int, `NA` for non-SA reads).
 #' @param bnd_df Data.frame — BND rows from `variant_data$variants`, with
 #'   columns `position` (int), `mate_chrom` (chr), `mate_pos` (int). May be
-#'   `NULL` or zero-row.
+#'   `NULL` or zero-row. Rows with an `NA` mate never match.
 #' @param tol Integer, default `50L` — position tolerance in bp. A read's SA
-#'   position is considered matching when `abs(bnd_df$position - sa_pos) <= tol`.
+#'   position is considered matching when `abs(bnd_df$mate_pos - sa_pos) <= tol`.
 #'
 #' @return `reads` with one new logical column `vcf_validated`:
 #'   - `TRUE`  if `sa_chrom == bnd_df$mate_chrom` AND
-#'             `abs(bnd_df$position - sa_pos) <= tol` for ANY BND row.
+#'             `abs(bnd_df$mate_pos - sa_pos) <= tol` for ANY BND row.
 #'   - `FALSE` otherwise (including reads with no SA tag, i.e., `is.na(sa_chrom)`).
 #'
 #' @keywords internal
@@ -46,10 +51,11 @@ match_sa_to_vcf_bnd = function(reads, bnd_df, tol = 50L) {
     r_chrom = reads$sa_chrom[i]
     r_pos   = reads$sa_pos[i]
 
+    # sa_pos lies on sa_chrom, i.e. on the BND's mate side
     chrom_match = bnd_df$mate_chrom == r_chrom
-    pos_match   = abs(bnd_df$position - r_pos) <= tol
+    pos_match   = abs(bnd_df$mate_pos - r_pos) <= tol
 
-    if (any(chrom_match & pos_match)) {
+    if (any(chrom_match & pos_match, na.rm = TRUE)) {
       reads$vcf_validated[i] = TRUE
     }
   }
@@ -64,8 +70,10 @@ match_sa_to_vcf_bnd = function(reads, bnd_df, tol = 50L) {
 #' showing the full mate location (chromosome:position with comma thousands
 #' separator) using the join symbol (⋈).
 #'
-#' Because the read panel uses `scale_y_reverse()`, `y = -Inf` places the
-#' text at the *top* of the panel (the intended position).
+#' The label is anchored at `y = -Inf` with `vjust = -0.3`, which (with the
+#' read panel's `scale_y_reverse()`) puts it just inside the *bottom* edge of
+#' the read panel, below the last lane, centred on the BND position. No
+#' vertical line is drawn at the breakpoint.
 #'
 #' @param bnd_df Data.frame — BND rows from `variant_data$variants` (columns:
 #'   `position` (int), `mate_chrom` (chr), `mate_pos` (int)). May be `NULL`

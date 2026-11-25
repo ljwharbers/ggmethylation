@@ -1,32 +1,5 @@
 # Tests for build_read_panel and related helpers in R/build_read_panel.R
 
-# Helper: build a minimal methylation_data object
-make_test_data = function(reads_df, sites_df,
-                            region_start = 1000L, region_end = 2000L) {
-  gr = GenomicRanges::GRanges(
-    seqnames = "chr1",
-    ranges   = IRanges::IRanges(start = region_start, end = region_end)
-  )
-  structure(
-    list(
-      reads        = reads_df,
-      sites        = sites_df,
-      region       = gr,
-      mod_code     = "m",
-      group_tag    = NULL,
-      cigar_features = data.frame(
-        read_name  = character(0),
-        type       = character(0),
-        ref_start  = integer(0),
-        ref_end    = integer(0),
-        length     = integer(0),
-        stringsAsFactors = FALSE
-      )
-    ),
-    class = "methylation_data"
-  )
-}
-
 # --- .make_read_polygons ---
 
 test_that(".make_read_polygons produces arrow for + strand", {

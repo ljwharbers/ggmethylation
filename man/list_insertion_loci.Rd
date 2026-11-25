@@ -4,20 +4,34 @@
 \alias{list_insertion_loci}
 \title{List insertion loci from a methylation_data object}
 \usage{
-list_insertion_loci(data, tol_pos = 10L, tol_len = 0.2, min_reads = 2L)
+list_insertion_loci(
+  data,
+  tol_pos = 10L,
+  tol_len = 0.2,
+  min_reads = 2L,
+  min_length = 1L
+)
 }
 \arguments{
 \item{data}{A \code{methylation_data} object produced by \code{\link[=read_methylation]{read_methylation()}}.}
 
-\item{tol_pos}{Integer. Maximum distance in base pairs between consecutive
-insertion anchor positions to be merged into the same locus (default 10).}
+\item{tol_pos}{Non-negative integer. Maximum distance in base pairs between
+consecutive insertion anchor positions to be merged into the same locus,
+and the margin a non-carrier must extend past the anchor on each side
+(default 10).}
 
-\item{tol_len}{Numeric. Maximum fractional difference in insertion length
-relative to the running cluster median to be merged into the same locus
-(default 0.20, i.e., 20 percent).}
+\item{tol_len}{Non-negative number. Maximum fractional difference in
+insertion length relative to the running cluster median to be merged into
+the same locus (default 0.20, i.e., 20 percent).}
 
-\item{min_reads}{Integer. Minimum number of carrier reads required for a
-locus to be reported (default 2).}
+\item{min_reads}{Positive integer. Minimum number of carrier reads required
+for a locus to be reported (default 2).}
+
+\item{min_length}{Positive integer. Insertions shorter than this many bases
+are ignored entirely: they form no locus, and a read carrying only such
+insertions near a locus still counts as a non-carrier. The default, 1,
+keeps every insertion; raise it (e.g. to 50 for structural-variant-sized
+insertions) to ignore small sequencing-error insertions.}
 }
 \value{
 A data.frame with one row per locus and columns:
@@ -26,17 +40,22 @@ A data.frame with one row per locus and columns:
 \code{"INS_<chrom>_<anchor_pos>_<median_length>bp"}.}
 \item{chrom}{Character. Chromosome name.}
 \item{anchor_pos}{Integer. Median reference anchor position across
-carrier reads in the locus.}
+carrier reads in the locus. Like \code{ref_start} of an \code{I} operation in
+\code{data$cigar_features}, this is the first reference base after the
+insertion: the inserted bases lie between \code{anchor_pos - 1} and
+\code{anchor_pos}.}
 \item{n_carriers}{Integer. Number of reads carrying an insertion at this
 locus.}
 \item{n_noncarriers}{Integer. Number of reads that span the locus
-(within \code{tol_pos} of \code{anchor_pos}) but do not carry an insertion.}
+(from \code{anchor_pos - tol_pos} to \code{anchor_pos + tol_pos}) and carry no
+insertion there.}
 \item{median_length}{Integer. Median insertion length across carriers.}
 \item{length_min}{Integer. Minimum insertion length in the locus.}
 \item{length_max}{Integer. Maximum insertion length in the locus.}
 \item{mean_ins_mod_prob}{Numeric or NA. Mean modification probability
-across all insertion-site calls at this locus. NA when
-\code{data$insertion_sites} has no rows for this locus.}
+across the carriers' inserted-base calls at this locus (all
+modification codes pooled). NA when \code{data$insertion_sites} has no
+rows for this locus.}
 \item{carriers}{List-column. Per locus, a named integer vector of the
 carrier reads' insertion lengths, named by \code{read_name}.}
 \item{noncarriers}{List-column. Per locus, the \code{read_name}s of the
@@ -48,16 +67,34 @@ Sorted by \code{anchor_pos}. Returns a zero-row data.frame when no insertions
 pass the \code{min_reads} threshold.
 }
 \description{
-Clusters insertion events across reads into loci using a greedy single-pass
-algorithm. Insertions are grouped when their reference anchor positions and
-lengths are within the specified tolerances of each other. Returns a summary
+Clusters insertion events (CIGAR \code{I} operations) across reads into loci.
+Insertions are first grouped by position: sorted by reference anchor, a new
+group starts wherever two consecutive anchors are more than \code{tol_pos} apart.
+Within each position group, insertions are then sorted by length and split
+wherever an insertion differs from the running median length of its
+sub-group by more than \code{tol_len}; each length sub-group is finally split by
+position again, so that two same-length insertions joined only by a chain
+of other-length insertions are not merged. An insertion of a different
+length at the same place therefore never splits a locus. Returns a summary
 data.frame sorted by anchor position; pass one of its rows to
 \code{\link[=plot_insertion_locus]{plot_insertion_locus()}} to visualise that locus.
+}
+\details{
+A read is a \strong{carrier} when it has an insertion in the locus whose length is
+within \code{tol_len} of the locus median length. A read is a \strong{non-carrier} when
+its alignment spans the locus on both sides (it starts at or before
+\code{anchor_pos - tol_pos} and ends at or after \code{anchor_pos + tol_pos}) and it
+has no insertion of at least \code{min_length} within \code{tol_pos} of the anchor.
+Reads with an insertion of a different length at the locus (another allele)
+are neither carriers nor non-carriers, and neither are reads that end or
+start within \code{tol_pos} of the anchor (often soft-clipped at the insertion
+breakpoint).
 }
 \examples{
 \dontrun{
 md   = read_methylation("sample.bam", "chr21:34500000-34510000")
-loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
+loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L,
+                           min_length = 50L)
 loci$locus_id
 plot_insertion_locus(md, loci[1, ])
 }

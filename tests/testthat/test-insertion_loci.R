@@ -169,6 +169,75 @@ test_that("list_insertion_loci() populates mean_ins_mod_prob from insertion_site
   expect_equal(out$mean_ins_mod_prob, mean(c(0.8, 0.4)))
 })
 
+test_that("an off-length insertion does not split a locus (I1)", {
+  # Anchors 1000-1003 with lengths 300/5/300/300: the 5 bp insertion is noise
+  # between three 300 bp carriers, which must form one locus.
+  reads = make_reads(paste0("r", 1:4), 1L, 2000L)
+  cf    = make_cf(paste0("r", 1:4), 1000:1003, c(300L, 5L, 300L, 300L))
+  md    = make_test_md(reads, cf)
+
+  out = ggmethylation::list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20,
+                                           min_reads = 2L)
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$n_carriers, 3L)
+  expect_equal(out$carriers[[1L]], c(r1 = 300L, r3 = 300L, r4 = 300L))
+  expect_equal(out$anchor_pos, 1002L)
+  expect_equal(out$median_length, 300L)
+  # r2 carries a different insertion at the same place: neither carrier nor
+  # non-carrier of the 300 bp locus.
+  expect_equal(out$noncarriers[[1L]], character(0L))
+  expect_equal(out$n_noncarriers, 0L)
+})
+
+test_that("two same-length loci joined by short insertions stay apart (I1)", {
+  # 300 bp carriers at 1000 and 1040; 2 bp insertions every 8 bp chain the
+  # positions together, but the 300 bp insertions are > tol_pos apart.
+  reads = make_reads(paste0("r", 1:9), 1L, 2000L)
+  cf    = make_cf(paste0("r", 1:9),
+                  c(1000L, 1001L, 1008L, 1016L, 1024L, 1032L, 1039L, 1040L, 1041L),
+                  c(300L, 300L, 2L, 2L, 2L, 2L, 300L, 300L, 300L))
+  md    = make_test_md(reads, cf)
+
+  # Position-only clustering chains everything into one cluster; splitting by
+  # length and then by position again keeps the two 300 bp loci (and the 2 bp
+  # one) apart.
+  out = ggmethylation::list_insertion_loci(md, min_reads = 2L)
+  expect_equal(out$anchor_pos, c(1000L, 1020L, 1040L))
+  expect_equal(out$median_length, c(300L, 2L, 300L))
+  expect_equal(out$n_carriers, c(2L, 4L, 3L))
+})
+
+test_that("min_length drops short insertions (I1)", {
+  reads = make_reads(paste0("r", 1:4), 1L, 2000L)
+  cf    = make_cf(paste0("r", 1:4), c(500L, 501L, 1000L, 1001L),
+                  c(3L, 3L, 300L, 300L))
+  md    = make_test_md(reads, cf)
+
+  # Default keeps every insertion (previous behaviour).
+  expect_equal(ggmethylation::list_insertion_loci(md)$anchor_pos, c(500L, 1000L))
+  out = ggmethylation::list_insertion_loci(md, min_length = 10L)
+  expect_equal(out$anchor_pos, 1000L)
+  # The 3 bp insertions at 500 are ignored, so r1/r2 count as non-carriers of
+  # the 300 bp locus at 1000 (they span it).
+  expect_equal(out$noncarriers[[1L]], c("r1", "r2"))
+})
+
+test_that("non-carriers must span the locus on both sides (I2)", {
+  # anchor 1002, tol_pos 10: a non-carrier has to cover 992-1012.
+  reads = make_reads(c("r1", "r2", "r3", "r4", "r5"),
+                     c(1L, 1L, 1L, 1005L, 992L),
+                     c(2000L, 2000L, 997L, 2000L, 1012L))
+  cf    = make_cf(c("r1", "r2"), c(1002L, 1002L), c(300L, 300L))
+  md    = make_test_md(reads, cf)
+
+  out = ggmethylation::list_insertion_loci(md, tol_pos = 10L, min_reads = 2L)
+  expect_equal(out$anchor_pos, 1002L)
+  # r3 ends at 997 and r4 starts at 1005 (both would look like clipped reads
+  # at the breakpoint); r5 covers exactly 992-1012.
+  expect_equal(out$noncarriers[[1L]], "r5")
+  expect_equal(out$n_noncarriers, 1L)
+})
+
 # --- plot_insertion_locus smoke tests ---
 
 test_that("plot_insertion_locus() returns a ggplot object (show_smoothed = FALSE)", {
@@ -287,4 +356,16 @@ test_that("plot_insertion_locus() uses the shared package colour palette", {
   # Smooth-panel line colours should match the same palette.
   smooth_layer_data = ggplot2::layer_data(p[[2]], 1L)
   expect_true(all(smooth_layer_data$colour %in% c("#0072B2", "#999999")))
+})
+
+test_that("a read clipped to the region edge can still be a non-carrier", {
+  # Locus at 1002 with tol_pos 10 needs a read reaching 1012. The region ends
+  # at 1005, so `end` is clipped there; bam_end holds the real end.
+  reads = make_reads(c("c1", "c2", "n1", "n2"), rep(900L, 4), rep(1005L, 4))
+  reads$bam_end = c(1100L, 1100L, 1100L, 1005L)
+  cf = make_cf(c("c1", "c2"), c(1002L, 1002L), c(300L, 300L))
+  md = make_test_md(reads_df = reads, cigar_features_df = cf)
+  loci = list_insertion_loci(md, min_reads = 2L)
+  expect_equal(nrow(loci), 1L)
+  expect_equal(loci$noncarriers[[1L]], "n1")
 })

@@ -106,36 +106,6 @@ test_that("build_delta_panel returns a ggplot", {
   expect_s3_class(p, "ggplot")
 })
 
-# Local minimal methylation_data constructor (mirrors
-# test-build_read_panel.R::make_test_data; not shared via a helper-*.R file,
-# so duplicated here per testthat edition-3 auto-sourcing rules).
-make_test_data = function(reads_df, sites_df,
-                            region_start = 1000L, region_end = 2000L,
-                            cigar_features = data.frame(
-                              read_name  = character(0),
-                              type       = character(0),
-                              ref_start  = integer(0),
-                              ref_end    = integer(0),
-                              length     = integer(0),
-                              stringsAsFactors = FALSE
-                            )) {
-  gr = GenomicRanges::GRanges(
-    seqnames = "chr1",
-    ranges   = IRanges::IRanges(start = region_start, end = region_end)
-  )
-  structure(
-    list(
-      reads        = reads_df,
-      sites        = sites_df,
-      region       = gr,
-      mod_code     = "m",
-      group_tag    = NULL,
-      cigar_features = cigar_features
-    ),
-    class = "methylation_data"
-  )
-}
-
 test_that("plot_methylation adds delta panel for 2 groups when show_delta", {
   reads = data.frame(
     read_name = c("r1","r2"), start = 1000L, end = 2000L, strand = "+",
@@ -265,25 +235,52 @@ test_that("delta panel takes its fills from group_colours", {
   expect_equal(delta_fills(p_neg), "darkgreen")
 })
 
-test_that("delta panel falls back to the diverging palette for unnamed groups", {
-  # Groups "A"/"B" are not named in the default group_colours, so neither half
-  # can be resolved; the panel must fall back rather than emit NA fills.
+test_that("delta panel uses generated group colours for groups the palette doesn't name", {
+  # Groups "A"/"B" are not named in the default group_colours. They get the
+  # generated palette (A = first colour, B = second), and the delta area
+  # takes B's colour because B is higher - the same colour B's reads get.
   p = ggmethylation::plot_methylation(
     make_delta_md(group_names = c("A", "B"), higher = "B"),
     show_delta = TRUE, show_supplementary = FALSE
   )
-  expect_equal(delta_fills(p), ggmethylation:::.DELTA_DIVERGING$pos)
+  b_colour = ggmethylation:::.GROUP_PALETTE_EXTENSION[2L]
+  expect_equal(delta_fills(p), b_colour)
+  read_fills = ggplot2::ggplot_build(p[[1L]])$data[[1L]]
+  expect_true(b_colour %in% read_fills$fill)
 })
 
-test_that("delta panel falls back when only one group is named", {
-  # A partial match would leave one half group-coloured and the other not -
-  # exactly the half-matching state this feature removes. Require both.
-  p = ggmethylation::plot_methylation(
-    make_delta_md(group_names = c("1", "B"), higher = "B"),
-    show_delta = TRUE, show_supplementary = FALSE,
-    group_colours = c("1" = "darkgreen")
+test_that("delta panel colours a group the palette doesn't name like its reads", {
+  # Group "B" is missing from the palette: it gets the first unused generated
+  # colour (with a message), in the read panel and the delta panel alike.
+  expect_message(
+    p <- ggmethylation::plot_methylation(
+      make_delta_md(group_names = c("1", "B"), higher = "B"),
+      show_delta = TRUE, show_supplementary = FALSE,
+      group_colours = c("1" = "darkgreen")
+    ),
+    "does not name group"
   )
-  expect_equal(delta_fills(p), ggmethylation:::.DELTA_DIVERGING$pos)
+  b_colour = ggmethylation:::.GROUP_PALETTE_EXTENSION[1L]
+  expect_equal(delta_fills(p), b_colour)
+  read_fills = unique(ggplot2::ggplot_build(p[[1L]])$data[[1L]]$fill)
+  expect_setequal(read_fills, c("darkgreen", b_colour))
+})
+
+test_that("unnamed group_colours reach the delta panel (M2)", {
+  # Regression: an unnamed palette coloured the reads by position but the delta
+  # panel required names and fell back to the standalone diverging pair.
+  p_pos = ggmethylation::plot_methylation(
+    make_delta_md(higher = "2"), show_delta = TRUE,
+    show_supplementary = FALSE, group_colours = c("red", "blue")
+  )
+  expect_equal(delta_fills(p_pos), "blue")
+  p_neg = ggmethylation::plot_methylation(
+    make_delta_md(higher = "1"), show_delta = TRUE,
+    show_supplementary = FALSE, group_colours = c("red", "blue")
+  )
+  expect_equal(delta_fills(p_neg), "red")
+  expect_setequal(unique(ggplot2::ggplot_build(p_neg[[1L]])$data[[1L]]$fill),
+                  c("red", "blue"))
 })
 
 test_that("group_colours still reach the delta panel under cigar masking", {

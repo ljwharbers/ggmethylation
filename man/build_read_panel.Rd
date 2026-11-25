@@ -22,7 +22,8 @@ build_read_panel(
   min_indel_size = 50L,
   show_supplementary = FALSE,
   call_threshold = NULL,
-  call_ambiguous = NULL
+  call_ambiguous = NULL,
+  legend_levels = NULL
 )
 }
 \arguments{
@@ -51,7 +52,9 @@ dashed separator lines should be drawn (between groups). Pass
 
 \item{strand_colours}{Named character vector with \code{"+"} and \code{"-"} entries.}
 
-\item{group_colours}{Named character vector of colours per group, or NULL.}
+\item{group_colours}{Colours per group as accepted by \code{\link[=plot_methylation]{plot_methylation()}}
+(named, unnamed or NULL); resolved over the group levels by the same
+rule as the smooth and delta panels.}
 
 \item{show_x_axis}{Logical. When \code{FALSE} (default), x-axis text and ticks
 are hidden. Set to \code{TRUE} for the bottom-most read panel.}
@@ -71,6 +74,12 @@ suppressed. Default \code{50}.}
 
 \item{call_threshold, call_ambiguous}{Binary-call settings (\code{NULL} threshold
 for continuous colouring); see \code{\link[=plot_methylation]{plot_methylation()}}.}
+
+\item{legend_levels}{\code{NULL}, or a list with \code{group} (group levels),
+\code{group_na} (logical: show an NA key) and \code{sa} (SA partner chromosomes).
+\code{\link[=plot_methylation]{plot_methylation()}} passes the union over all samples so every read
+panel has identical legends and colours, which patchwork then merges.
+\code{NULL} uses the levels present in \code{data}.}
 }
 \value{
 A \link[ggplot2:ggplot]{ggplot2::ggplot} object.
@@ -83,5 +92,10 @@ and lane-packed. Used by \code{\link[=plot_methylation]{plot_methylation()}} for
 \details{
 Read bars are filled by group when the data is grouped, by strand when
 \code{colour_strand = TRUE}, and in a fixed grey otherwise.
+
+With several modification codes in \code{data$sites}, each read bar is split
+into horizontal strips, one per code in the order of \code{data$mod_code} (top
+to bottom), so calls for different codes at the same position do not
+overplot; the y-axis title lists the order.
 }
 \keyword{internal}

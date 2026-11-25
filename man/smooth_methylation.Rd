@@ -14,7 +14,8 @@ smooth_methylation(
 }
 \arguments{
 \item{sites}{A data.frame with columns \code{position}, \code{mod_prob}, and a
-grouping column (specified by \code{group_col}).}
+grouping column (specified by \code{group_col}). Rows with an \code{NA} position
+or \code{mod_prob} are ignored.}
 
 \item{group_col}{Name of the grouping column (default \code{"group"}). Sites
 whose group is \code{NA} are dropped.}
@@ -35,19 +36,21 @@ supplied, every group is instead evaluated at exactly these positions
 (e.g. for a delta track). Predicted \code{mean_prob}/\code{lower}/\code{upper} values
 are set to \code{NA_real_} wherever a grid position falls outside that
 group's own position range, since loess \code{predict()} would otherwise
-extrapolate. Groups with fewer than 4 unique positions are interpolated
-via \code{stats::approx(..., rule = 1)} instead (also \code{NA} outside range),
-with \code{lower}/\code{upper} set to \code{NA_real_}.}
+extrapolate. Groups with 2 or 3 unique positions are interpolated via
+\code{stats::approx(..., rule = 1)} instead (also \code{NA} outside range), with
+\code{lower}/\code{upper} set to \code{NA_real_}; groups with a single position (or no
+non-\code{NA} sites) are \code{NA} at every grid position.}
 }
 \value{
 A data.frame with columns \code{position}, \code{mean_prob}, \code{lower},
 \code{upper}, and the grouping column. When \code{grid} is \code{NULL}, positions are a
 regular grid of 200 points per group, spanning that group's own position
-range, with loess-predicted values. \code{lower}/\code{upper} are the loess fit
-\verb{± 1.96 * se.fit}, clamped to \verb{[0, 1]}. Groups with fewer than 4 unique
-positions return raw per-site means instead, with \code{lower}/\code{upper} set
-to \code{NA_real_}. When \code{grid} is supplied, positions are the shared \code{grid}
-values for every group instead (see \code{grid} above).
+range, with loess-predicted values. \code{mean_prob} is the loess fit and
+\code{lower}/\code{upper} the fit \verb{± 1.96 * se.fit}, all clamped to \verb{[0, 1]}.
+Groups with fewer than 4 unique positions return raw per-site means
+instead, with \code{lower}/\code{upper} set to \code{NA_real_}; groups with no non-\code{NA}
+sites contribute no rows. When \code{grid} is supplied, positions are the
+shared \code{grid} values for every group instead (see \code{grid} above).
 }
 \description{
 Computes loess-smoothed mean modification probability per group across
