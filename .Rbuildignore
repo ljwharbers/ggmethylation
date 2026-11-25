@@ -11,3 +11,4 @@
 ^test[^/]*\.R$
 ^test[^/]*\.png$
 ^\.github$
+^\.git$

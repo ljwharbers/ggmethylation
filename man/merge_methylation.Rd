@@ -8,7 +8,7 @@ merge_methylation(..., .list = NULL)
 }
 \arguments{
 \item{...}{Named \code{methylation_data} objects. Every argument \strong{must} be
-named; an error is raised if any name is missing or empty.}
+named; an error is raised if any name is missing, empty or duplicated.}
 
 \item{.list}{A named list of \code{methylation_data} objects. When provided,
 \code{...} is ignored. This is useful for programmatic construction of the
@@ -32,7 +32,8 @@ plotting with \code{\link[=plot_methylation]{plot_methylation()}}.
 }
 \details{
 All samples must cover the same genomic region and use the same
-modification code(s). Every sample must be supplied with a unique name,
+modification code(s). At least one sample is required. Every sample must
+be supplied with a unique, non-missing name,
 either via R's named-argument syntax (\code{merge_methylation(A = md1, B = md2)})
 or via the \code{.list} parameter (\code{merge_methylation(.list = list(A = md1, B = md2))}).
 }

@@ -20,7 +20,9 @@ A named list with elements:
 }
 \description{
 Parses a region string of the form \code{"chr1:1000-2000"} into its components.
-Commas in numeric positions (e.g., \code{"chr1:1,000-2,000"}) are stripped
-before parsing.
+Commas in the coordinates (e.g., \code{"chr1:1,000-2,000"}) are stripped. The
+string is split on its \strong{last} colon, so contig names that contain colons
+(e.g. \code{"HLA-A*01:01:01:01:1-500"}) work. Coordinates are 1-based and
+inclusive; a bare contig name without coordinates is an error.
 }
 \keyword{internal}

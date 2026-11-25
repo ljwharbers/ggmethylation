@@ -43,8 +43,13 @@ gzip-compressed.
 
 Always written as TSV with a header line. Columns: \code{read_name}, \code{start},
 \code{end}, \code{strand}, \code{group} (only when the object carries a group tag),
-\code{mean_mod_prob}. \code{mean_mod_prob} is the per-read mean of \code{mod_prob} values
-across all sites; reads with no called sites receive \code{NA}.
+\code{mean_mod_prob}. \code{mean_mod_prob} is the per-read mean of \code{mod_prob} over
+all of the read's rows in \verb{$sites}, pooling every modification code in the
+object: with \code{mod_code = c("m", "h")} it averages 5mC and 5hmC
+probabilities together. For a per-code mean, keep one code in
+\code{data$sites} before writing (e.g.
+\code{data$sites = data$sites[data$sites$mod_code == "m", ]}). Reads with no
+called sites receive \code{NA}.
 
 \strong{Sites file — TSV} (\verb{\{prefix\}_sites.tsv[.gz]})
 
@@ -53,9 +58,12 @@ Columns: \code{position}, \code{mod_prob}, \code{read_name}, \code{mod_code}, \c
 
 \strong{Sites file — BED} (\verb{\{prefix\}_sites.bed[.gz]})
 
-6-column BED (no header). Coordinates are converted to 0-based half-open
-intervals (\code{chromStart = position - 1}, \code{chromEnd = position}). The \code{score}
-column contains \code{mod_prob} (float in \verb{[0, 1]}).
+6-column BED (no header), sorted by chromosome and start. Coordinates are
+converted to 0-based half-open intervals (\code{chromStart = position - 1},
+\code{chromEnd = position}). \code{name} is \verb{<read_name>:<mod_code>} (split on the
+last colon to recover both). \code{score} is the integer
+\code{round(mod_prob * 1000)}, in \code{0}--\code{1000} as BED requires. \code{strand} is the
+strand of the read's alignment (\code{.} if unknown).
 }
 \examples{
 \dontrun{

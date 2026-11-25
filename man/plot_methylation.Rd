@@ -28,7 +28,8 @@ plot_methylation(
 )
 }
 \arguments{
-\item{data}{A \code{methylation_data} object returned by \code{\link[=read_methylation]{read_methylation()}}.}
+\item{data}{A \code{methylation_data} object returned by \code{\link[=read_methylation]{read_methylation()}},
+or a \code{multi_methylation_data} object from \code{\link[=merge_methylation]{merge_methylation()}}.}
 
 \item{sort_by}{Character vector of column names from \code{data$reads} used
 to sort reads before packing into lanes (reads are always packed per
@@ -48,7 +49,8 @@ slate blue-grey deliberately off the \code{colour_low}/\code{colour_high} ramp s
 reads as "no confident call" rather than "intermediate methylation"). Only
 used when \code{call_threshold} and \code{call_ambiguous} are set.}
 
-\item{line_width}{Linewidth of modification site lines (default 0.2).}
+\item{line_width}{Positive number: linewidth of modification site lines
+(default 0.2).}
 
 \item{colour_strand}{Logical. When \code{TRUE}, read bars are coloured by strand
 (\code{"+"} = forward, \code{"-"} = reverse). Ignored when data is grouped; group
@@ -58,26 +60,27 @@ colour takes precedence. Default \code{FALSE}.}
 giving bar colours for each strand. Only used when \code{colour_strand = TRUE}
 and data is ungrouped. Default \code{c("+" = "#4393C3", "-" = "#D6604D")}.}
 
-\item{group_colours}{Named character vector of colours per group. Defaults
-to \code{c("1" = "#0072B2", "2" = "#E69F00")} (the Okabe-Ito colorblind-safe
-blue/orange pair, see \code{.GROUP_PALETTE_DEFAULT}), matching the typical HP
-haplotype tag output. Pass \code{NULL} to use ggplot2 defaults, or supply a
-fully named vector for other group names.}
+\item{group_colours}{Character vector of colours per group, used for the
+read bars, the smooth lines and the delta area alike. Defaults to
+\code{c("1" = "#0072B2", "2" = "#E69F00")} (the Okabe-Ito colorblind-safe
+blue/orange pair), matching HP haplotype tags. Groups the vector does not
+name (e.g. \code{"REF"}/\code{"ALT"} from SNV grouping, or a third haplotype) get
+further Okabe-Ito colours (with a message when you supplied the vector).
+An unnamed vector is matched to the sorted group names by position and
+needs at least one colour per group. Pass \code{NULL} to use ggplot2's default
+hue palette.}
 
-\item{smooth_span}{Loess smoothing span for the bottom panel. When \code{NULL}
-(default), an adaptive span is computed per group as
-\code{max(0.15, min(0.75, 15 / n_unique_sites))}, targeting ~15 data points
-per local fit regardless of region size or CpG density. Pass an explicit
-numeric value (e.g. \code{0.3}) to use a fixed span.}
+\item{smooth_span}{\code{NULL} or a positive number: the loess smoothing span for
+the smooth panel. When \code{NULL} (default), an adaptive span is computed per
+group as \code{max(0.15, min(0.75, 15 / n_unique_sites))}, targeting ~15 data
+points per local fit regardless of region size or CpG density. Pass an
+explicit value (e.g. \code{0.3}) to use a fixed span.}
 
-\item{panel_heights}{Numeric vector giving relative heights of the panels.
-When \code{annotations = NULL}, expects length 2 (\code{reads}, \code{smooth}); when
-annotations are provided, expects length 3 (\verb{gene track}, \code{reads},
-\code{smooth}) — the gene panel is placed at the top, reads in the middle, and
-the smoothed probability curve at the bottom. When \code{show_delta = TRUE}
-and grouping yields exactly two groups, an additional delta panel is
-appended last, adding one to the expected length in each case above.
-Pass \code{NULL} to use the built-in defaults.}
+\item{panel_heights}{Numeric vector giving relative heights of the panels,
+top to bottom: the gene track (when \code{annotations} is given), one read
+panel per sample, the smooth panel, and the delta panel (when shown).
+Its length must equal the number of panels. Pass \code{NULL} (default) to use
+the built-in defaults.}
 
 \item{annotations}{A \code{gene_annotations} object returned by
 \code{\link[=read_annotations]{read_annotations()}}, or \code{NULL} (default). When provided, a gene
@@ -85,32 +88,52 @@ annotation track is placed at the top of the composite figure (above the
 read panel and the smooth panel).}
 
 \item{variants}{A \code{variant_data} object returned by \code{\link[=read_variants]{read_variants()}}, or
-\code{NULL} (default). When provided, per-read base letters are drawn at
-variant positions (coloured by match to ref/alt), and vertical dashed
-lines are added at every variant position across all panels. Requires
-that \code{data} was produced by a current version of \code{\link[=read_methylation]{read_methylation()}} that
-stores sequences and CIGARs in the object.}
+\code{NULL} (default). When provided, VCF records are overlaid on the read
+panel(s):
+\itemize{
+\item \strong{SNV}: a small black asterisk at the variant position on each read
+whose base there equals the ALT allele. Reads with the REF or another
+base are not marked; no base letters are drawn.
+\item \strong{DEL, DUP, INV} (symbolic SVs with an \code{END}): a styled segment on
+every read overlapping the SV span, clipped to the read and the region:
+DEL a dark red line with end ticks, DUP two teal parallel lines, INV a
+purple dashed line. Chevrons (« ») mark a span cut at the region
+edge.
+\item \strong{BND}: one text label \code{"⋈ mate_chrom:mate_pos"} at the bottom of
+the read panel, centred on the breakend position. When
+\code{show_supplementary = TRUE}, the SA marker of each read whose
+supplementary alignment lies on the BND mate chromosome within the
+object's \code{bnd_match_tol} of the mate position gets a dark magenta
+border.
+\item Short insertions, deletions and MNVs, and symbolic types other than
+DEL/DUP/INV (e.g. \verb{<CNV>}), are not drawn.
+}
+
+No vertical lines are drawn for variants. Requires that \code{data} was
+produced by a current version of \code{\link[=read_methylation]{read_methylation()}}, which stores
+sequences and CIGARs.}
 
 \item{show_cigar}{Logical. When \code{TRUE} (default), structural variants from
 CIGAR strings (insertions, deletions) are displayed on reads. Insertions
 appear as purple I-beam markers spanning the full height of the read bar;
-deletions open a gap in the read bar and draw a thin black line. Set to
-\code{FALSE} to hide these features.}
+deletions open a gap in the read bar and draw a thin black line. Smooth
+lines (and the delta area) are interrupted where at least 75\% of a
+group's reads covering a deletion carry it. Set to \code{FALSE} to hide these
+features.}
 
-\item{min_indel_size}{Integer. Minimum size (in bp) for insertions and
-deletions to be displayed when \code{show_cigar = TRUE}. Indels smaller than
-this threshold are hidden to reduce visual clutter from common small
-indels. Default \code{50}.}
+\item{min_indel_size}{Non-negative number. Minimum size (in bp) for
+insertions and deletions to be displayed when \code{show_cigar = TRUE}. Indels
+smaller than this threshold are hidden to reduce visual clutter from
+common small indels. Default \code{50}.}
 
-\item{show_supplementary}{Logical. When \code{TRUE} (default), a coloured halo
-is drawn around read bars indicating the chromosome of the supplementary
-alignment partner (from the SA BAM tag). The original bar colouring
-(group, strand, or default grey) is preserved inside the halo. Reads with
-no supplementary alignment have no halo.}
+\item{show_supplementary}{Logical. When \code{TRUE} (default), reads with a
+supplementary alignment (SA BAM tag) get a small marker at each clipped
+end, filled by the chromosome of the SA partner. The marker is drawn
+outside the read bar, so no modification site is hidden.}
 
 \item{show_ci}{Logical. When \code{TRUE} (default), a shaded ribbon showing the
 loess confidence interval (\code{lower}/\code{upper} from \code{\link[=smooth_methylation]{smooth_methylation()}})
-is drawn behind each smooth line in the bottom panel. Has no effect when
+is drawn behind each smooth line in the smooth panel. Has no effect when
 fewer than 4 unique positions are available for a group/code (no CI is
 computed in that case). Set to \code{FALSE} to hide the ribbon.}
 
@@ -135,40 +158,59 @@ pulled toward 0.5 by basecaller uncertainty.
 
 Because binarised values are 0 or 1, positions with thin coverage
 contribute coarser values than with continuous probabilities, so the
-binary curve is noisier where few reads overlap. The loess span still
-averages over neighbouring positions and the confidence ribbon
-(\code{show_ci}) widens where evidence is sparse.}
+binary curve is noisier where few reads overlap. The loess span averages
+over neighbouring positions. Note that the loess fit weights every
+position equally regardless of how many reads cover it, so the confidence
+ribbon (\code{show_ci}) reflects the scatter and density of positions, not read
+coverage: it does not widen where coverage is thin. Fitted values are
+clamped to \verb{[0, 1]}.}
 
-\item{call_ambiguous}{\code{NULL} (default) for a hard threshold, or a numeric
-half-width defining a band \verb{[call_threshold - w, call_threshold + w)}
-around \code{call_threshold} within which sites are labelled "ambiguous"
-rather than methylated/unmethylated. Ambiguous sites are excluded from
-both the numerator and the denominator of the methylated fraction, so the
-smooth panel reports the fraction methylated \emph{among confident calls}. The
-default \code{NULL} discards nothing — every site is called at
-\code{call_threshold}. Requires \code{call_threshold}.}
+\item{call_ambiguous}{\code{NULL} (default) for a hard threshold, or a single
+non-negative number \code{w}: sites whose probability lies in the open band
+\verb{(call_threshold - w, call_threshold + w)} are labelled "ambiguous"
+rather than methylated/unmethylated, except a probability exactly equal
+to \code{call_threshold}, which is always methylated. Ambiguous sites are
+excluded from both the numerator and the denominator of the methylated
+fraction, so the smooth panel reports the fraction methylated \emph{among
+confident calls}. The default \code{NULL} (or \code{0}) discards nothing — every
+site is called at \code{call_threshold}. Requires \code{call_threshold}.}
 
 \item{show_delta}{Logical. When \code{TRUE}, and grouping yields exactly two
 groups, an additional panel is appended below the smooth panel showing
 the signed difference in loess-smoothed modification probability between
-the two groups (group2 - group1), coloured by sign. Requires \code{data} to be
-grouped (\code{data$group_tag} non-\code{NULL}) with exactly two distinct group
-values; otherwise the panel is silently skipped (with a message). Not
+the two groups (group2 - group1), filled with the colour of whichever
+group is higher. Requires \code{data} to be grouped (\code{group_tag} or \code{snv} in
+\code{\link[=read_methylation]{read_methylation()}}) with exactly two distinct group values and a single
+modification code; otherwise the panel is skipped with a message. Not
 supported for multi-sample data (\code{multi_methylation_data}); the argument
 is accepted there but ignored (with a message). Default \code{FALSE}.}
 }
 \value{
-A \link[ggplot2:ggplot]{ggplot2::ggplot} object (ungrouped) or a
-\link[patchwork:patchwork-package]{patchwork::patchwork} composite (grouped).
+A \link[patchwork:patchwork-package]{patchwork::patchwork} composite (also for ungrouped data), or,
+when a single-sample \code{data} has no reads, a placeholder \link[ggplot2:ggplot]{ggplot2::ggplot}
+saying so.
 }
 \description{
-Creates a ggplot2 visualisation of read-level base modification data. When
-no grouping is present, produces a single panel showing reads as grey bars
-with coloured modification dots. When groups are present, adds a bottom
-panel with loess-smoothed mean modification probability per group and
-combines the panels using patchwork. Setting \code{call_threshold} switches to
+Creates a ggplot2 visualisation of read-level base modification data,
+returned as a \link[patchwork:patchwork-package]{patchwork::patchwork} composite: an optional gene track, one
+read panel per sample (reads as bars with a coloured mark per modification
+site), a panel with the loess-smoothed mean modification probability (one
+line per group when the data is grouped, otherwise one overall line), and an
+optional delta panel (\code{show_delta}). Setting \code{call_threshold} switches to
 binary calls: sites are coloured methylated/unmethylated and the smooth
 panel plots the fraction of methylated calls instead of the mean probability.
+}
+\details{
+Groups are coloured consistently in every panel (read bars, smooth lines,
+delta area) by one palette resolved from \code{group_colours}; reads whose group
+is \code{NA} (e.g. unphased) are drawn in grey. Legends shared by several panels
+are collected once at the right of the figure.
+
+When the data holds several modification codes (e.g.
+\code{mod_code = c("m", "h")}), each read bar is split into horizontal strips,
+one per code, in the order of \code{data$mod_code} from top to bottom (the read
+panel's y-axis title lists the order), and the smooth panel draws one line
+per code (by line type).
 }
 \examples{
 \dontrun{

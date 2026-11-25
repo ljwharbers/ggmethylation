@@ -15,32 +15,42 @@ read_methylation(
   min_mapq = 0L,
   strand_filter = c("+", "-"),
   min_read_length = 0L,
-  drop_na_group = FALSE
+  drop_na_group = FALSE,
+  seed = NULL
 )
 }
 \arguments{
-\item{bam}{Character. Path to a BAM file containing MM/ML modification tags.}
+\item{bam}{Character. Path to a BAM file containing MM/ML modification
+tags, indexed with a \code{.bai} or \code{.csi} index.}
 
-\item{region}{Character. Genomic region string, e.g. \code{"chr1:1000-2000"}.}
+\item{region}{Character. Genomic region string, e.g. \code{"chr1:1000-2000"}.
+The string is split at its last colon, so contig names containing colons
+are allowed.}
 
 \item{mod_code}{Character. Modification code from the MM tag (default \code{"m"}
 for 5-methylcytosine).}
 
 \item{group_tag}{Character or NULL. BAM tag used to group reads (e.g.
-\code{"HP"} for haplotype, \code{"RG"} for read group). NULL disables grouping.}
+\code{"HP"} for haplotype, \code{"RG"} for read group). NULL disables grouping.
+If no read in the region carries the tag, a warning is given and the
+data are returned ungrouped (\code{group_tag} is \code{NULL} and there is no
+\code{group} column).}
 
 \item{snv}{\code{NULL}, or a list \code{list(position =, ref =, alt =)} to group reads
 by the base they carry at an SNV instead of by a BAM tag: reads with the
 \code{ref} base form group \code{"REF"}, reads with \code{alt} form \code{"ALT"}, and all
-other reads are dropped. Cannot be combined with \code{group_tag}.}
+other reads are dropped. \code{ref} and \code{alt} must be different bases from
+A, C, G, T and \code{position} must lie inside \code{region}. Cannot be combined
+with \code{group_tag}.}
 
 \item{max_reads}{Integer. Maximum number of reads to return (default 200).
-If more reads overlap the region, a random subset is kept.}
+If more reads overlap the region, a random subset is kept (see \code{seed}).}
 
 \item{per_group_downsample}{Logical. When \code{TRUE} and grouping is active
 (via \code{group_tag} or \code{snv}), the \code{max_reads} cap is applied
-independently per group. When \code{FALSE} (default), the existing global
-cap behaviour is unchanged.}
+independently per group, and reads without a group (\code{NA}, e.g.
+unphased reads) are \strong{dropped}. When \code{FALSE} (default), one global cap
+is applied to all reads.}
 
 \item{min_mapq}{Integer. Minimum mapping quality (MAPQ) threshold
 (default \code{0L}, no filtering). Reads with MAPQ below this value,
@@ -59,18 +69,26 @@ value are excluded before MM/ML parsing.}
 where the tag is absent (i.e. group is \code{NA}) are removed before
 downsampling. Default \code{FALSE} preserves the existing behaviour of keeping
 unphased reads in the data.}
+
+\item{seed}{\code{NULL} (default) or a single number. When given, downsampling
+uses \code{set.seed(seed)} so the same reads are picked on every call, and the
+caller's random number stream is restored afterwards. With \code{NULL},
+downsampling draws from the current random number stream.}
 }
 \value{
 A \code{methylation_data} object (S3 list) with elements:
 \describe{
-\item{reads}{Data.frame with columns \code{read_name}, \code{start}, \code{end},
-\code{bam_pos} (original unclipped alignment start, equal to the BAM POS
-field), \code{strand}, \code{is_supplementary} (logical), \code{sa_chrom} (chr or
+\item{reads}{Data.frame with one row per read and columns \code{read_name},
+\code{start}, \code{end}, \code{bam_pos} (alignment start, equal to the BAM POS
+field), \code{bam_end} (alignment end: last reference base covered by the
+CIGAR), \code{strand}, \code{is_supplementary} (logical), \code{sa_chrom} (chr or
 NA), \code{sa_pos} (int or NA), \code{clip_side} (chr: \code{"left"}, \code{"right"},
 \code{"both"}, or NA), and optionally \code{group}. \code{start} and \code{end} are
-clipped to the queried region; \code{bam_pos} retains the original start.}
-\item{sites}{Data.frame with columns \code{position}, \code{mod_prob},
-\code{read_name}, \code{mod_code}, and optionally \code{group}.}
+clipped to the queried region; \code{bam_pos} and \code{bam_end} keep the full
+alignment span, which may extend beyond it.}
+\item{sites}{Data.frame with one row per read per modification call
+and columns \code{position}, \code{mod_prob}, \code{read_name}, \code{mod_code}, and
+optionally \code{group}.}
 \item{region}{A \link[GenomicRanges:GRanges-class]{GenomicRanges::GRanges} object for the queried region.}
 \item{mod_code}{The modification code(s) used.}
 \item{group_tag}{The grouping tag used, or \code{NULL}.}
@@ -91,11 +109,27 @@ inserted bases (no reference coordinate). Columns: \code{read_name},
 \code{mod_code}, and optionally \code{group}. Zero rows when no insertions
 carry modification calls.}
 }
+A warning is given when no read in the region carries MM/ML tags
+(mentioning legacy \code{Mm}/\code{Ml} tags if those are present instead), and
+when a requested \code{mod_code} appears in no MM tag.
 }
 \description{
 Parses a BAM file with MM/ML tags and extracts base modification data for
 a given genomic region. This is the main entry point for data extraction
 (Layer 1 of the package).
+}
+\details{
+Secondary (FLAG 0x100), QC-fail (0x200) and duplicate (0x400) alignments
+are never read. Supplementary alignments (0x800) are kept.
+
+MM/ML tags are parsed as described in the SAM specification (see the
+Details of the internal \code{parse_mm_ml()}), with one deliberate deviation:
+an MM entry without a \verb{?} or \code{.} flag is treated like \verb{?} (unlisted bases
+are not reported), because older basecallers that write no flag list only
+CpG sites. A read whose MM/ML tags are malformed or inconsistent with its
+sequence (wrong number of ML values, unparseable skip counts, an \code{MN} tag
+that differs from the SEQ length, ...) is kept in \verb{$reads} without any
+calls; a single warning reports how many reads were affected.
 }
 \examples{
 \dontrun{

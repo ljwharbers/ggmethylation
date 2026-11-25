@@ -11,7 +11,8 @@ build_variant_overlay(data, variants)
 
 \item{variants}{A \code{variant_data} object returned by \code{\link[=read_variants]{read_variants()}}, or
 \code{NULL}. Its \code{bnd_match_tol} sets the SA-to-BND matching tolerance
-(50 bp when absent).}
+(50 bp when absent). A warning is issued when its \code{region} is on another
+chromosome than, or does not overlap, \code{data$region}.}
 }
 \value{
 A named list with elements \code{snv}, \code{sv}, \code{bnd}, and \code{sa_reads}

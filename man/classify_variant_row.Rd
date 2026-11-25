@@ -24,7 +24,7 @@ classify_variant_row(
 
 \item{end}{Integer or NA. The INFO/END value.}
 
-\item{svlen}{Numeric or NA (may be a list). The INFO/SVLEN value.}
+\item{svlen}{Numeric or NA (may be a list or S4 List). The INFO/SVLEN value.}
 }
 \value{
 A named list with four elements: \code{type} (character), \code{end}
@@ -33,5 +33,11 @@ A named list with four elements: \code{type} (character), \code{end}
 \description{
 Internal helper used by \code{\link[=read_variants]{read_variants()}} to classify one VCF row into a
 type and derive \code{end}, \code{mate_chrom}, and \code{mate_pos}.
+}
+\details{
+Short variants are typed from the allele lengths: \code{"SNV"} (1 vs 1 base),
+\code{"MNV"} (equal lengths > 1), \code{"insertion"} (REF shorter than ALT) or
+\code{"deletion"} (REF longer than ALT). A spanning-deletion ALT (\code{"*"}), like an
+\code{NA} allele, gives type \code{NA}.
 }
 \keyword{internal}

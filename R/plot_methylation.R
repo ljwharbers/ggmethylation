@@ -613,12 +613,27 @@
 #'   read panel and the smooth panel).
 #' @param variants A `variant_data` object returned by [read_variants()], or
 #'   `NULL` (default). When provided, VCF records are overlaid on the read
-#'   panel(s): reads carrying the ALT base of an SNV are marked with a small
-#'   black asterisk at the variant position; DEL/DUP/INV records are drawn as
-#'   coloured spans over the reads they overlap; BND records are labelled with
-#'   their mate location; and supplementary-alignment markers whose SA partner
-#'   matches a BND are outlined. Requires that `data` was produced by a current
-#'   version of [read_methylation()] that stores sequences and CIGARs.
+#'   panel(s):
+#'   * **SNV**: a small black asterisk at the variant position on each read
+#'     whose base there equals the ALT allele. Reads with the REF or another
+#'     base are not marked; no base letters are drawn.
+#'   * **DEL, DUP, INV** (symbolic SVs with an `END`): a styled segment on
+#'     every read overlapping the SV span, clipped to the read and the region:
+#'     DEL a dark red line with end ticks, DUP two teal parallel lines, INV a
+#'     purple dashed line. Chevrons (« ») mark a span cut at the region
+#'     edge.
+#'   * **BND**: one text label `"⋈ mate_chrom:mate_pos"` at the bottom of
+#'     the read panel, centred on the breakend position. When
+#'     `show_supplementary = TRUE`, the SA marker of each read whose
+#'     supplementary alignment lies on the BND mate chromosome within the
+#'     object's `bnd_match_tol` of the mate position gets a dark magenta
+#'     border.
+#'   * Short insertions, deletions and MNVs, and symbolic types other than
+#'     DEL/DUP/INV (e.g. `<CNV>`), are not drawn.
+#'
+#'   No vertical lines are drawn for variants. Requires that `data` was
+#'   produced by a current version of [read_methylation()], which stores
+#'   sequences and CIGARs.
 #' @param show_cigar Logical. When `TRUE` (default), structural variants from
 #'   CIGAR strings (insertions, deletions) are displayed on reads. Insertions
 #'   appear as purple I-beam markers spanning the full height of the read bar;
@@ -636,7 +651,7 @@
 #'   outside the read bar, so no modification site is hidden.
 #' @param show_ci Logical. When `TRUE` (default), a shaded ribbon showing the
 #'   loess confidence interval (`lower`/`upper` from [smooth_methylation()])
-#'   is drawn behind each smooth line in the bottom panel. Has no effect when
+#'   is drawn behind each smooth line in the smooth panel. Has no effect when
 #'   fewer than 4 unique positions are available for a group/code (no CI is
 #'   computed in that case). Set to `FALSE` to hide the ribbon.
 #' @param call_threshold `NULL` (default) or a number in `[0, 1]`. With

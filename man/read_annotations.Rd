@@ -26,7 +26,10 @@ Exactly one of \code{genome}, \code{gtf}, or \code{txdb} must be provided.}
 
 \item{region}{Character. Genomic region string in the format
 \code{"chr:start-end"} (e.g., \code{"chr1:1000000-2000000"}). The same format
-accepted by \code{\link[=read_methylation]{read_methylation()}}.}
+accepted by \code{\link[=read_methylation]{read_methylation()}}.
+If the region's chromosome is not among the annotation's sequences
+(e.g. \code{"chr1"} vs \code{"1"}), a warning is issued and an empty
+\code{gene_annotations} object is returned.}
 
 \item{collapse_transcripts}{Logical. When \code{TRUE} (default), only one
 canonical transcript per gene is retained (longest CDS, or longest span

@@ -4,7 +4,7 @@
 \alias{parse_mm_ml}
 \title{Parse MM and ML tags for a single read}
 \usage{
-parse_mm_ml(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos)
+parse_mm_ml(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos, mn = NULL)
 }
 \arguments{
 \item{seq}{Character. The read sequence from the BAM SEQ field.}
@@ -22,6 +22,9 @@ for 5mC, \code{"h"} for 5hmC).}
 \item{cigar}{Character. The CIGAR string for the alignment.}
 
 \item{pos}{Integer. 1-based leftmost alignment position (BAM POS field).}
+
+\item{mn}{Integer or \code{NULL}. The value of the optional \code{MN} tag (the SEQ
+length the MM/ML tags were written for). \code{NULL} or \code{NA} skips the check.}
 }
 \value{
 A named \code{list} with two \code{data.frame} elements:
@@ -38,11 +41,40 @@ a CIGAR \code{I} interval (no reference position). Columns \code{query_pos}
 Implicit-zero positions (\code{.} flag) inside insertions are not emitted.}
 }
 Returns both frames empty (zero rows, same columns) when the
-requested modification is not present.
+requested modification is not present or the tags are malformed.
 }
 \description{
 Extracts modification probabilities and their genomic positions from the
-MM and ML tags of a single BAM read. Supports the SAM specification for
-base modification tags.
+MM and ML tags of a single BAM read, following the SAM specification for
+base modification tags (SAMtags, section "Base modifications").
+}
+\details{
+Bases are counted along the original read, 5' to 3', on its top strand.
+Which base is looked for in \code{seq} and the direction of the scan depend
+only on the alignment strand: for a reverse-strand alignment (\code{strand = "-"}, FLAG 0x10) the stored SEQ is reverse-complemented, so the complement
+of the MM base is searched from the end of \code{seq}. The \code{+}/\code{-} field of an
+MM entry only says which strand of the molecule carries the modification;
+it does not change which bases are counted. Canonical base \code{N} matches any
+base.
+
+An entry may carry several codes (e.g. \code{C+mh}); its ML values are then
+interleaved per base in code order. A numeric code (a ChEBI identifier
+such as \code{C+76792}) is one code. When several entries carry the requested
+code (e.g. \code{C+m} and \code{G-m}), calls from all of them are returned.
+
+The \code{.} flag means unlisted canonical bases are unmodified: they are
+returned with \code{mod_prob = 0}. The \verb{?} flag means unlisted bases carry no
+information and are not returned. An entry with \strong{no} flag is treated
+like \verb{?}. This deliberately deviates from the SAM specification (which
+treats a missing flag as \code{.}): older basecallers that write no flag list
+only CpG cytosines, so following the specification would report every
+non-CpG C as unmodified.
+
+A tag that cannot be interpreted is rejected as a whole, with a warning,
+and no calls are returned: an unparseable entry, a missing or negative
+skip count, an ML length that differs from the number of calls in MM, an
+entry that lists more bases than SEQ contains, an empty SEQ (\code{*}), or an
+\code{mn} value that differs from the length of \code{seq} (a hard-clipped record
+whose MM/ML still describe the full read).
 }
 \keyword{internal}

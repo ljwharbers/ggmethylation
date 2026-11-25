@@ -5,8 +5,8 @@ Authors@R: person("Luuk", "Harbers", role = c("aut", "cre"),
     email = "l.j.w.harbers@gmail.com")
 Description: Visualise read-level base modification data from long-read
     sequencing (Oxford Nanopore, PacBio). Parses MM/ML tags from modBAM
-    files and produces ggplot2 read-level methylation plots with optional
-    group summary panels. Supports insertion-aware modification calls:
+    files and produces ggplot2 read-level methylation plots with a smoothed
+    per-group summary panel. Supports insertion-aware modification calls:
     retains modification probabilities on inserted bases, discovers
     insertion loci across reads, and visualises per-locus modification
     patterns in a stitched coordinate system.

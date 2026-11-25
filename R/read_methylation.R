@@ -62,14 +62,17 @@
 #'
 #' @return A `methylation_data` object (S3 list) with elements:
 #'   \describe{
-#'     \item{reads}{Data.frame with columns `read_name`, `start`, `end`,
-#'       `bam_pos` (original unclipped alignment start, equal to the BAM POS
-#'       field), `bam_end` (original unclipped alignment end), `strand`, `is_supplementary` (logical), `sa_chrom` (chr or
+#'     \item{reads}{Data.frame with one row per read and columns `read_name`,
+#'       `start`, `end`, `bam_pos` (alignment start, equal to the BAM POS
+#'       field), `bam_end` (alignment end: last reference base covered by the
+#'       CIGAR), `strand`, `is_supplementary` (logical), `sa_chrom` (chr or
 #'       NA), `sa_pos` (int or NA), `clip_side` (chr: `"left"`, `"right"`,
 #'       `"both"`, or NA), and optionally `group`. `start` and `end` are
-#'       clipped to the queried region; `bam_pos` and `bam_end` retain the original span.}
-#'     \item{sites}{Data.frame with columns `position`, `mod_prob`,
-#'       `read_name`, `mod_code`, and optionally `group`.}
+#'       clipped to the queried region; `bam_pos` and `bam_end` keep the full
+#'       alignment span, which may extend beyond it.}
+#'     \item{sites}{Data.frame with one row per read per modification call
+#'       and columns `position`, `mod_prob`, `read_name`, `mod_code`, and
+#'       optionally `group`.}
 #'     \item{region}{A [GenomicRanges::GRanges] object for the queried region.}
 #'     \item{mod_code}{The modification code(s) used.}
 #'     \item{group_tag}{The grouping tag used, or `NULL`.}

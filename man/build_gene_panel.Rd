@@ -7,7 +7,9 @@
 build_gene_panel(annotations, region_start, region_end, bottom_label = TRUE)
 }
 \arguments{
-\item{annotations}{A \code{gene_annotations} object from \code{\link[=read_annotations]{read_annotations()}}.}
+\item{annotations}{A \code{gene_annotations} object from \code{\link[=read_annotations]{read_annotations()}}.
+A warning is issued when its \code{region} does not overlap
+\code{region_start}-\code{region_end} (the chromosome cannot be checked here).}
 
 \item{region_start}{Integer. Start coordinate of the plot x-axis.}
 

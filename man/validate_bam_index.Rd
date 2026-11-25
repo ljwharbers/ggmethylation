@@ -10,11 +10,11 @@ validate_bam_index(bam)
 \item{bam}{Character. Path to a BAM file.}
 }
 \value{
-The path to the BAI index file (invisibly).
+The path to the index file (invisibly).
 }
 \description{
-Checks that the BAM file exists and that a corresponding \code{.bai} index file
-can be found. Looks for the index at both \verb{\{bam\}.bai} and the path obtained
-by replacing the \code{.bam} extension with \code{.bam.bai}.
+Checks that the BAM file exists and that a \code{.bai} or \code{.csi} index can be
+found, at \verb{\{bam\}.bai}, \verb{\{bam\}.csi}, or (for a \code{.bam} file) the path with
+the \code{.bam} extension replaced by \code{.bai} / \code{.csi}.
 }
 \keyword{internal}
