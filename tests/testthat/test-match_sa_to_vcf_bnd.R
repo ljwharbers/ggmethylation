@@ -11,6 +11,11 @@
 # tol:    integer position tolerance in bp (default 50L).
 #
 # Returns: reads with new logical column vcf_validated.
+#
+# A read's SA tag gives a coordinate on the SA chromosome, i.e. on the BND's
+# *mate* side, so sa_pos must be compared with mate_pos. The helpers below put
+# the BND's local position (chr1:6000) and its mate (chr7:1010) far apart and on
+# different chromosomes so that a comparison against the wrong column fails.
 
 # Helpers --------------------------------------------------------------------
 
@@ -25,9 +30,9 @@ make_reads = function(read_name = "r1",
   )
 }
 
-make_bnd = function(position   = 1010L,
+make_bnd = function(position   = 6000L,
                      mate_chrom = "chr7",
-                     mate_pos   = 999L) {
+                     mate_pos   = 1010L) {
   data.frame(
     position   = as.integer(position),
     mate_chrom = mate_chrom,
@@ -36,7 +41,7 @@ make_bnd = function(position   = 1010L,
   )
 }
 
-# --- Test 1: NULL bnd_df — all reads get vcf_validated = FALSE ---------------
+# --- NULL / empty bnd_df -------------------------------------------------------
 
 test_that("match_sa_to_vcf_bnd returns vcf_validated FALSE for NULL bnd_df", {
   reads  = make_reads()
@@ -45,8 +50,6 @@ test_that("match_sa_to_vcf_bnd returns vcf_validated FALSE for NULL bnd_df", {
   expect_true("vcf_validated" %in% names(result))
   expect_false(any(result$vcf_validated))
 })
-
-# --- Test 2: 0-row bnd_df — all reads get vcf_validated = FALSE --------------
 
 test_that("match_sa_to_vcf_bnd returns vcf_validated FALSE for 0-row bnd_df", {
   reads  = make_reads()
@@ -62,40 +65,44 @@ test_that("match_sa_to_vcf_bnd returns vcf_validated FALSE for 0-row bnd_df", {
   expect_false(any(result$vcf_validated))
 })
 
-# --- Test 3: Matching — sa_chrom == mate_chrom AND |sa_pos - position| <= tol → TRUE ---
+# --- Matching against the mate coordinate -------------------------------------
 
-test_that("match_sa_to_vcf_bnd sets vcf_validated TRUE for a full match", {
-  reads  = make_reads(sa_chrom = "chr7",  sa_pos  = 1000L)
-  bnd_df = make_bnd( mate_chrom = "chr7", position = 1010L)  # delta = 10 <= 50
+test_that("match_sa_to_vcf_bnd sets vcf_validated TRUE when sa_pos is near mate_pos", {
+  reads  = make_reads(sa_chrom = "chr7", sa_pos = 1000L)
+  bnd_df = make_bnd(position = 6000L, mate_chrom = "chr7", mate_pos = 1010L)  # |1000 - 1010| = 10
 
   result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
 
   expect_true(result$vcf_validated[1L])
 })
 
-# --- Test 4: Position-only match rejected — sa_chrom != mate_chrom → FALSE --
+test_that("match_sa_to_vcf_bnd ignores the BND's local position", {
+  # sa_pos equals the local position exactly but is 4990 bp from the mate.
+  reads  = make_reads(sa_chrom = "chr7", sa_pos = 6000L)
+  bnd_df = make_bnd(position = 6000L, mate_chrom = "chr7", mate_pos = 1010L)
+
+  result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
+
+  expect_false(result$vcf_validated[1L])
+})
 
 test_that("match_sa_to_vcf_bnd returns FALSE when chrom does not match", {
-  reads  = make_reads(sa_chrom = "chr8",  sa_pos  = 1000L)
-  bnd_df = make_bnd( mate_chrom = "chr7", position = 1010L)  # delta = 10, but wrong chrom
+  reads  = make_reads(sa_chrom = "chr8", sa_pos = 1000L)
+  bnd_df = make_bnd(mate_chrom = "chr7", mate_pos = 1010L)  # delta 10, wrong chrom
 
   result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
 
   expect_false(result$vcf_validated[1L])
 })
-
-# --- Test 5: Chromosome-only match rejected — |sa_pos - position| > tol → FALSE ---
 
 test_that("match_sa_to_vcf_bnd returns FALSE when position is out of tolerance", {
-  reads  = make_reads(sa_chrom = "chr7",  sa_pos  = 1000L)
-  bnd_df = make_bnd( mate_chrom = "chr7", position = 1100L)  # delta = 100 > 50
+  reads  = make_reads(sa_chrom = "chr7", sa_pos = 1000L)
+  bnd_df = make_bnd(mate_chrom = "chr7", mate_pos = 1100L)  # delta = 100 > 50
 
   result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
 
   expect_false(result$vcf_validated[1L])
 })
-
-# --- Test 6: Non-SA reads (is.na(sa_chrom)) are always FALSE -----------------
 
 test_that("match_sa_to_vcf_bnd returns FALSE for reads with no SA tag", {
   reads = data.frame(
@@ -104,34 +111,44 @@ test_that("match_sa_to_vcf_bnd returns FALSE for reads with no SA tag", {
     sa_pos    = c(NA_integer_,   NA_integer_),
     stringsAsFactors = FALSE
   )
-  bnd_df = make_bnd(mate_chrom = "chr7", position = 1010L)
+  bnd_df = make_bnd()
 
   result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
 
   expect_false(any(result$vcf_validated))
 })
 
-# --- Test 7: Exact boundary conditions — tol and tol+1 ----------------------
-
-test_that("match_sa_to_vcf_bnd handles exact boundary: |delta| == tol → TRUE", {
+test_that("match_sa_to_vcf_bnd handles exact boundary: |delta| == tol -> TRUE", {
   reads  = make_reads(sa_chrom = "chr7", sa_pos = 1000L)
-  bnd_df = make_bnd( mate_chrom = "chr7", position = 1050L)  # delta = 50 == tol
+  bnd_df = make_bnd(mate_chrom = "chr7", mate_pos = 1050L)  # delta = 50 == tol
 
   result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
 
   expect_true(result$vcf_validated[1L])
 })
 
-test_that("match_sa_to_vcf_bnd handles exact boundary: |delta| == tol + 1 → FALSE", {
+test_that("match_sa_to_vcf_bnd handles exact boundary: |delta| == tol + 1 -> FALSE", {
   reads  = make_reads(sa_chrom = "chr7", sa_pos = 1000L)
-  bnd_df = make_bnd( mate_chrom = "chr7", position = 1051L)  # delta = 51 > tol
+  bnd_df = make_bnd(mate_chrom = "chr7", mate_pos = 1051L)  # delta = 51 > tol
 
   result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
 
   expect_false(result$vcf_validated[1L])
 })
 
-# --- Test 8: vcf_validated column is logical type ----------------------------
+test_that("match_sa_to_vcf_bnd tolerates BND rows whose mate could not be parsed", {
+  reads  = make_reads(sa_chrom = "chr7", sa_pos = 1000L)
+  bnd_df = rbind(
+    make_bnd(mate_chrom = NA_character_, mate_pos = NA_integer_),
+    make_bnd(mate_chrom = "chr7", mate_pos = 1010L)
+  )
+
+  result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
+  expect_true(result$vcf_validated[1L])
+
+  result_na = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df[1L, ], tol = 50L)
+  expect_false(result_na$vcf_validated[1L])
+})
 
 test_that("match_sa_to_vcf_bnd always produces a logical vcf_validated column", {
   reads  = make_reads()
@@ -140,6 +157,43 @@ test_that("match_sa_to_vcf_bnd always produces a logical vcf_validated column", 
   result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df)
 
   expect_type(result$vcf_validated, "logical")
+})
+
+test_that("match_sa_to_vcf_bnd handles mixed SA and non-SA reads correctly", {
+  reads = data.frame(
+    read_name = c("r1", "r2", "r3"),
+    sa_chrom  = c("chr7", NA_character_, "chr7"),
+    sa_pos    = c(1000L,   NA_integer_,   2000L),
+    stringsAsFactors = FALSE
+  )
+  # Only r1 should match (correct chrom + within tol of mate_pos 1010);
+  # r2 has no SA; r3 is 990 bp from the mate.
+  bnd_df = make_bnd(mate_chrom = "chr7", mate_pos = 1010L)
+
+  result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
+
+  expect_true(result$vcf_validated[1L])   # r1: match
+  expect_false(result$vcf_validated[2L])  # r2: no SA
+  expect_false(result$vcf_validated[3L])  # r3: wrong position
+})
+
+test_that("SA reads on the fixture are validated against the BND mate", {
+  skip_if_not_installed("VariantAnnotation")
+  bam = testthat::test_path("fixtures", "synthetic.bam")
+  vcf = testthat::test_path("fixtures", "synthetic.vcf.gz")
+  md  = read_methylation(bam, "chr1:1000-7000")
+  vd  = read_variants(vcf, "chr1:1000-7000")
+
+  # The fixture BND is chr1:6000 -> chr7:5000. Six primary reads carry
+  # SA:chr7,5000; five carry SA:chr3,12000 and one supplementary read carries
+  # SA:chr1,4000, neither of which matches.
+  bnd = vd$variants[vd$variants$type %in% "BND", , drop = FALSE]
+  res = ggmethylation:::match_sa_to_vcf_bnd(md$reads, bnd, tol = vd$bnd_match_tol)
+  validated = res$read_name[res$vcf_validated]
+  expect_setequal(
+    validated,
+    c("read011", "read022", "read033", "read044", "read055", "read066")
+  )
 })
 
 # --- Tests for build_bnd_layer() ---------------------------------------------
@@ -159,23 +213,4 @@ test_that("build_bnd_layer returns a single mate-label layer for a one-row bnd_d
 
   expect_type(result, "list")
   expect_length(result, 1L)
-})
-
-# --- Bonus: mixed reads (some SA, some not) -----------------------------------
-
-test_that("match_sa_to_vcf_bnd handles mixed SA and non-SA reads correctly", {
-  reads = data.frame(
-    read_name = c("r1", "r2", "r3"),
-    sa_chrom  = c("chr7", NA_character_, "chr7"),
-    sa_pos    = c(1000L,   NA_integer_,   2000L),
-    stringsAsFactors = FALSE
-  )
-  # Only r1 should match (correct chrom + within tol); r2 has no SA; r3 is out of tol
-  bnd_df = make_bnd(mate_chrom = "chr7", position = 1010L)
-
-  result = ggmethylation:::match_sa_to_vcf_bnd(reads, bnd_df, tol = 50L)
-
-  expect_true(result$vcf_validated[1L])   # r1: match
-  expect_false(result$vcf_validated[2L])  # r2: no SA
-  expect_false(result$vcf_validated[3L])  # r3: wrong position
 })
