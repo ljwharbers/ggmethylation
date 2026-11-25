@@ -54,6 +54,47 @@
   dest
 }
 
+# Internal helper: makeTxDbFromGRanges() has moved from GenomicFeatures to
+# txdbmaker (deprecated in GenomicFeatures). Prefer txdbmaker when installed.
+.make_txdb_from_granges = function(gr) {
+  if (requireNamespace("txdbmaker", quietly = TRUE)) {
+    txdbmaker::makeTxDbFromGRanges(gr)
+  } else {
+    GenomicFeatures::makeTxDbFromGRanges(gr)
+  }
+}
+
+# Internal helper: an empty gene_annotations object for `region_gr`.
+.empty_gene_annotations = function(region_gr) {
+  empty_utr = data.frame(tx_id = integer(0L), utr_start = integer(0L),
+                         utr_end = integer(0L), stringsAsFactors = FALSE)
+  structure(
+    list(
+      transcripts = data.frame(
+        tx_id     = integer(0L),
+        tx_name   = character(0L),
+        gene_name = character(0L),
+        strand    = character(0L),
+        tx_start  = integer(0L),
+        tx_end    = integer(0L),
+        stringsAsFactors = FALSE
+      ),
+      exons = data.frame(
+        tx_id      = integer(0L),
+        exon_start = integer(0L),
+        exon_end   = integer(0L),
+        stringsAsFactors = FALSE
+      ),
+      cds    = data.frame(tx_id = integer(0L), cds_start = integer(0L),
+                          cds_end = integer(0L), stringsAsFactors = FALSE),
+      utr5   = empty_utr,
+      utr3   = empty_utr,
+      region = region_gr
+    ),
+    class = "gene_annotations"
+  )
+}
+
 # Internal helper: return list(txdb, granges) for `gtf`, building and caching on first use.
 .get_or_build_txdb = function(gtf) {
   if (!requireNamespace("GenomicFeatures", quietly = TRUE)) {
@@ -80,7 +121,7 @@
 
   message("Importing GTF/GFF file - this may take a moment for large files ...")
   gr_gtf = rtracklayer::import(gtf)
-  txdb   = GenomicFeatures::makeTxDbFromGRanges(gr_gtf)
+  txdb   = .make_txdb_from_granges(gr_gtf)
   result = list(txdb = txdb, granges = gr_gtf)
   assign(key, result, envir = .annotation_cache)
   result
@@ -243,6 +284,9 @@ clear_annotation_cache = function() {
 #' @param region Character. Genomic region string in the format
 #'   `"chr:start-end"` (e.g., `"chr1:1000000-2000000"`). The same format
 #'   accepted by [read_methylation()].
+#'   If the region's chromosome is not among the annotation's sequences
+#'   (e.g. `"chr1"` vs `"1"`), a warning is issued and an empty
+#'   `gene_annotations` object is returned.
 #' @param collapse_transcripts Logical. When `TRUE` (default), only one
 #'   canonical transcript per gene is retained (longest CDS, or longest span
 #'   if no CDS data are available).
@@ -322,46 +366,35 @@ read_annotations = function(genome = NULL, txdb = NULL, gtf = NULL, region,
     gtf_granges = result$granges
   }
 
-  # --- 4. Parse region ---
+  # --- 4. Parse region and check its chromosome against the annotation ---
   region_gr = region_to_granges(region)
+  chrom     = as.character(GenomicRanges::seqnames(region_gr))
+  txdb_seqs = as.character(GenomicRanges::seqnames(GenomicRanges::seqinfo(txdb)))
+  if (!chrom %in% txdb_seqs) {
+    shown = paste(utils::head(txdb_seqs, 10L), collapse = ", ")
+    if (length(txdb_seqs) > 10L) {
+      shown = paste0(shown, ", ... (", length(txdb_seqs), " total)")
+    }
+    warning(
+      "Chromosome '", chrom, "' of `region` is not among the annotation's ",
+      "sequences (", shown, "); returning no genes. ",
+      "Check the chromosome naming (e.g. 'chr1' vs '1').",
+      call. = FALSE
+    )
+    return(.empty_gene_annotations(region_gr))
+  }
 
   # --- 5. Extract overlapping transcripts ---
   txs = GenomicFeatures::transcriptsByOverlaps(txdb, region_gr)
 
-  # Empty data frames for CDS/UTR (used in empty result and as fallback)
-  empty_cds  = data.frame(tx_id = integer(0L), cds_start = integer(0L),
-                           cds_end = integer(0L), stringsAsFactors = FALSE)
-  empty_utr  = data.frame(tx_id = integer(0L), utr_start = integer(0L),
-                           utr_end = integer(0L), stringsAsFactors = FALSE)
+  # Empty data frames for CDS/UTR (used as fallback)
+  empty  = .empty_gene_annotations(region_gr)
+  empty_cds  = empty$cds
+  empty_utr  = empty$utr5
 
   # --- 6. Handle empty result ---
   if (length(txs) == 0L) {
-    transcripts_df = data.frame(
-      tx_id     = integer(0L),
-      tx_name   = character(0L),
-      gene_name = character(0L),
-      strand    = character(0L),
-      tx_start  = integer(0L),
-      tx_end    = integer(0L),
-      stringsAsFactors = FALSE
-    )
-    exons_df = data.frame(
-      tx_id      = integer(0L),
-      exon_start = integer(0L),
-      exon_end   = integer(0L),
-      stringsAsFactors = FALSE
-    )
-    return(structure(
-      list(
-        transcripts = transcripts_df,
-        exons       = exons_df,
-        cds         = empty_cds,
-        utr5        = empty_utr,
-        utr3        = empty_utr,
-        region      = region_gr
-      ),
-      class = "gene_annotations"
-    ))
+    return(empty)
   }
 
   # --- 7. Extract exons for those transcripts ---
