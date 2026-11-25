@@ -66,9 +66,9 @@ plot_insertion_locus = function(data, locus,
     stop("`locus` must be one row of list_insertion_loci() output, e.g. loci[1, ].",
          call. = FALSE)
   }
-  flank               = .check_scalar_number(flank, "flank", min = 1, whole = TRUE)
-  show_smoothed       = .check_flag(show_smoothed, "show_smoothed")
-  include_noncarriers = .check_flag(include_noncarriers, "include_noncarriers")
+  flank               = .ins_check_number(flank, "flank", min = 1, whole = TRUE)
+  show_smoothed       = .ins_check_flag(show_smoothed, "show_smoothed")
+  include_noncarriers = .ins_check_flag(include_noncarriers, "include_noncarriers")
 
   # --- 1. Carrier / non-carrier reads of the locus ---
   locus_id    = locus$locus_id
@@ -244,7 +244,9 @@ plot_insertion_locus = function(data, locus,
   smooth_df = do.call(rbind, smooth_list)
   rownames(smooth_df) = NULL
 
-  codes = sort(unique(all_sites$mod_code))
+  # Codes in data order, as plot_methylation() assigns linetypes.
+  codes = unique(c(data$sites$mod_code, all_sites$mod_code))
+  codes = codes[codes %in% all_sites$mod_code]
   multi_code = length(codes) > 1L
   p_smooth = ggplot2::ggplot(smooth_df, ggplot2::aes(
     x = .data$position, y = .data$mean_prob, colour = .data$carrier_status,
@@ -339,7 +341,7 @@ plot_insertion_locus = function(data, locus,
   left  = left[left - (anchor - flank) >= edge_gap]
   right = right[(anchor + flank - 1L) - right >= edge_gap]
   mid   = anchor + (mid_width - 1) / 2
-  min_gap = 0.12 * total
+  min_gap = 0.15 * total
   left  = left[abs(left - mid) >= min_gap]
   right = right[abs(right + mid_width - mid) >= min_gap]
   list(
