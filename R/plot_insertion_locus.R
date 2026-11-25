@@ -289,7 +289,7 @@ plot_insertion_locus = function(data, locus,
 # longer than the drawn width).
 .stitched_segments = function(r, carrier_ins_len, anchor, mid_width, flank) {
   r_start = min(r$bam_pos, r$start)
-  r_end   = r$end
+  r_end   = if (is.null(r$bam_end)) r$end else max(r$bam_end, r$end)
   is_carrier = r$carrier_status == "carrier"
   ins_len    = if (is_carrier) carrier_ins_len[[r$read_name]] else 0L
 

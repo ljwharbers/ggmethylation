@@ -140,7 +140,13 @@ list_insertion_loci = function(data, tol_pos = 10L, tol_len = 0.20,
 
   all_read_names = data$reads$read_name
   read_start = pmin(data$reads$bam_pos, data$reads$start)
-  read_end   = data$reads$end
+  # `end` is clipped to the queried region; the unclipped end decides whether a
+  # read spans a locus near the region edge (hand-built objects may lack it).
+  read_end   = if (is.null(data$reads$bam_end)) {
+    data$reads$end
+  } else {
+    pmax(data$reads$bam_end, data$reads$end)
+  }
   ins_sites  = data$insertion_sites
 
   for (cid in seq_along(clusters)) {

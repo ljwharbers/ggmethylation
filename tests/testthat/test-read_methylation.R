@@ -9,6 +9,15 @@ read_fixture = function(...) {
   suppressWarnings(read_methylation(fixture_bam(), fixture_region, ...))
 }
 
+test_that("reads keep the unclipped alignment end in bam_end", {
+  md = suppressWarnings(read_methylation(fixture_bam(), "chr1:3000-3200"))
+  expect_true("bam_end" %in% names(md$reads))
+  expect_true(all(md$reads$bam_end >= md$reads$end))
+  # Reads run past this narrow window: `end` is clipped to it, bam_end is not.
+  expect_true(any(md$reads$bam_end > 3200L))
+  expect_true(all(md$reads$end <= 3200L))
+})
+
 test_that("read_methylation parses the fixture into a methylation_data object", {
   md = read_fixture(group_tag = "HP")
   expect_s3_class(md, "methylation_data")

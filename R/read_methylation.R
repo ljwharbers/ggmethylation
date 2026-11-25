@@ -64,10 +64,10 @@
 #'   \describe{
 #'     \item{reads}{Data.frame with columns `read_name`, `start`, `end`,
 #'       `bam_pos` (original unclipped alignment start, equal to the BAM POS
-#'       field), `strand`, `is_supplementary` (logical), `sa_chrom` (chr or
+#'       field), `bam_end` (original unclipped alignment end), `strand`, `is_supplementary` (logical), `sa_chrom` (chr or
 #'       NA), `sa_pos` (int or NA), `clip_side` (chr: `"left"`, `"right"`,
 #'       `"both"`, or NA), and optionally `group`. `start` and `end` are
-#'       clipped to the queried region; `bam_pos` retains the original start.}
+#'       clipped to the queried region; `bam_pos` and `bam_end` retain the original span.}
 #'     \item{sites}{Data.frame with columns `position`, `mod_prob`,
 #'       `read_name`, `mod_code`, and optionally `group`.}
 #'     \item{region}{A [GenomicRanges::GRanges] object for the queried region.}
@@ -346,6 +346,7 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
     start     = bam_data$pos,
     end       = bam_data$pos + cigar_ref_width(bam_data$cigar) - 1L,
     bam_pos   = bam_data$pos,
+    bam_end   = bam_data$pos + cigar_ref_width(bam_data$cigar) - 1L,
     strand    = as.character(bam_data$strand),
     stringsAsFactors = FALSE
   )
@@ -542,6 +543,7 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
     start            = integer(0L),
     end              = integer(0L),
     bam_pos          = integer(0L),
+    bam_end          = integer(0L),
     strand           = character(0L),
     is_supplementary = logical(0L),
     sa_chrom         = character(0L),

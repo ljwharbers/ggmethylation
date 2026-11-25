@@ -357,3 +357,15 @@ test_that("plot_insertion_locus() uses the shared package colour palette", {
   smooth_layer_data = ggplot2::layer_data(p[[2]], 1L)
   expect_true(all(smooth_layer_data$colour %in% c("#0072B2", "#999999")))
 })
+
+test_that("a read clipped to the region edge can still be a non-carrier", {
+  # Locus at 1002 with tol_pos 10 needs a read reaching 1012. The region ends
+  # at 1005, so `end` is clipped there; bam_end holds the real end.
+  reads = make_reads(c("c1", "c2", "n1", "n2"), rep(900L, 4), rep(1005L, 4))
+  reads$bam_end = c(1100L, 1100L, 1100L, 1005L)
+  cf = make_cf(c("c1", "c2"), c(1002L, 1002L), c(300L, 300L))
+  md = make_test_md(reads_df = reads, cigar_features_df = cf)
+  loci = list_insertion_loci(md, min_reads = 2L)
+  expect_equal(nrow(loci), 1L)
+  expect_equal(loci$noncarriers[[1L]], "n1")
+})

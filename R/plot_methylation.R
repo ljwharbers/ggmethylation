@@ -91,8 +91,10 @@
     keep = vapply(seq_along(merged_reads), function(m) {
       carriers = merged_reads[[m]]
       covering = if (has_span) {
-        grp_reads$read_name[grp_reads$start <= merged_ends[m] &
-                              grp_reads$end >= merged_starts[m]]
+        # Reads that span the whole deletion: only they could show sequence
+        # across it, so only they count against the carriers.
+        grp_reads$read_name[grp_reads$start <= merged_starts[m] &
+                              grp_reads$end >= merged_ends[m]]
       } else {
         grp_reads$read_name
       }
@@ -758,6 +760,19 @@ plot_methylation = function(data, sort_by = NULL,
 
   region_start = GenomicRanges::start(data$region)
   region_end   = GenomicRanges::end(data$region)
+
+  # The gene panel only sees coordinates, so the chromosome is checked here.
+  ann_region = annotations$region
+  if (inherits(ann_region, "GRanges") && length(ann_region) == 1L) {
+    ann_chrom  = as.character(GenomicRanges::seqnames(ann_region))
+    data_chrom = as.character(GenomicRanges::seqnames(data$region))
+    if (!identical(ann_chrom, data_chrom)) {
+      warning(sprintf(
+        "`annotations` were read for chromosome '%s' but the data are on '%s'.",
+        ann_chrom, data_chrom
+      ), call. = FALSE)
+    }
+  }
 
   # One group palette for every panel and sample, resolved over the union of
   # the groups present in any sample's reads.
