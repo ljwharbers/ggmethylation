@@ -3,8 +3,10 @@
 #' Parse a genomic region string
 #'
 #' Parses a region string of the form `"chr1:1000-2000"` into its components.
-#' Commas in numeric positions (e.g., `"chr1:1,000-2,000"`) are stripped
-#' before parsing.
+#' Commas in the coordinates (e.g., `"chr1:1,000-2,000"`) are stripped. The
+#' string is split on its **last** colon, so contig names that contain colons
+#' (e.g. `"HLA-A*01:01:01:01:1-500"`) work. Coordinates are 1-based and
+#' inclusive; a bare contig name without coordinates is an error.
 #'
 #' @param region Character string specifying a genomic region, e.g.
 #'   `"chr1:1000-2000"`.
@@ -18,34 +20,57 @@
 #'
 #' @keywords internal
 parse_region = function(region) {
-  # Strip commas from the string before validation
-  clean = gsub(",", "", region)
+  if (!is.character(region) || length(region) != 1L || is.na(region)) {
+    stop("'region' must be a single character string such as 'chr1:1000-2000'.",
+         call. = FALSE)
+  }
 
-  if (!grepl("^[\\w.]+:\\d+-\\d+$", clean, perl = TRUE)) {
+  # Greedy `(\S+)` makes the split happen at the last colon.
+  m = regmatches(region, regexec("^(\\S+):([0-9,]+)-([0-9,]+)$", region))[[1L]]
+  start = if (length(m)) suppressWarnings(as.numeric(gsub(",", "", m[3L]))) else NA
+  end   = if (length(m)) suppressWarnings(as.numeric(gsub(",", "", m[4L]))) else NA
+  if (is.na(start) || is.na(end)) {
+    if (nzchar(region) && !grepl(":", region, fixed = TRUE) &&
+          !grepl("[0-9]-[0-9]", region)) {
+      stop("Invalid region format: '", region, "' has no coordinates. ",
+           "Give the region as '", region, ":start-end' (e.g., 'chr1:1000-2000').",
+           call. = FALSE)
+    }
     stop(
       "Invalid region format: '", region, "'. ",
       "Expected format: 'chr:start-end' (e.g., 'chr1:1000-2000').",
       call. = FALSE
     )
   }
+  if (start < 1) {
+    stop("Invalid region '", region, "': coordinates are 1-based, so start must be >= 1.",
+         call. = FALSE)
+  }
+  if (end > .Machine$integer.max) {
+    stop("Invalid region '", region, "': coordinates are too large (maximum ",
+         .Machine$integer.max, ").", call. = FALSE)
+  }
+  if (start > end) {
+    stop("Invalid region '", region, "': start (", format(start, scientific = FALSE),
+         ") is greater than end (", format(end, scientific = FALSE), ").", call. = FALSE)
+  }
 
-  parts = strsplit(clean, "[:-]")[[1]]
   list(
-    chrom = parts[1],
-    start = as.integer(parts[2]),
-    end   = as.integer(parts[3])
+    chrom = m[2L],
+    start = as.integer(start),
+    end   = as.integer(end)
   )
 }
 
 #' Validate that a BAM file and its index exist
 #'
-#' Checks that the BAM file exists and that a corresponding `.bai` index file
-#' can be found. Looks for the index at both `{bam}.bai` and the path obtained
-#' by replacing the `.bam` extension with `.bam.bai`.
+#' Checks that the BAM file exists and that a `.bai` or `.csi` index can be
+#' found, at `{bam}.bai`, `{bam}.csi`, or (for a `.bam` file) the path with
+#' the `.bam` extension replaced by `.bai` / `.csi`.
 #'
 #' @param bam Character. Path to a BAM file.
 #'
-#' @return The path to the BAI index file (invisibly).
+#' @return The path to the index file (invisibly).
 #'
 #' @keywords internal
 validate_bam_index = function(bam) {
@@ -53,22 +78,41 @@ validate_bam_index = function(bam) {
     stop("BAM file does not exist: '", bam, "'.", call. = FALSE)
   }
 
-  bai_candidates = c(
-    paste0(bam, ".bai"),
-    sub("\\.bam$", ".bai", bam)
-  )
+  candidates = paste0(bam, c(".bai", ".csi"))
+  if (grepl("\\.bam$", bam)) {
+    candidates = c(candidates, sub("\\.bam$", ".bai", bam), sub("\\.bam$", ".csi", bam))
+  }
 
-  for (bai in bai_candidates) {
-    if (file.exists(bai)) {
-      return(bai)
+  for (idx in candidates) {
+    if (file.exists(idx)) {
+      return(invisible(idx))
     }
   }
 
   stop(
-    "BAM index not found for '", bam, "'. ",
+    "BAM index not found for '", bam, "' (looked for .bai and .csi). ",
     "Please create one with: samtools index ", bam,
     call. = FALSE
   )
+}
+
+# Evaluate `code` with the RNG seeded by `seed`, then put the caller's RNG
+# state back (removing .Random.seed if there was none). With `seed = NULL`,
+# `code` runs on the global RNG stream as usual.
+.with_seed = function(seed, code) {
+  if (is.null(seed)) return(code)
+  env = globalenv()
+  had_seed = exists(".Random.seed", envir = env, inherits = FALSE)
+  old_seed = if (had_seed) get(".Random.seed", envir = env, inherits = FALSE)
+  on.exit({
+    if (had_seed) {
+      assign(".Random.seed", old_seed, envir = env)
+    } else if (exists(".Random.seed", envir = env, inherits = FALSE)) {
+      rm(".Random.seed", envir = env)
+    }
+  })
+  set.seed(seed)
+  code
 }
 
 #' Parse a CIGAR string into operation codes and lengths
