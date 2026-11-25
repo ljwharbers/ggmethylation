@@ -133,14 +133,16 @@ build_variant_overlay = function(data, variants) {
 
   vdf = variants$variants
 
-  # Partition by type
+  # Partition by type (%in% so that NA types are dropped, not turned into
+  # all-NA rows).
   # Only single-nucleotide variants are supported by the asterisk overlay.
-  # Insertions and deletions cannot be resolved to a single reference base, so
-  # routing them through extract_variant_bases() would classify every spanning
-  # read as "other" and mark all reads (issue #20).
-  snv_rows = vdf[vdf$type == "SNV", , drop = FALSE]
-  sv_rows  = vdf[vdf$type %in% c("DEL", "DUP", "INV"),           , drop = FALSE]
-  bnd_rows = vdf[vdf$type == "BND",                               , drop = FALSE]
+  # Insertions, deletions and MNVs cannot be resolved to a single reference
+  # base, so routing them through extract_variant_bases() would classify every
+  # spanning read as "other" and mark all reads (issue #20). They, and
+  # symbolic types other than DEL/DUP/INV (e.g. <CNV>), are not drawn.
+  snv_rows = vdf[vdf$type %in% "SNV", , drop = FALSE]
+  sv_rows  = vdf[vdf$type %in% c("DEL", "DUP", "INV"), , drop = FALSE]
+  bnd_rows = vdf[vdf$type %in% "BND", , drop = FALSE]
 
   # --- SNV layer ---
   snv_layers = NULL

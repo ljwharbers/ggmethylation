@@ -10,22 +10,39 @@
 #' BiocManager::install(c("VariantAnnotation", "SummarizedExperiment"))
 #' ```
 #'
+#' Only the INFO fields `SVTYPE`, `END` and `SVLEN` are read; genotypes are
+#' not loaded. Fields declared with `Number=.` (as written by pbsv, SVIM or
+#' cuteSV) are supported; their first value is used.
+#'
+#' Limitations:
+#' * Only the **first ALT allele** of a multi-allelic record is used.
+#' * The **FILTER column is ignored**: records failing filters are returned
+#'   like `PASS` records. Pre-filter the VCF (e.g. `bcftools view -f PASS`)
+#'   if needed.
+#' * Records whose first ALT is a spanning deletion (`*`) are dropped.
+#'
+#' If the region's chromosome is neither declared in the VCF header nor
+#' present in its tabix index (e.g. `"chr1"` vs `"1"`), a warning is issued
+#' and an empty `variant_data` object is returned.
+#'
 #' @param vcf Character. Path to a bgzipped VCF file (`.vcf.gz`) with a
 #'   corresponding tabix index (`.vcf.gz.tbi`).
 #' @param region Character. Genomic region string, e.g. `"chr1:1000-2000"`.
 #'   The same format accepted by [read_methylation()].
-#' @param bnd_match_tol Integer. Position tolerance (bp) used by
-#'   [plot_methylation()] when matching reads' supplementary-alignment (SA)
-#'   breakpoints to the BND calls here; matched reads get a border on their SA
-#'   indicator (requires `show_supplementary = TRUE`). Default `50`.
+#' @param bnd_match_tol Single non-negative number. Position tolerance (bp)
+#'   used by [plot_methylation()] when matching reads' supplementary-alignment
+#'   (SA) position to the mate position of the BND calls here; matched reads
+#'   get a border on their SA indicator (requires `show_supplementary = TRUE`).
+#'   Default `50`.
 #'
 #' @return A `variant_data` object (S3 list) with elements:
 #'   \describe{
 #'     \item{variants}{Data.frame with columns `position` (integer),
 #'       `ref` (character), `alt` (character), `type` (character:
-#'       `"SNV"`, `"insertion"`, `"deletion"`, `"BND"`, `"DEL"`, `"DUP"`,
-#'       or `"INV"`), `end` (integer), `mate_chrom` (character), and
-#'       `mate_pos` (integer).}
+#'       `"SNV"`, `"MNV"`, `"insertion"`, `"deletion"`, `"BND"`, `"DEL"`,
+#'       `"DUP"`, `"INV"`, another symbolic type such as `"CNV"`, or `NA`
+#'       when the alleles are missing), `end` (integer), `mate_chrom`
+#'       (character), and `mate_pos` (integer).}
 #'     \item{region}{A [GenomicRanges::GRanges] object for the queried region.}
 #'     \item{bnd_match_tol}{The `bnd_match_tol` value.}
 #'   }
@@ -53,14 +70,61 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
     )
   }
 
+  if (!is.numeric(bnd_match_tol) || length(bnd_match_tol) != 1L ||
+      is.na(bnd_match_tol) || bnd_match_tol < 0) {
+    stop("`bnd_match_tol` must be a single non-negative number.", call. = FALSE)
+  }
+
   # Parse region string
   region_gr = region_to_granges(region)
+  chrom     = as.character(GenomicRanges::seqnames(region_gr))
 
-  # Read VCF for the requested region
+  # Check the region's chromosome against the VCF's contigs (header ##contig
+  # lines and the tabix index). A naming mismatch such as "chr1" vs "1"
+  # otherwise surfaces as a cryptic readVcf() error or a silently empty result.
+  header = tryCatch(
+    VariantAnnotation::scanVcfHeader(vcf),
+    error = function(e) {
+      stop("Failed to read VCF file '", vcf, "': ", conditionMessage(e),
+           call. = FALSE)
+    }
+  )
+  header_contigs = as.character(
+    GenomicRanges::seqnames(GenomicRanges::seqinfo(header))
+  )
+  tabix_contigs = tryCatch(Rsamtools::seqnamesTabix(vcf),
+                           error = function(e) character(0L))
+  if (!chrom %in% c(header_contigs, tabix_contigs)) {
+    warning(
+      "Chromosome '", chrom, "' of `region` is not among the VCF's contigs (",
+      .format_contigs(unique(c(header_contigs, tabix_contigs))),
+      "); returning no variants. ",
+      "Check the chromosome naming (e.g. 'chr1' vs '1').",
+      call. = FALSE
+    )
+    return(.new_variant_data(.empty_variants_df(), region_gr, bnd_match_tol))
+  }
+  if (length(tabix_contigs) > 0L && !chrom %in% tabix_contigs) {
+    # Declared in the header but no records on it (scanTabix would error)
+    return(.new_variant_data(.empty_variants_df(), region_gr, bnd_match_tol))
+  }
+
+  # Read VCF for the requested region: only the INFO fields used below and no
+  # genotypes. Requesting INFO fields the header does not declare warns, so
+  # restrict to those present.
+  info_fields = intersect(c("SVTYPE", "END", "SVLEN"),
+                          rownames(VariantAnnotation::info(header)))
   vcf_obj = tryCatch(
     VariantAnnotation::readVcf(
       vcf,
-      param = VariantAnnotation::ScanVcfParam(which = region_gr)
+      # A genome label (rather than the header's Seqinfo) lets VCFs without
+      # ##contig lines be queried; the chromosome was checked above.
+      genome = "unknown",
+      param = VariantAnnotation::ScanVcfParam(
+        which = region_gr,
+        info  = if (length(info_fields) > 0L) info_fields else NA,
+        geno  = NA
+      )
     ),
     error = function(e) {
       stop(
@@ -72,17 +136,7 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
 
   # Handle empty result (no variants in region)
   if (length(vcf_obj) == 0L) {
-    variants_df = data.frame(
-      position   = integer(0L),
-      ref        = character(0L),
-      alt        = character(0L),
-      type       = character(0L),
-      end        = integer(0L),
-      mate_chrom = character(0L),
-      mate_pos   = integer(0L),
-      stringsAsFactors = FALSE
-    )
-    return(.new_variant_data(variants_df, region_gr, bnd_match_tol))
+    return(.new_variant_data(.empty_variants_df(), region_gr, bnd_match_tol))
   }
 
   # Extract per-variant data
@@ -92,29 +146,14 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
   alt_list = VariantAnnotation::alt(vcf_obj)
   alt_vec  = as.character(unlist(lapply(alt_list, function(x) as.character(x)[1L])))
 
-  # Extract INFO fields (may be NULL if absent in VCF)
-  info_df   = VariantAnnotation::info(vcf_obj)
-  svtype_vec = if ("SVTYPE" %in% names(info_df)) {
-    sv = info_df[["SVTYPE"]]
-    if (is.list(sv)) {
-      vapply(sv, function(x) if (length(x) > 0L) as.character(x[[1L]]) else NA_character_, character(1L))
-    } else {
-      as.character(sv)
-    }
-  } else {
-    NULL
-  }
-  end_info   = if ("END" %in% names(info_df)) {
-    ei = info_df[["END"]]
-    if (is.list(ei)) {
-      vapply(ei, function(x) if (length(x) > 0L) as.integer(x[[1L]]) else NA_integer_, integer(1L))
-    } else {
-      as.integer(ei)
-    }
-  } else {
-    NULL
-  }
-  svlen_info = if ("SVLEN"  %in% names(info_df)) info_df[["SVLEN"]]  else NULL
+  # Extract INFO fields (NULL if absent in VCF). Fields declared Number=. or
+  # Number=A (pbsv, SVIM, cuteSV, ...) come back as list-like columns
+  # (e.g. CompressedIntegerList); keep their first value.
+  info_df    = VariantAnnotation::info(vcf_obj)
+  info_col   = function(nm) if (nm %in% names(info_df)) info_df[[nm]] else NULL
+  svtype_vec = .info_first(info_col("SVTYPE"), as.character, NA_character_)
+  end_info   = .info_first(info_col("END"),    as.integer,   NA_integer_)
+  svlen_info = .info_first(info_col("SVLEN"),  as.numeric,   NA_real_)
 
   # Classify each variant
   n = length(pos)
@@ -148,9 +187,47 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
     mate_pos   = mate_pos,
     stringsAsFactors = FALSE
   )
+  # A spanning-deletion ALT ("*") only says the site is covered by a deletion
+  # described in another record; it is not a variant of its own.
+  variants_df = variants_df[is.na(variants_df$alt) | variants_df$alt != "*", ,
+                            drop = FALSE]
   rownames(variants_df) = NULL
 
   .new_variant_data(variants_df, region_gr, bnd_match_tol)
+}
+
+.empty_variants_df = function() {
+  data.frame(
+    position   = integer(0L),
+    ref        = character(0L),
+    alt        = character(0L),
+    type       = character(0L),
+    end        = integer(0L),
+    mate_chrom = character(0L),
+    mate_pos   = integer(0L),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Up to ten contig names for a message, e.g. "chr1, chr2, ... (25 total)"
+.format_contigs = function(contigs) {
+  if (length(contigs) == 0L) return("none found")
+  shown = paste(utils::head(contigs, 10L), collapse = ", ")
+  if (length(contigs) > 10L) {
+    shown = paste0(shown, ", ... (", length(contigs), " total)")
+  }
+  shown
+}
+
+# Flatten one INFO column to a plain vector with one value per record.
+# VariantAnnotation returns fields declared with Number=. / A / R as list-like
+# columns: base lists or S4 Lists such as CompressedIntegerList /
+# CompressedCharacterList, for which is.list() is FALSE. Keep the first value
+# of each record (NA when empty), coerced with `cast`.
+.info_first = function(x, cast, na) {
+  if (is.null(x)) return(NULL)
+  if (is.atomic(x)) return(cast(x))
+  vapply(as.list(x), function(e) if (length(e) > 0L) cast(e[[1L]]) else na, na)
 }
 
 .new_variant_data = function(variants, region, bnd_match_tol) {
@@ -166,12 +243,17 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
 #' Internal helper used by [read_variants()] to classify one VCF row into a
 #' type and derive `end`, `mate_chrom`, and `mate_pos`.
 #'
+#' Short variants are typed from the allele lengths: `"SNV"` (1 vs 1 base),
+#' `"MNV"` (equal lengths > 1), `"insertion"` (REF shorter than ALT) or
+#' `"deletion"` (REF longer than ALT). A spanning-deletion ALT (`"*"`), like an
+#' `NA` allele, gives type `NA`.
+#'
 #' @param alt    Character. The ALT allele string.
 #' @param ref    Character. The REF allele string.
 #' @param pos    Integer. The 1-based start position of the variant.
 #' @param svtype Character or NA. The INFO/SVTYPE value.
 #' @param end    Integer or NA. The INFO/END value.
-#' @param svlen  Numeric or NA (may be a list). The INFO/SVLEN value.
+#' @param svlen  Numeric or NA (may be a list or S4 List). The INFO/SVLEN value.
 #'
 #' @return A named list with four elements: `type` (character), `end`
 #'   (integer), `mate_chrom` (character), `mate_pos` (integer).
@@ -189,9 +271,9 @@ classify_variant_row = function(alt, ref, pos, svtype = NA_character_,
       end_i = as.integer(end)
     }
     if (is.na(end_i)) {
-      # SVLEN may be a list (list-type INFO field) — unlist safely
+      # SVLEN may be list-like (base list or S4 List) — take its first record
       sl = svlen
-      if (is.list(sl)) sl = sl[[1L]]
+      if (!is.atomic(sl)) sl = as.list(sl)[[1L]]
       if (length(sl) >= 1L && !is.na(sl[1L])) {
         end_i = as.integer(pos + abs(sl[1L]))
       }
@@ -211,7 +293,7 @@ classify_variant_row = function(alt, ref, pos, svtype = NA_character_,
   if (!is.na(alt) && grepl("^<[^>]+>$", alt, perl = TRUE)) {
     return(list(
       type       = sub("^<(.+)>$", "\\1", alt),
-      end        = as.integer(if (!is.na(end) && length(end) == 1L) end else pos),
+      end        = as.integer(if (length(end) == 1L && !is.na(end)) end else pos),
       mate_chrom = NA_character_,
       mate_pos   = NA_integer_
     ))
@@ -231,8 +313,8 @@ classify_variant_row = function(alt, ref, pos, svtype = NA_character_,
     ))
   }
 
-  # --- NA guard: alt or ref is NA — cannot classify ---
-  if (is.na(alt) || is.na(ref)) {
+  # --- NA guard: alt or ref is NA, or a spanning-deletion "*" allele ---
+  if (is.na(alt) || is.na(ref) || alt == "*") {
     return(list(
       type       = NA_character_,
       end        = as.integer(pos),
@@ -241,11 +323,18 @@ classify_variant_row = function(alt, ref, pos, svtype = NA_character_,
     ))
   }
 
-  # --- Standard SNV / insertion / deletion ---
-  tp = ifelse(
-    nchar(ref) == 1L & nchar(alt) == 1L, "SNV",
-    ifelse(nchar(ref) < nchar(alt), "insertion", "deletion")
-  )
+  # --- Standard SNV / MNV / insertion / deletion ---
+  n_ref = nchar(ref)
+  n_alt = nchar(alt)
+  tp = if (n_ref == 1L && n_alt == 1L) {
+    "SNV"
+  } else if (n_ref == n_alt) {
+    "MNV"
+  } else if (n_ref < n_alt) {
+    "insertion"
+  } else {
+    "deletion"
+  }
   list(
     type       = tp,
     end        = as.integer(pos),
@@ -326,7 +415,7 @@ print.variant_data = function(x, ...) {
 
   if (nrow(x$variants) > 0L) {
     type_counts = table(x$variants$type)
-    for (tp in c("SNV", "insertion", "deletion", "BND", "DEL", "DUP", "INV")) {
+    for (tp in c("SNV", "MNV", "insertion", "deletion", "BND", "DEL", "DUP", "INV")) {
       n = if (tp %in% names(type_counts)) type_counts[[tp]] else 0L
       cat(sprintf("  %s: %d\n", tp, n))
     }
