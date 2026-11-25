@@ -473,12 +473,11 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
         mn        = if (is.null(mn_all)) NULL else mn_all[i],
         dc        = dc
       ),
-      ggmethylation_malformed_mm = function(e) {
-        skipped[read_name] <<- conditionMessage(e)
-        NULL
-      }
+      ggmethylation_malformed_mm = function(e) e
     )
-    if (!is.null(parsed)) {
+    if (inherits(parsed, "ggmethylation_malformed_mm")) {
+      skipped[read_name] = conditionMessage(parsed)
+    } else {
       s = parsed$sites
       sites_list[[j]] = data.frame(
         position  = s$position,

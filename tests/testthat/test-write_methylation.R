@@ -40,6 +40,15 @@ test_that("BED export works gzip-compressed", {
   expect_identical(lines[3], "chr1\t99999\t100000\tr1:m\t857\t+")
 })
 
+test_that("an object without sites writes an empty BED and a TSV", {
+  md = empty_methylation_data(region_to_granges("chr1:1-100"), "m", NULL)
+  prefix = file.path(tempfile("empty"), "x")
+  write_methylation(md, prefix, format = "bed")
+  expect_length(readLines(paste0(prefix, "_sites.bed")), 0L)
+  write_methylation(md, prefix, format = "tsv")
+  expect_length(readLines(paste0(prefix, "_sites.tsv")), 1L)  # header only
+})
+
 test_that("reads TSV mean_mod_prob pools every modification code of a read", {
   prefix = file.path(tempfile("tsvout"), "x")
   write_methylation(make_write_data(), prefix, sites = FALSE)
