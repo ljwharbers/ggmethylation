@@ -96,8 +96,10 @@
 #' @param span Numeric or NULL. Loess span. When NULL, uses adaptive rule
 #'   `max(0.15, min(0.75, 15 / n_unique_x))`.
 #'
-#' @return A data.frame with columns `position` and `mean_prob`. Returns
-#'   raw per-x means when fewer than 4 unique x values are present.
+#' @return A data.frame with columns `position` and `mean_prob` (the loess
+#'   fit, clamped to `[0, 1]`). Returns raw per-x means when fewer than 4
+#'   unique x values are present, and zero rows when every `y` is `NA`
+#'   (pairs with an `NA` x or y are ignored).
 #'
 #' @keywords internal
 .smooth_xy = function(x, y, span = NULL) {
@@ -112,7 +114,8 @@
 #' of input positions.
 #'
 #' @param sites A data.frame with columns `position`, `mod_prob`, and a
-#'   grouping column (specified by `group_col`).
+#'   grouping column (specified by `group_col`). Rows with an `NA` position
+#'   or `mod_prob` are ignored.
 #' @param group_col Name of the grouping column (default `"group"`). Sites
 #'   whose group is `NA` are dropped.
 #' @param mod_code_col Optional name of a modification-code column; when set,
@@ -129,18 +132,20 @@
 #'   (e.g. for a delta track). Predicted `mean_prob`/`lower`/`upper` values
 #'   are set to `NA_real_` wherever a grid position falls outside that
 #'   group's own position range, since loess `predict()` would otherwise
-#'   extrapolate. Groups with fewer than 4 unique positions are interpolated
-#'   via `stats::approx(..., rule = 1)` instead (also `NA` outside range),
-#'   with `lower`/`upper` set to `NA_real_`.
+#'   extrapolate. Groups with 2 or 3 unique positions are interpolated via
+#'   `stats::approx(..., rule = 1)` instead (also `NA` outside range), with
+#'   `lower`/`upper` set to `NA_real_`; groups with a single position (or no
+#'   non-`NA` sites) are `NA` at every grid position.
 #'
 #' @return A data.frame with columns `position`, `mean_prob`, `lower`,
 #'   `upper`, and the grouping column. When `grid` is `NULL`, positions are a
 #'   regular grid of 200 points per group, spanning that group's own position
-#'   range, with loess-predicted values. `lower`/`upper` are the loess fit
-#'   `± 1.96 * se.fit`, clamped to `[0, 1]`. Groups with fewer than 4 unique
-#'   positions return raw per-site means instead, with `lower`/`upper` set
-#'   to `NA_real_`. When `grid` is supplied, positions are the shared `grid`
-#'   values for every group instead (see `grid` above).
+#'   range, with loess-predicted values. `mean_prob` is the loess fit and
+#'   `lower`/`upper` the fit `± 1.96 * se.fit`, all clamped to `[0, 1]`.
+#'   Groups with fewer than 4 unique positions return raw per-site means
+#'   instead, with `lower`/`upper` set to `NA_real_`; groups with no non-`NA`
+#'   sites contribute no rows. When `grid` is supplied, positions are the
+#'   shared `grid` values for every group instead (see `grid` above).
 #'
 #' @keywords internal
 smooth_methylation = function(sites, group_col = "group",

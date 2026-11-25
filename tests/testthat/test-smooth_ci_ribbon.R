@@ -120,10 +120,10 @@ test_that("plot_methylation omits ribbon layer when show_ci = FALSE", {
 })
 
 test_that("grouped multi-code ribbon keeps (group, mod_code) polygons separate", {
-  # Regression test for the group_aes fix in the grouped + multi-mod-code
+  # Regression test for ribbon grouping in the grouped + multi-mod-code
   # branch of plot_methylation() (colour = group, linetype = mod_code).
-  # Without passing group_aes = interaction(group, mod_code) to
-  # .add_ci_ribbon(), ggplot2's default grouping collapses to fill = group
+  # Without an explicit per-line `group` (.line_id(): group x mod_code) on
+  # the ribbon, ggplot2's default grouping collapses to fill = group
   # only, so the "m" and "h" ribbon bands for a given group get drawn as a
   # single self-crossing polygon (x jumps backward where one band's grid
   # ends and the other's begins). 2 groups x 2 mod codes, 7 unique positions
