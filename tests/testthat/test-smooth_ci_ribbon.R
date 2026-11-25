@@ -85,6 +85,15 @@ test_that("plot_methylation smooth panel gains a ribbon layer when grouped", {
   md$group_tag = "HP"
   p = ggmethylation::plot_methylation(md, show_ci = TRUE, show_supplementary = FALSE)
   expect_s3_class(p, "patchwork")
+  # The ribbon is the first layer (drawn behind the lines), one band per
+  # group, filled with the group's line colour.
+  p_bottom = p[[2]]
+  geom_classes = vapply(p_bottom$layers, function(l) class(l$geom)[1], character(1L))
+  expect_equal(unname(geom_classes[1:2]), c("GeomRibbon", "GeomLine"))
+  built = ggplot2::ggplot_build(p_bottom)
+  expect_equal(length(unique(built$data[[1]]$group)), 2L)
+  expect_setequal(unique(built$data[[1]]$fill), unique(built$data[[2]]$colour))
+  expect_true(all(built$data[[1]]$ymin <= built$data[[1]]$ymax, na.rm = TRUE))
 })
 
 test_that("plot_methylation omits ribbon layer when show_ci = FALSE", {

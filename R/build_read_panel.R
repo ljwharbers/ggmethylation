@@ -136,8 +136,14 @@
 # For each read with a non-NA sa_chrom, a small indicator is placed at the
 # clipped end: a triangle (matching the arrowhead) when the clip side
 # coincides with the arrowhead direction, or a small rectangle tab otherwise.
+# Both are drawn outward from the read end, never over the bar itself.
 #
-# @param reads data.frame with SA-annotated reads (sa_chrom, clip_side columns).
+# `reads` may be the deletion-split segments (see .split_reads_on_deletions()):
+# the left marker then goes only on a read's first segment and the right
+# marker only on its last, so an internal deletion edge never gets one.
+#
+# @param reads data.frame with SA-annotated reads (sa_chrom, clip_side columns,
+#   optionally is_first_segment / is_last_segment).
 # @param arrow_w Numeric.
 # @param half_height Numeric.
 # @return data.frame with x, y, polygon_id, sa_chrom, lane columns,
@@ -176,6 +182,12 @@
       sides = c("left", "right")
     } else {
       sides = cs
+    }
+    if ("is_first_segment" %in% names(r) && !isTRUE(r$is_first_segment)) {
+      sides = setdiff(sides, "left")
+    }
+    if ("is_last_segment" %in% names(r) && !isTRUE(r$is_last_segment)) {
+      sides = setdiff(sides, "right")
     }
 
     # Arrowhead side depends on strand
@@ -231,6 +243,11 @@
 #' Read bars are filled by group when the data is grouped, by strand when
 #' `colour_strand = TRUE`, and in a fixed grey otherwise.
 #'
+#' With several modification codes in `data$sites`, each read bar is split
+#' into horizontal strips, one per code in the order of `data$mod_code` (top
+#' to bottom), so calls for different codes at the same position do not
+#' overplot; the y-axis title lists the order.
+#'
 #' @param data A `methylation_data` object. `$reads` must already contain a
 #'   `lane` column (from `pack_reads()`) and a `mean_mod_prob` column.
 #'   `$cigar_features` supplies the indels drawn when `show_cigar = TRUE`.
@@ -246,7 +263,9 @@
 #' @param line_width Linewidth of modification site markers.
 #' @param colour_strand Logical. Colour read bars by strand when ungrouped.
 #' @param strand_colours Named character vector with `"+"` and `"-"` entries.
-#' @param group_colours Named character vector of colours per group, or NULL.
+#' @param group_colours Colours per group as accepted by [plot_methylation()]
+#'   (named, unnamed or NULL); resolved over the group levels by the same
+#'   rule as the smooth and delta panels.
 #' @param show_x_axis Logical. When `FALSE` (default), x-axis text and ticks
 #'   are hidden. Set to `TRUE` for the bottom-most read panel.
 #' @param variant_overlay A list returned by [build_variant_overlay()], or `NULL`.
@@ -260,6 +279,11 @@
 #' @param show_supplementary Logical. Draw supplementary-alignment indicators.
 #' @param call_threshold,call_ambiguous Binary-call settings (`NULL` threshold
 #'   for continuous colouring); see [plot_methylation()].
+#' @param legend_levels `NULL`, or a list with `group` (group levels),
+#'   `group_na` (logical: show an NA key) and `sa` (SA partner chromosomes).
+#'   [plot_methylation()] passes the union over all samples so every read
+#'   panel has identical legends and colours, which patchwork then merges.
+#'   `NULL` uses the levels present in `data`.
 #'
 #' @return A [ggplot2::ggplot] object.
 #'
@@ -281,7 +305,15 @@ build_read_panel = function(data,
                              min_indel_size     = 50L,
                              show_supplementary = FALSE,
                              call_threshold     = NULL,
-                             call_ambiguous     = NULL) {
+                             call_ambiguous     = NULL,
+                             legend_levels      = NULL) {
+  if (is.null(legend_levels)) {
+    legend_levels = list(
+      group    = .group_levels(data$reads$group),
+      group_na = any(is.na(data$reads$group)),
+      sa       = .group_levels(data$reads$sa_chrom)
+    )
+  }
   cigar_features = if (isTRUE(show_cigar)) data$cigar_features
   has_cigar = !is.null(cigar_features) && nrow(cigar_features) > 0L
 
@@ -333,21 +365,8 @@ build_read_panel = function(data,
   arrow_w     = (region_end - region_start) * 0.003
   half_height = 0.35
 
-  # --- Suppress modification dots within SA indicator regions ---
-  if (isTRUE(show_supplementary) &&
-      "sa_chrom"  %in% names(data$reads) &&
-      "clip_side" %in% names(data$reads)) {
-    sa_reads = data$reads[!is.na(data$reads$sa_chrom) & !is.na(data$reads$clip_side), , drop = FALSE]
-    keep = rep(TRUE, nrow(sites_plot))
-    for (i in seq_len(nrow(sa_reads))) {
-      r      = sa_reads[i, ]
-      sa_ext = min(arrow_w, r$end - r$start)
-      idx    = sites_plot$read_name == r$read_name
-      if (r$clip_side %in% c("left",  "both")) keep = keep & !(idx & sites_plot$position <= r$start + sa_ext)
-      if (r$clip_side %in% c("right", "both")) keep = keep & !(idx & sites_plot$position >= r$end - sa_ext)
-    }
-    sites_plot = sites_plot[keep, , drop = FALSE]
-  }
+  # Sites next to a clipped end are kept: the SA marker is drawn outward from
+  # the read end (see .make_sa_overlay_polygons()), so it never covers them.
 
   # --- Read bars: filled by group, by strand, or a fixed grey ---
   grouped  = !is.null(data$group_tag)
@@ -363,10 +382,22 @@ build_read_panel = function(data,
     bar_aes$fill = .data_col(fill_var)
     fill_scale = if (!grouped) {
       ggplot2::scale_fill_manual(values = strand_colours, name = "Strand")
-    } else if (!is.null(group_colours)) {
-      ggplot2::scale_fill_manual(values = group_colours, na.value = "grey50", name = "Group")
     } else {
-      ggplot2::scale_fill_discrete(name = "Group")
+      colours = .resolve_group_colours(group_colours,
+                                       c(legend_levels$group, data$reads$group))
+      ggplot2::scale_fill_manual(
+        values = colours,
+        limits = c(names(colours), if (isTRUE(legend_levels$group_na)) NA),
+        na.value = .GROUP_NA_COLOUR, name = "Group"
+      )
+    }
+    if (grouped) {
+      # Every legend key must be drawn (also for groups absent from this
+      # sample) so that all samples' legends match and patchwork merges them.
+      read_polys = .add_legend_placeholders(
+        read_polys, "group",
+        c(legend_levels$group, if (isTRUE(legend_levels$group_na)) NA)
+      )
     }
     p = p + ggplot2::geom_polygon(data = read_polys, do.call(ggplot2::aes, bar_aes),
                                    colour = NA) + fill_scale
@@ -376,11 +407,14 @@ build_read_panel = function(data,
     # A bar fill scale is already on the plot unless the bars are plain grey.
     p = .add_sa_overlay(p, reads_plot, if (grouped) arrow_w * 1.5 else arrow_w,
                          half_height, variant_overlay,
-                         needs_new_scale = !is.null(fill_var))
+                         needs_new_scale = !is.null(fill_var),
+                         sa_levels = legend_levels$sa)
   }
+  mod_codes = .present_codes(data$mod_code, sites_plot)
   p = .add_mod_prob_segments(p, sites_plot, half_height, line_width,
                               colour_low, colour_high, colour_ambiguous,
-                              call_threshold, call_ambiguous)
+                              call_threshold, call_ambiguous,
+                              mod_codes = mod_codes)
 
   if (length(separator_lanes) > 0L) {
     p = p +
@@ -458,6 +492,13 @@ build_read_panel = function(data,
       panel.grid.major.y = ggplot2::element_blank()
     ) +
     ggplot2::labs(x = NULL)
+  if (length(mod_codes) > 1L) {
+    # Name the per-code strips (top to bottom) on the otherwise blank y axis.
+    p = p +
+      ggplot2::labs(y = paste("Strips (top to bottom):", paste(mod_codes, collapse = ", "))) +
+      ggplot2::theme(axis.title.y = ggplot2::element_text(size = ggplot2::rel(0.7),
+                                                           angle = 90))
+  }
 
   if (!show_x_axis) {
     p = p +
@@ -470,19 +511,47 @@ build_read_panel = function(data,
   p
 }
 
+# Add a zero-area polygon (three identical vertices on an existing vertex, so
+# nothing is drawn and no scale range changes) for each of `levels` missing
+# from `polys[[col]]`. ggplot2 (>= 3.5) only draws legend keys for values
+# present in a layer's data; the placeholders make every panel draw the same
+# keys, so identical legends from several samples can be merged by patchwork.
+# (show.legend = TRUE would do the same but breaks keys of layers that
+# ggnewscale later renames.)
+.add_legend_placeholders = function(polys, col, levels) {
+  if (nrow(polys) == 0L || length(levels) == 0L) return(polys)
+  present = unique(polys[[col]])
+  missing = levels[!levels %in% present]
+  if (length(missing) == 0L) return(polys)
+  extra = polys[rep(1L, 3L * length(missing)), , drop = FALSE]
+  extra[[col]] = rep(missing, each = 3L)
+  extra$polygon_id = rep(paste0(".legend_", seq_along(missing)), each = 3L)
+  if ("vcf_validated" %in% names(extra)) extra$vcf_validated = FALSE
+  out = rbind(polys, extra)
+  rownames(out) = NULL
+  out
+}
+
 # Add SA supplementary-alignment overlay polygons to an existing ggplot.
 #
 # When `needs_new_scale = TRUE` (grouped / strand-coloured branches), a
 # `ggnewscale::new_scale_fill()` call is prepended so the SA fill scale does not
 # replace the read-bar fill scale already on the plot.  The plain branch omits
 # it because the read bars are drawn with a fixed colour, not a scale.
+#
+# `sa_levels` fixes the legend keys and colours (hue palette over the sorted
+# levels), so the same partner chromosome has the same colour in every sample.
 .add_sa_overlay = function(p, reads_plot, arrow_w, half_height,
                              variant_overlay,
-                             needs_new_scale = TRUE) {
+                             needs_new_scale = TRUE,
+                             sa_levels = NULL) {
   if (!("sa_chrom" %in% names(reads_plot))) return(p)
 
   sa_polys = .make_sa_overlay_polygons(reads_plot, arrow_w, half_height)
   if (nrow(sa_polys) == 0L) return(p)
+  sa_levels = .group_levels(c(sa_levels, sa_polys$sa_chrom))
+  sa_colours = stats::setNames(scales::hue_pal()(length(sa_levels)), sa_levels)
+  sa_polys = .add_legend_placeholders(sa_polys, "sa_chrom", sa_levels)
 
   if (needs_new_scale) p = p + ggnewscale::new_scale_fill()
 
@@ -498,7 +567,8 @@ build_read_panel = function(data,
       colour = NA,
       inherit.aes = FALSE
     ) +
-    ggplot2::scale_fill_hue(name = "SA partner")
+    ggplot2::scale_fill_manual(values = sa_colours, limits = sa_levels,
+                               name = "SA partner")
 
   # VCF-validated SA border
   if (!is.null(variant_overlay) &&
@@ -534,11 +604,24 @@ build_read_panel = function(data,
 # With a non-NULL `call_threshold`, sites are classified into discrete calls
 # (methylated/unmethylated/ambiguous) via .classify_calls() and coloured with
 # a manual discrete scale instead of the continuous gradient.
+#
+# With more than one entry in `mod_codes`, the bar height is divided into one
+# horizontal strip per code (first code on top: the y scale is reversed), so
+# calls of different codes at the same read/position are both visible.
 .add_mod_prob_segments = function(p, sites_plot, half_height, line_width,
                                     colour_low, colour_high,
                                     colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
                                     call_threshold = NULL,
-                                    call_ambiguous = NULL) {
+                                    call_ambiguous = NULL,
+                                    mod_codes = NULL) {
+  sites_plot$.y0 = sites_plot$lane - half_height
+  sites_plot$.y1 = sites_plot$lane + half_height
+  if (length(mod_codes) > 1L && nrow(sites_plot) > 0L) {
+    k = match(sites_plot$mod_code, mod_codes)
+    strip = 2 * half_height / length(mod_codes)
+    sites_plot$.y0 = sites_plot$lane - half_height + (k - 1L) * strip
+    sites_plot$.y1 = sites_plot$.y0 + strip
+  }
   if (!is.null(call_threshold) && nrow(sites_plot) > 0L) {
     sites_plot$.call = .classify_calls(sites_plot$mod_prob,
                                         call_threshold, call_ambiguous)
@@ -550,7 +633,7 @@ build_read_panel = function(data,
           data = sites_plot,
           ggplot2::aes(
             x = .data$position, xend = .data$position,
-            y = .data$lane - half_height, yend = .data$lane + half_height,
+            y = .data$.y0, yend = .data$.y1,
             colour = .data$.call
           ),
           linewidth = line_width
@@ -567,8 +650,8 @@ build_read_panel = function(data,
       ggplot2::aes(
         x      = .data$position,
         xend   = .data$position,
-        y      = .data$lane - half_height,
-        yend   = .data$lane + half_height,
+        y      = .data$.y0,
+        yend   = .data$.y1,
         colour = .data$mod_prob
       ),
       linewidth = line_width

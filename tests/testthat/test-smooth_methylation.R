@@ -271,3 +271,47 @@ test_that("smooth_methylation drops NA groups with and without mod_code_col", {
   expect_setequal(unique(multi$mod_code), c("m", "h"))
   expect_named(multi, c("position", "mean_prob", "lower", "upper", "group", "mod_code"))
 })
+
+test_that("a shared grid tolerates a group with a single position", {
+  # stats::approx() needs two points; the group contributes NA instead of
+  # erroring (it used to crash the delta track).
+  sites = data.frame(
+    position = c(100, 100, 200, 300, 400, 500),
+    mod_prob = c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6),
+    group    = c("a", "a", "b", "b", "b", "b"),
+    stringsAsFactors = FALSE
+  )
+  grid = seq(100, 500, length.out = 10)
+  out = ggmethylation:::smooth_methylation(sites, grid = grid)
+  expect_true(all(is.na(out$mean_prob[out$group == "a"])))
+  expect_equal(sum(out$group == "a"), length(grid))
+  expect_true(any(!is.na(out$mean_prob[out$group == "b"])))
+
+  delta = ggmethylation:::.compute_group_delta(sites, "group")
+  expect_true(all(is.na(delta$delta)))
+})
+
+test_that("NA probabilities are dropped, including a group that is all NA", {
+  sites = data.frame(
+    position = rep(1:5 * 100, 2),
+    mod_prob = c(rep(NA_real_, 5), 0.1, 0.2, NA, 0.4, 0.5),
+    group    = rep(c("a", "b"), each = 5),
+    stringsAsFactors = FALSE
+  )
+  out = ggmethylation:::smooth_methylation(sites)
+  expect_false("a" %in% out$group)
+  expect_true(all(!is.na(out$mean_prob[out$group == "b"])))
+  shared = ggmethylation:::smooth_methylation(sites, grid = c(100, 300, 500))
+  expect_true(all(is.na(shared$mean_prob[shared$group == "a"])))
+})
+
+test_that("loess fits are clamped to [0, 1]", {
+  # A step from 0 to 1 makes loess overshoot on both sides.
+  agg = data.frame(position = 1:40, mean_prob = rep(c(0, 1), each = 20))
+  grid = seq(1, 40, length.out = 200)
+  out = ggmethylation:::.loess_predict(agg, grid, span = 0.3)
+  raw = stats::predict(stats::loess(mean_prob ~ position, agg, span = 0.3),
+                       data.frame(position = grid))
+  expect_true(any(raw < 0 | raw > 1))  # the input really overshoots
+  expect_true(all(out$mean_prob >= 0 & out$mean_prob <= 1))
+})

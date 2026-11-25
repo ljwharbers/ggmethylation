@@ -5,12 +5,13 @@
 #' plotting with [plot_methylation()].
 #'
 #' All samples must cover the same genomic region and use the same
-#' modification code(s). Every sample must be supplied with a unique name,
+#' modification code(s). At least one sample is required. Every sample must
+#' be supplied with a unique, non-missing name,
 #' either via R's named-argument syntax (`merge_methylation(A = md1, B = md2)`)
 #' or via the `.list` parameter (`merge_methylation(.list = list(A = md1, B = md2))`).
 #'
 #' @param ... Named `methylation_data` objects. Every argument **must** be
-#'   named; an error is raised if any name is missing or empty.
+#'   named; an error is raised if any name is missing, empty or duplicated.
 #' @param .list A named list of `methylation_data` objects. When provided,
 #'   `...` is ignored. This is useful for programmatic construction of the
 #'   sample list.
@@ -38,16 +39,40 @@
 merge_methylation = function(..., .list = NULL) {
   # --- 1. Collect samples ---
   if (!is.null(.list)) {
+    if (inherits(.list, "methylation_data") || !is.list(.list) ||
+        is.data.frame(.list)) {
+      stop(
+        "`.list` must be a named list of `methylation_data` objects, ",
+        "e.g. `.list = list(A = md1, B = md2)`.",
+        call. = FALSE
+      )
+    }
     samples_list = .list
   } else {
     samples_list = list(...)
   }
+  if (length(samples_list) == 0L) {
+    stop(
+      "`merge_methylation()` needs at least one named `methylation_data` ",
+      "object, e.g. `merge_methylation(A = md1, B = md2)`.",
+      call. = FALSE
+    )
+  }
 
   # --- 2. Validate names ---
   nms = names(samples_list)
-  if (is.null(nms) || any(!nzchar(nms))) {
+  if (is.null(nms) || any(is.na(nms) | !nzchar(nms))) {
     stop(
-      "All samples passed to `merge_methylation()` must be named.",
+      "All samples passed to `merge_methylation()` must be named ",
+      "(no missing or empty names).",
+      call. = FALSE
+    )
+  }
+  dup = unique(nms[duplicated(nms)])
+  if (length(dup) > 0L) {
+    stop(
+      sprintf("Sample names must be unique; duplicated: %s.",
+              paste(sprintf("'%s'", dup), collapse = ", ")),
       call. = FALSE
     )
   }

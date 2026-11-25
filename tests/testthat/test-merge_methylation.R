@@ -134,3 +134,30 @@ test_that("print.multi_methylation_data runs without error", {
   expect_no_error(print(merged))
   expect_invisible(print(merged))
 })
+
+# --- Test 7: names must be unique and present; clear errors for bad input ---
+
+test_that("merge_methylation rejects duplicated sample names", {
+  md1 = make_methylation_data()
+  md2 = make_methylation_data()
+  expect_error(merge_methylation(A = md1, A = md2), "unique.*'A'")
+  expect_error(merge_methylation(.list = list(A = md1, A = md2)), "unique")
+})
+
+test_that("merge_methylation rejects NA sample names", {
+  md1 = make_methylation_data()
+  md2 = make_methylation_data()
+  lst = list(md1, md2)
+  names(lst) = c("A", NA)
+  expect_error(merge_methylation(.list = lst), "must be named")
+})
+
+test_that("merge_methylation without samples says so", {
+  expect_error(merge_methylation(), "at least one")
+  expect_error(merge_methylation(.list = list()), "at least one")
+})
+
+test_that("merge_methylation explains that .list must be a list of objects", {
+  md1 = make_methylation_data()
+  expect_error(merge_methylation(.list = md1), "`.list` must be a named list")
+})
