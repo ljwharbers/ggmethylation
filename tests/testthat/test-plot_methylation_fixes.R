@@ -36,18 +36,24 @@ make_reads = function(read_name, start = 1000L, end = 2000L, group = NULL,
   df
 }
 
+# Both helpers draw on a throwaway PNG device (no stray Rplots.pdf). A bitmap
+# device is used because pdf(NULL) failed to measure the delta panel's
+# "Δ" label under R CMD check ("conversion failure ... in 'mbcsToSbcs'").
+
 # Render every panel to grobs: scale and "Removed rows" warnings fire here,
 # not in plot_methylation().
 render = function(p) {
-  grDevices::pdf(NULL)  # no stray Rplots.pdf
-  on.exit(grDevices::dev.off())
+  f = tempfile(fileext = ".png")
+  grDevices::png(f)
+  on.exit({ grDevices::dev.off(); unlink(f) })
   invisible(patchwork::patchworkGrob(p))
 }
 
 # Polygon pieces drawn by one layer (each NA-separated stretch is one child).
 grob_pieces = function(p, layer) {
-  grDevices::pdf(NULL)
-  on.exit(grDevices::dev.off())
+  f = tempfile(fileext = ".png")
+  grDevices::png(f)
+  on.exit({ grDevices::dev.off(); unlink(f) })
   ggplot2::layer_grob(p, layer)[[1L]]$children
 }
 
