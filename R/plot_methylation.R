@@ -877,7 +877,13 @@ plot_methylation = function(data, sort_by = NULL,
     heights = if (multi) {
       c(if (!is.null(p_gene)) 0.6, rep(3, length(samples)), 1)
     } else {
-      c(if (!is.null(p_gene)) 0.08, 1, 0.25, if (!is.null(p_delta)) 0.2)
+      # With a delta panel the two summary panels get more room, or their
+      # y-axis titles run into each other at ordinary figure heights.
+      if (is.null(p_delta)) {
+        c(if (!is.null(p_gene)) 0.08, 1, 0.25)
+      } else {
+        c(if (!is.null(p_gene)) 0.08, 1, 0.35, 0.3)
+      }
     }
   } else if (length(heights) != length(panels)) {
     stop(sprintf(
