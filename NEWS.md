@@ -69,6 +69,8 @@ does.
   least 75% of the group's reads spanning the whole deletion carry it
   (previously: of all reads in the window).
 - Loess fits are clamped to `[0, 1]`.
+- With a delta panel, the default `panel_heights` are `1, 0.35, 0.3` (were
+  `1, 0.25, 0.2`), so the smooth and delta y-axis titles no longer overlap.
 - `show_delta = TRUE` on ungrouped data gives a message.
 - `plot_methylation()` warns when `variants` or `annotations` do not overlap
   the plotted region, or are on another chromosome.
