@@ -10,7 +10,7 @@ skip_if_not_installed("GenomicFeatures")
 make_txdb = if (requireNamespace("txdbmaker", quietly = TRUE)) {
   txdbmaker::makeTxDb
 } else {
-  GenomicFeatures::makeTxDb
+  getExportedValue("GenomicFeatures", "makeTxDb")
 }
 txdb = withCallingHandlers(make_txdb(
   transcripts = data.frame(

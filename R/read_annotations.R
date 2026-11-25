@@ -55,13 +55,18 @@
 }
 
 # Internal helper: makeTxDbFromGRanges() has moved from GenomicFeatures to
-# txdbmaker (deprecated in GenomicFeatures). Prefer txdbmaker when installed.
+# txdbmaker and is gone from current GenomicFeatures. Prefer txdbmaker; older
+# GenomicFeatures releases that still export it are looked up at run time, so
+# the package does not reference an object that newer releases lack.
 .make_txdb_from_granges = function(gr) {
   if (requireNamespace("txdbmaker", quietly = TRUE)) {
-    txdbmaker::makeTxDbFromGRanges(gr)
-  } else {
-    GenomicFeatures::makeTxDbFromGRanges(gr)
+    return(txdbmaker::makeTxDbFromGRanges(gr))
   }
+  if ("makeTxDbFromGRanges" %in% getNamespaceExports("GenomicFeatures")) {
+    return(getExportedValue("GenomicFeatures", "makeTxDbFromGRanges")(gr))
+  }
+  stop("Package 'txdbmaker' is required to build annotations from a GTF. ",
+       "Install it with BiocManager::install(\"txdbmaker\").", call. = FALSE)
 }
 
 # Internal helper: an empty gene_annotations object for `region_gr`.
