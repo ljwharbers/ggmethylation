@@ -106,36 +106,6 @@ test_that("build_delta_panel returns a ggplot", {
   expect_s3_class(p, "ggplot")
 })
 
-# Local minimal methylation_data constructor (mirrors
-# test-build_read_panel.R::make_test_data; not shared via a helper-*.R file,
-# so duplicated here per testthat edition-3 auto-sourcing rules).
-make_test_data = function(reads_df, sites_df,
-                            region_start = 1000L, region_end = 2000L,
-                            cigar_features = data.frame(
-                              read_name  = character(0),
-                              type       = character(0),
-                              ref_start  = integer(0),
-                              ref_end    = integer(0),
-                              length     = integer(0),
-                              stringsAsFactors = FALSE
-                            )) {
-  gr = GenomicRanges::GRanges(
-    seqnames = "chr1",
-    ranges   = IRanges::IRanges(start = region_start, end = region_end)
-  )
-  structure(
-    list(
-      reads        = reads_df,
-      sites        = sites_df,
-      region       = gr,
-      mod_code     = "m",
-      group_tag    = NULL,
-      cigar_features = cigar_features
-    ),
-    class = "methylation_data"
-  )
-}
-
 test_that("plot_methylation adds delta panel for 2 groups when show_delta", {
   reads = data.frame(
     read_name = c("r1","r2"), start = 1000L, end = 2000L, strand = "+",

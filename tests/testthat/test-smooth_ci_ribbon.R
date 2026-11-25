@@ -1,35 +1,6 @@
 # Tests for CI ribbon rendering (show_ci) and .insert_deletion_breaks() CI
 # column handling in R/plot_methylation.R
 
-# Local minimal methylation_data constructor (mirrors
-# test-build_read_panel.R::make_test_data; not shared via a helper-*.R file,
-# so duplicated here per testthat edition-3 auto-sourcing rules).
-make_test_data = function(reads_df, sites_df,
-                            region_start = 1000L, region_end = 2000L) {
-  gr = GenomicRanges::GRanges(
-    seqnames = "chr1",
-    ranges   = IRanges::IRanges(start = region_start, end = region_end)
-  )
-  structure(
-    list(
-      reads        = reads_df,
-      sites        = sites_df,
-      region       = gr,
-      mod_code     = "m",
-      group_tag    = NULL,
-      cigar_features = data.frame(
-        read_name  = character(0),
-        type       = character(0),
-        ref_start  = integer(0),
-        ref_end    = integer(0),
-        length     = integer(0),
-        stringsAsFactors = FALSE
-      )
-    ),
-    class = "methylation_data"
-  )
-}
-
 test_that("insert_deletion_breaks nulls CI columns inside deletions", {
   smoothed = data.frame(
     position  = c(100, 150, 200, 250),
