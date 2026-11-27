@@ -178,7 +178,21 @@ test_that("collapse_transcripts is validated", {
   }
 })
 
+test_that("collapsing keeps a transcript without a gene name as its own gene", {
+  txs = data.frame(tx_id = 1:3, tx_name = c("a", "b", "c"),
+                   gene_name = c("G", "G", NA), strand = "+",
+                   tx_start = c(100L, 100L, 500L), tx_end = c(200L, 300L, 600L),
+                   stringsAsFactors = FALSE)
+  exons = data.frame(tx_id = 1:3, exon_start = c(100L, 100L, 500L),
+                     exon_end = c(200L, 300L, 600L))
+  res = ggmethylation:::.select_canonical_transcripts(txs, exons)
+  expect_identical(res$transcripts$tx_id, 2:3)
+  expect_identical(res$exons$tx_id, 2:3)
+})
+
 test_that("without AnnotationDbi, transcripts are named after themselves", {
+  # local_mocked_bindings() needs testthat >= 3.1.7
+  skip_if(utils::packageVersion("testthat") < "3.1.7")
   local_mocked_bindings(.has_annotationdbi = function() FALSE)
   ann = read_annotations(txdb = txdb2, region = "chr1:900-4000")
   # Every transcript is its own gene, so collapsing keeps all three
