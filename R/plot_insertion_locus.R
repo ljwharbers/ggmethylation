@@ -66,9 +66,9 @@ plot_insertion_locus = function(data, locus,
     stop("`locus` must be one row of list_insertion_loci() output, e.g. loci[1, ].",
          call. = FALSE)
   }
-  flank               = .ins_check_number(flank, "flank", min = 1, whole = TRUE)
-  show_smoothed       = .ins_check_flag(show_smoothed, "show_smoothed")
-  include_noncarriers = .ins_check_flag(include_noncarriers, "include_noncarriers")
+  flank               = .check_number(flank, "flank", min = 1, whole = TRUE)
+  show_smoothed       = .check_flag(show_smoothed, "show_smoothed")
+  include_noncarriers = .check_flag(include_noncarriers, "include_noncarriers")
 
   # --- 1. Carrier / non-carrier reads of the locus ---
   locus_id    = locus$locus_id
