@@ -113,15 +113,24 @@
 #'   when a requested `mod_code` appears in no MM tag.
 #'
 #' @examples
-#' \dontrun{
-#' md = read_methylation("sample.bam", "chr1:1000-2000")
-#' md = read_methylation("sample.bam", "chr1:1000-2000",
-#'   group_tag = "HP", max_reads = 100
-#' )
-#' md = read_methylation("sample.bam", "chr1:1000-2000",
-#'   snv = list(position = 1500, ref = "C", alt = "T")
-#' )
-#' }
+#' # A small synthetic modBAM shipped with the package
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#'
+#' # 5mC calls of every read in the region
+#' md = read_methylation(bam, "chr1:1000-7000")
+#' md
+#' head(md$sites)
+#'
+#' # 5mC and 5hmC, reads grouped by haplotype (HP tag), downsampled to 40
+#' # reads; `seed` picks the same reads on every run
+#' md_hp = read_methylation(bam, "chr1:1000-7000", mod_code = c("m", "h"),
+#'                          group_tag = "HP", max_reads = 40, seed = 1)
+#' md_hp
+#'
+#' # Group reads by the base they carry at an A>G SNV instead
+#' md_snv = read_methylation(bam, "chr1:1000-7000",
+#'                           snv = list(position = 3000, ref = "A", alt = "G"))
+#' table(md_snv$reads$group)
 #'
 #' @export
 read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
@@ -137,7 +146,7 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   # --- 1. Validate inputs ---
   mod_code = as.character(mod_code)          # coerce in case of factor
   if (length(mod_code) == 0L || anyNA(mod_code) || any(!nzchar(mod_code))) {
-    stop("'mod_code' must be a non-empty character vector of modification codes.",
+    stop("`mod_code` must be a non-empty character vector of modification codes.",
          call. = FALSE)
   }
   mod_code = unique(mod_code)                # drop accidental duplicates
@@ -152,7 +161,7 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
     }
   }
   if (!is.null(group_tag) && !is.null(snv)) {
-    stop("'group_tag' and 'snv' are mutually exclusive.", call. = FALSE)
+    stop("`group_tag` and `snv` are mutually exclusive.", call. = FALSE)
   }
   strand_filter = match.arg(strand_filter, choices = c("+", "-"), several.ok = TRUE)
   max_reads = .check_number(max_reads, "max_reads", min = 1, whole = TRUE,
@@ -780,6 +789,12 @@ print.methylation_data = function(x, ...) {
 #'   (list of `min`, `median` and `max` aligned length in bp: the reference
 #'   span of each read's full alignment, `NA` without reads), `groups`
 #'   (per-group data frame or `NULL`) and `overall_mean_mod_prob`.
+#' @examples
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP")
+#' s = summary(md)
+#' s
+#' s$groups
 #' @export
 summary.methylation_data = function(object, ...) {
   chrom = as.character(GenomicRanges::seqnames(object$region))

@@ -21,7 +21,7 @@
 #' @keywords internal
 parse_region = function(region) {
   if (!is.character(region) || length(region) != 1L || is.na(region)) {
-    stop("'region' must be a single character string such as 'chr1:1000-2000'.",
+    stop("`region` must be a single character string such as \"chr1:1000-2000\".",
          call. = FALSE)
   }
 

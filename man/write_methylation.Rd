@@ -14,7 +14,11 @@ write_methylation(
 )
 }
 \arguments{
-\item{data}{A \code{methylation_data} object as returned by \code{\link[=read_methylation]{read_methylation()}}.}
+\item{data}{A \code{methylation_data} object as returned by \code{\link[=read_methylation]{read_methylation()}},
+or a \code{multi_methylation_data} object as returned by
+\code{\link[=merge_methylation]{merge_methylation()}}. For the latter, each sample is written with the
+prefix \verb{\{prefix\}_\{sample\}}; sample names must not contain a path
+separator (\code{/} or a backslash).}
 
 \item{prefix}{Character. Path prefix for output files. The appropriate
 suffix (\verb{_reads.tsv}, \verb{_sites.tsv}, or \verb{_sites.bed}) is appended
@@ -36,9 +40,15 @@ When \code{TRUE}, \code{.gz} is appended to each file name.}
 \description{
 Saves the \verb{$reads} and/or \verb{$sites} data frames from a \code{methylation_data}
 object to tab-separated (TSV) or BED files. Files can optionally be
-gzip-compressed.
+gzip-compressed. A \code{multi_methylation_data} object gets one set of files
+per sample.
 }
 \details{
+The file names below are for a \code{methylation_data} object. For a
+\code{multi_methylation_data} object, \code{{prefix}} becomes \verb{\{prefix\}_\{sample\}}
+for each sample, e.g. \code{out/run_A_reads.tsv} and \code{out/run_B_reads.tsv} for
+\code{prefix = "out/run"} and samples \code{A} and \code{B}.
+
 \strong{Reads file} (\verb{\{prefix\}_reads.tsv[.gz]})
 
 Always written as TSV with a header line. Columns: \code{read_name}, \code{start},
@@ -66,25 +76,26 @@ last colon to recover both). \code{score} is the integer
 strand of the read's alignment (\code{.} if unknown).
 }
 \examples{
-\dontrun{
-md = read_methylation("sample.bam", "chr1:1000-2000")
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP")
+out = file.path(tempdir(), "ggmethylation-example")
 
-# Write both TSV files to the current directory
-write_methylation(md, prefix = "output/sample_chr1")
+# Reads and sites as TSV: out/sample_reads.tsv, out/sample_sites.tsv
+write_methylation(md, prefix = file.path(out, "sample"))
+head(read.delim(file.path(out, "sample_reads.tsv")))
 
-# BED format for sites, gzip-compressed
-write_methylation(md, prefix = "output/sample_chr1",
-                  format = "bed", gzip = TRUE)
+# Sites only, as gzip-compressed BED: out/sample_sites.bed.gz
+write_methylation(md, prefix = file.path(out, "sample"), format = "bed",
+                  reads = FALSE, gzip = TRUE)
 
-# Reads only
-write_methylation(md, prefix = "output/sample_chr1",
-                  sites = FALSE)
+# Several samples: out/cohort_A_reads.tsv, out/cohort_B_reads.tsv, ...
+md2 = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+                       max_reads = 30, seed = 1)
+write_methylation(merge_methylation(A = md, B = md2),
+                  prefix = file.path(out, "cohort"))
+list.files(out)
 
-# Pipe-friendly usage
-md |>
-  write_methylation(prefix = "output/sample_chr1") |>
-  plot_methylation()
-}
+unlink(out, recursive = TRUE)
 
 }
 \seealso{

@@ -55,29 +55,26 @@
 #' strand of the read's alignment (`.` if unknown).
 #'
 #' @examples
-#' \dontrun{
-#' md = read_methylation("sample.bam", "chr1:1000-2000")
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP")
+#' out = file.path(tempdir(), "ggmethylation-example")
 #'
-#' # Write both TSV files to the current directory
-#' write_methylation(md, prefix = "output/sample_chr1")
+#' # Reads and sites as TSV: out/sample_reads.tsv, out/sample_sites.tsv
+#' write_methylation(md, prefix = file.path(out, "sample"))
+#' head(read.delim(file.path(out, "sample_reads.tsv")))
 #'
-#' # BED format for sites, gzip-compressed
-#' write_methylation(md, prefix = "output/sample_chr1",
-#'                   format = "bed", gzip = TRUE)
+#' # Sites only, as gzip-compressed BED: out/sample_sites.bed.gz
+#' write_methylation(md, prefix = file.path(out, "sample"), format = "bed",
+#'                   reads = FALSE, gzip = TRUE)
 #'
-#' # Reads only
-#' write_methylation(md, prefix = "output/sample_chr1",
-#'                   sites = FALSE)
+#' # Several samples: out/cohort_A_reads.tsv, out/cohort_B_reads.tsv, ...
+#' md2 = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+#'                        max_reads = 30, seed = 1)
+#' write_methylation(merge_methylation(A = md, B = md2),
+#'                   prefix = file.path(out, "cohort"))
+#' list.files(out)
 #'
-#' # Several samples: output/cohort_A_reads.tsv, output/cohort_B_reads.tsv, ...
-#' md2 = read_methylation("sample2.bam", "chr1:1000-2000")
-#' write_methylation(merge_methylation(A = md, B = md2), prefix = "output/cohort")
-#'
-#' # Pipe-friendly usage
-#' md |>
-#'   write_methylation(prefix = "output/sample_chr1") |>
-#'   plot_methylation()
-#' }
+#' unlink(out, recursive = TRUE)
 #'
 #' @seealso [read_methylation()]
 #' @export

@@ -51,6 +51,28 @@ test_that("read_variants validates vcf", {
                "`vcf` file not found")
 })
 
+test_that("the vcf check accepts remote URLs without touching the network", {
+  # No VariantAnnotation needed: only the argument check is exercised.
+  check = ggmethylation:::.check_vcf_path
+  for (url in c("http://example.org/calls.vcf.gz",
+                "https://example.org/calls.vcf.gz",
+                "ftp://ftp.example.org/calls.vcf.gz",
+                "s3://bucket/calls.vcf.gz",
+                "gs://bucket/calls.vcf.gz")) {
+    expect_identical(check(url), url)
+  }
+  expect_identical(check(test_path("fixtures", "synthetic.vcf.gz")),
+                   test_path("fixtures", "synthetic.vcf.gz"))
+  # Local paths, including ones that merely contain "http", must exist
+  for (bad in c(file.path(tempdir(), "absent.vcf.gz"), "http_calls.vcf.gz",
+                "file://calls.vcf.gz")) {
+    expect_error(check(bad), "`vcf` file not found")
+  }
+  for (bad in list(NULL, NA_character_, "", c("a", "b"), 1)) {
+    expect_error(check(bad), "`vcf` must be a single non-empty character string")
+  }
+})
+
 test_that("read_variants warns when the region's chromosome is not in the VCF", {
   skip_if_not_installed("VariantAnnotation")
   vcf = testthat::test_path("fixtures", "synthetic.vcf.gz")

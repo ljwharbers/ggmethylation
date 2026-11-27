@@ -86,7 +86,10 @@ region = "chr1:1000-7000"
 
 `read_methylation()` fetches the reads overlapping a region and returns a
 `methylation_data` object. Secondary, duplicate and QC-fail alignments are
-skipped; supplementary alignments are kept. When more than `max_reads`
+skipped (`include_duplicates = TRUE` / `include_qc_fail = TRUE` read the
+latter two); supplementary alignments are kept. A hard-clipped alignment
+without an `MN` tag keeps no modification calls, because its MM/ML tags cannot
+be placed reliably on the clipped sequence. When more than `max_reads`
 (default 200) reads overlap the region a random subset is kept; pass `seed`
 to make that choice reproducible.
 

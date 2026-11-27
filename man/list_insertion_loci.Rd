@@ -91,12 +91,16 @@ start within \code{tol_pos} of the anchor (often soft-clipped at the insertion
 breakpoint).
 }
 \examples{
-\dontrun{
-md   = read_methylation("sample.bam", "chr21:34500000-34510000")
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+md = read_methylation(bam, "chr1:1000-7000")
+
+# Insertions of at least 50 bp carried by at least two reads
 loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L,
                            min_length = 50L)
-loci$locus_id
+loci[, c("locus_id", "anchor_pos", "n_carriers", "n_noncarriers",
+         "median_length")]
+loci$carriers[[1]]
+
 plot_insertion_locus(md, loci[1, ])
-}
 
 }

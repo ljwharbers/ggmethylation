@@ -1,5 +1,8 @@
-# Regression tests for the 0.5.0 main-plot audit (M1-M13): colours, gaps,
-# binary-mode clamping, mod codes, SA markers, legends and argument checks.
+# Regression tests for plot_methylation(): group colours across panels
+# (including groups the palette does not name), smooth/delta gaps at consensus
+# deletions, binary-mode clamping to [0, 1], several modification codes,
+# supplementary-alignment markers, CI ribbons in multi-sample plots, argument
+# validation, and shared legends and line types.
 
 fixture_md = function(...) {
   set.seed(1)
@@ -61,7 +64,7 @@ layer_of = function(p, geom_class) {
   which(vapply(p$layers, function(l) inherits(l$geom, geom_class), logical(1L)))
 }
 
-# --- M1: groups the palette does not name ------------------------------------
+# --- Groups the palette does not name ----------------------------------------
 
 test_that("SNV groups get distinct colours in every panel, without scale warnings", {
   md = fixture_md(snv = list(position = 3000, ref = "A", alt = "G"))
@@ -101,7 +104,7 @@ test_that("a grouped object with zero sites renders without scale warnings", {
   expect_no_warning(render(plot_methylation(md, show_supplementary = FALSE)))
 })
 
-# --- M3: area and ribbon split at consensus deletions ------------------------
+# --- Area and ribbon split at consensus deletions ----------------------------
 
 # Group "1" (one read) carries a 1400-1500 deletion, so it has no sites there;
 # group "2" covers everything.
@@ -156,7 +159,7 @@ test_that("delta bands meet at the zero crossing and drop all-zero bands", {
   expect_false("neg_1" %in% bands$run)
 })
 
-# --- M4: binary-mode fit stays inside [0, 1] ---------------------------------
+# --- Binary-mode fit stays inside [0, 1] -------------------------------------
 
 test_that("binary mode drops no smooth-line rows and raises no warning", {
   md = fixture_md(group_tag = "HP")
@@ -171,7 +174,7 @@ test_that("binary mode drops no smooth-line rows and raises no warning", {
   expect_equal(sum(!is.na(line$y)), sum(!is.na(smooth$data$mean_prob)))
 })
 
-# --- M5: several modification codes -----------------------------------------
+# --- Several modification codes ---------------------------------------------
 
 test_that("multi-sample smooth keeps one line per sample, group and code", {
   md = fixture_md(group_tag = "HP", mod_code = c("m", "h"))
@@ -214,7 +217,7 @@ test_that("calls for different codes at the same position do not overplot", {
   expect_match(rp$labels$y, "m, h")
 })
 
-# --- M6 / M7: supplementary markers ------------------------------------------
+# --- Supplementary markers ---------------------------------------------------
 
 test_that("a split SA read gets one marker per clipped end", {
   reads = make_reads("r1", clip_side = "right", sa_chrom = "chr7")
@@ -244,7 +247,7 @@ test_that("a site next to a clipped end is drawn", {
   expect_true(all(sa$x <= 1000))
 })
 
-# --- M10: one ribbon per line in a mixed merge -------------------------------
+# --- One ribbon per line in a mixed merge ------------------------------------
 
 test_that("ungrouped samples in a mixed merge each get their own ribbon", {
   grouped = fixture_md(group_tag = "HP")
@@ -258,7 +261,7 @@ test_that("ungrouped samples in a mixed merge each get their own ribbon", {
   expect_equal(n_rib, n_line)
 })
 
-# --- M11: consensus deletions use covering reads -----------------------------
+# --- Consensus deletions use covering reads ----------------------------------
 
 test_that("consensus deletion fraction counts only reads covering the deletion", {
   cf = data.frame(type = "D", ref_start = c(1400L, 1400L), ref_end = c(1500L, 1500L),
@@ -277,7 +280,7 @@ test_that("consensus deletion fraction counts only reads covering the deletion",
   expect_equal(nrow(res), 0L)
 })
 
-# --- M12: argument validation -------------------------------------------------
+# --- Argument validation -----------------------------------------------------
 
 test_that("plot_methylation validates its numeric and colour arguments", {
   md = fixture_md(group_tag = "HP")
@@ -368,7 +371,7 @@ test_that("show_delta on ungrouped data says why there is no delta panel", {
   expect_length(p, 2L)
 })
 
-# --- M13: legends and line types ---------------------------------------------
+# --- Legends and line types --------------------------------------------------
 
 legend_titles = function(p) {
   g = render(p)

@@ -7,13 +7,13 @@
 plot_methylation(
   data,
   sort_by = NULL,
-  colour_low = .PROB_GRADIENT$low,
-  colour_high = .PROB_GRADIENT$high,
-  colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
+  colour_low = "#BDBDBD",
+  colour_high = "#C62828",
+  colour_ambiguous = "#78909C",
   line_width = 0.2,
   colour_strand = FALSE,
   strand_colours = c(`+` = "#4393C3", `-` = "#D6604D"),
-  group_colours = .GROUP_PALETTE_DEFAULT,
+  group_colours = c(`1` = "#0072B2", `2` = "#E69F00"),
   smooth_span = NULL,
   panel_heights = NULL,
   annotations = NULL,
@@ -213,12 +213,23 @@ panel's y-axis title lists the order), and the smooth panel draws one line
 per code (by line type).
 }
 \examples{
-\dontrun{
-md = read_methylation("sample.bam", "chr1:1000-2000")
-plot_methylation(md)
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
 
-md = read_methylation("sample.bam", "chr1:1000-2000", group_tag = "HP")
-plot_methylation(md, group_colours = c("1" = "steelblue", "2" = "coral"))
-}
+# Reads grouped by haplotype: one smooth line per haplotype. Binary calls
+# at probability 0.5, plus the difference between the haplotypes
+md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+                      max_reads = 30, seed = 1)
+plot_methylation(md, call_threshold = 0.5, show_delta = TRUE)
 
+# 5mC and 5hmC: one strip per code on each read, one line type per code
+md2 = read_methylation(bam, "chr1:1000-7000", mod_code = c("m", "h"),
+                       group_tag = "HP", max_reads = 30, seed = 1)
+plot_methylation(md2, group_colours = c("1" = "steelblue", "2" = "coral"))
+
+\dontshow{if (requireNamespace("VariantAnnotation", quietly = TRUE) && requireNamespace("SummarizedExperiment", quietly = TRUE)) withAutoprint(\{ # examplesIf}
+# Overlay the calls of a VCF (an SNV, a deletion and a breakend)
+vcf = system.file("extdata", "synthetic.vcf.gz", package = "ggmethylation")
+vd = read_variants(vcf, "chr1:1000-7000")
+plot_methylation(md, variants = vd)
+\dontshow{\}) # examplesIf}
 }

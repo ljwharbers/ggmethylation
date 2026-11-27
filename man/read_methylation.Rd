@@ -16,22 +16,27 @@ read_methylation(
   strand_filter = c("+", "-"),
   min_read_length = 0L,
   drop_na_group = FALSE,
+  include_duplicates = FALSE,
+  include_qc_fail = FALSE,
   seed = NULL
 )
 }
 \arguments{
-\item{bam}{Character. Path to a BAM file containing MM/ML modification
+\item{bam}{Character. Path to one BAM file containing MM/ML modification
 tags, indexed with a \code{.bai} or \code{.csi} index.}
 
 \item{region}{Character. Genomic region string, e.g. \code{"chr1:1000-2000"}.
 The string is split at its last colon, so contig names containing colons
-are allowed.}
+are allowed. A contig that is not in the BAM header is an error (check
+the naming, e.g. \code{chr1} vs \code{1}); a region without reads gives a warning
+and an empty object.}
 
 \item{mod_code}{Character. Modification code from the MM tag (default \code{"m"}
 for 5-methylcytosine).}
 
-\item{group_tag}{Character or NULL. BAM tag used to group reads (e.g.
-\code{"HP"} for haplotype, \code{"RG"} for read group). NULL disables grouping.
+\item{group_tag}{Character or NULL. Two-character BAM tag used to group
+reads (e.g. \code{"HP"} for haplotype, \code{"RG"} for read group). NULL disables
+grouping.
 If no read in the region carries the tag, a warning is given and the
 data are returned ungrouped (\code{group_tag} is \code{NULL} and there is no
 \code{group} column).}
@@ -43,8 +48,9 @@ other reads are dropped. \code{ref} and \code{alt} must be different bases from
 A, C, G, T and \code{position} must lie inside \code{region}. Cannot be combined
 with \code{group_tag}.}
 
-\item{max_reads}{Integer. Maximum number of reads to return (default 200).
-If more reads overlap the region, a random subset is kept (see \code{seed}).}
+\item{max_reads}{Integer. Maximum number of reads to return (default 200):
+a whole number >= 1, or \code{Inf} for no cap. If more reads overlap the
+region, a random subset is kept (see \code{seed}).}
 
 \item{per_group_downsample}{Logical. When \code{TRUE} and grouping is active
 (via \code{group_tag} or \code{snv}), the \code{max_reads} cap is applied
@@ -69,6 +75,14 @@ value are excluded before MM/ML parsing.}
 where the tag is absent (i.e. group is \code{NA}) are removed before
 downsampling. Default \code{FALSE} preserves the existing behaviour of keeping
 unphased reads in the data.}
+
+\item{include_duplicates}{Logical. When \code{TRUE}, alignments flagged as PCR
+or optical duplicates (FLAG 0x400) are read too. Default \code{FALSE} skips
+them.}
+
+\item{include_qc_fail}{Logical. When \code{TRUE}, alignments flagged as not
+passing quality controls (FLAG 0x200) are read too. Default \code{FALSE}
+skips them.}
 
 \item{seed}{\code{NULL} (default) or a single number. When given, downsampling
 uses \code{set.seed(seed)} so the same reads are picked on every call, and the
@@ -119,8 +133,9 @@ a given genomic region. This is the main entry point for data extraction
 (Layer 1 of the package).
 }
 \details{
-Secondary (FLAG 0x100), QC-fail (0x200) and duplicate (0x400) alignments
-are never read. Supplementary alignments (0x800) are kept.
+Secondary alignments (FLAG 0x100) are never read. QC-fail (0x200) and
+duplicate (0x400) alignments are skipped unless \code{include_qc_fail} or
+\code{include_duplicates} is \code{TRUE}. Supplementary alignments (0x800) are kept.
 
 MM/ML tags are parsed as described in the SAM specification (see the
 Details of the internal \code{parse_mm_ml()}), with one deliberate deviation:
@@ -128,18 +143,31 @@ an MM entry without a \verb{?} or \code{.} flag is treated like \verb{?} (unlist
 are not reported), because older basecallers that write no flag list only
 CpG sites. A read whose MM/ML tags are malformed or inconsistent with its
 sequence (wrong number of ML values, unparseable skip counts, an \code{MN} tag
-that differs from the SEQ length, ...) is kept in \verb{$reads} without any
-calls; a single warning reports how many reads were affected.
+that differs from the SEQ length, a hard-clipped alignment without an \code{MN}
+tag, ...) is kept in \verb{$reads} without any calls; a single warning reports
+how many reads were affected. Hard-clipped alignments (often supplementary
+alignments, which minimap2 hard-clips by default) keep their calls only
+when they carry an \code{MN} tag equal to the length of their clipped SEQ,
+because without it the calls may be placed on the wrong bases.
 }
 \examples{
-\dontrun{
-md = read_methylation("sample.bam", "chr1:1000-2000")
-md = read_methylation("sample.bam", "chr1:1000-2000",
-  group_tag = "HP", max_reads = 100
-)
-md = read_methylation("sample.bam", "chr1:1000-2000",
-  snv = list(position = 1500, ref = "C", alt = "T")
-)
-}
+# A small synthetic modBAM shipped with the package
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+
+# 5mC calls of every read in the region
+md = read_methylation(bam, "chr1:1000-7000")
+md
+head(md$sites)
+
+# 5mC and 5hmC, reads grouped by haplotype (HP tag), downsampled to 40
+# reads; `seed` picks the same reads on every run
+md_hp = read_methylation(bam, "chr1:1000-7000", mod_code = c("m", "h"),
+                         group_tag = "HP", max_reads = 40, seed = 1)
+md_hp
+
+# Group reads by the base they carry at an A>G SNV instead
+md_snv = read_methylation(bam, "chr1:1000-7000",
+                          snv = list(position = 3000, ref = "A", alt = "G"))
+table(md_snv$reads$group)
 
 }

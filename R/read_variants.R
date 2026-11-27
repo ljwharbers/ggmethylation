@@ -26,7 +26,10 @@
 #' and an empty `variant_data` object is returned.
 #'
 #' @param vcf Character. Path to an existing bgzipped VCF file (`.vcf.gz`)
-#'   with a corresponding tabix index (`.vcf.gz.tbi`).
+#'   with a corresponding tabix index (`.vcf.gz.tbi`), or the URL of a remote
+#'   one (`http://`, `https://`, `ftp://`, `s3://` or `gs://`), which is read
+#'   through tabix (whether a scheme is supported depends on the htslib build
+#'   of Rsamtools). A local path must exist; a URL is not checked up front.
 #' @param region Character. Genomic region string, e.g. `"chr1:1000-2000"`.
 #'   The same format accepted by [read_methylation()].
 #' @param bnd_match_tol Single non-negative number. Position tolerance (bp)
@@ -47,11 +50,18 @@
 #'     \item{bnd_match_tol}{The `bnd_match_tol` value.}
 #'   }
 #'
-#' @examples
-#' \dontrun{
-#' vd = read_variants("calls.vcf.gz", "chr1:1000000-1050000")
-#' print(vd)
-#' }
+#' @examplesIf requireNamespace("VariantAnnotation", quietly = TRUE) && requireNamespace("SummarizedExperiment", quietly = TRUE)
+#' # A small VCF shipped with the package: an SNV, a deletion and a breakend
+#' vcf = system.file("extdata", "synthetic.vcf.gz", package = "ggmethylation")
+#' vd = read_variants(vcf, "chr1:1000-7000")
+#' vd
+#' vd$variants
+#'
+#' # Overlay the calls on the reads of the matching BAM
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+#'                       max_reads = 40, seed = 1)
+#' plot_methylation(md, variants = vd)
 #'
 #' @export
 read_variants = function(vcf, region, bnd_match_tol = 50L) {
@@ -70,10 +80,7 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
     )
   }
 
-  .check_string(vcf, "vcf")
-  if (!file.exists(vcf)) {
-    stop("`vcf` file not found: '", vcf, "'.", call. = FALSE)
-  }
+  .check_vcf_path(vcf)
   # Stored as an integer: the bound keeps as.integer() from giving NA
   .check_number(bnd_match_tol, "bnd_match_tol", min = 0,
                 max = .Machine$integer.max)
@@ -197,6 +204,17 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
   rownames(variants_df) = NULL
 
   .new_variant_data(variants_df, region_gr, bnd_match_tol)
+}
+
+# `vcf` must be a single non-empty string naming an existing local file, or a
+# remote URL that tabix reads itself (not checked here, to stay offline).
+.check_vcf_path = function(vcf) {
+  .check_string(vcf, "vcf")
+  is_url = grepl("^(https?|ftp|s3|gs)://", vcf)
+  if (!is_url && !file.exists(vcf)) {
+    stop("`vcf` file not found: '", vcf, "'.", call. = FALSE)
+  }
+  invisible(vcf)
 }
 
 .empty_variants_df = function() {

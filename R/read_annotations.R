@@ -332,24 +332,43 @@ clear_annotation_cache = function() {
 #'     \item{region}{A [GenomicRanges::GRanges] object for the queried region.}
 #'   }
 #'
+#' @examplesIf requireNamespace("GenomicFeatures", quietly = TRUE) && requireNamespace("rtracklayer", quietly = TRUE) && requireNamespace("txdbmaker", quietly = TRUE)
+#' # A tiny GTF with one two-exon gene inside the example BAM's region
+#' gtf = file.path(tempdir(), "example.gtf")
+#' attrs = 'gene_id "G1"; transcript_id "T1"; gene_name "GENEA";'
+#' gtf_line = function(type, start, end) {
+#'   paste("chr1", "example", type, start, end, ".", "+", ".", attrs, sep = "\t")
+#' }
+#' writeLines(c(gtf_line("transcript", 1500, 5000),
+#'              gtf_line("exon", 1500, 2000),
+#'              gtf_line("exon", 3000, 5000)), gtf)
+#'
+#' # The GTF is parsed once and cached for later calls in the session
+#' ann = read_annotations(gtf = gtf, region = "chr1:1000-7000")
+#' ann
+#'
+#' # Add a gene track above the reads
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+#'                       max_reads = 40, seed = 1)
+#' plot_methylation(md, annotations = ann)
+#'
+#' clear_annotation_cache()
+#' unlink(gtf)
 #' @examples
 #' \dontrun{
-#' # Recommended: auto-download UCSC ncbiRefSeq GTF (canonical gene symbols)
+#' # Recommended for real data: download the UCSC ncbiRefSeq GTF on first use
+#' # (canonical gene symbols) and cache it locally
 #' ann = read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
 #' ann = read_annotations(genome = "chm13", region = "chr8:127730000-127760000")
 #'
-#' # Change cache directory (e.g. to scratch on HPC)
+#' # Change the cache directory (e.g. to scratch on HPC)
 #' options(ggmethylation.cache_dir = "/scratch/myproject/gtf_cache")
-#' ann = read_annotations(genome = "hg38", region = "chr8:127730000-127760000")
-#'
-#' # From a local GTF file — parsed once, cached for subsequent calls
-#' ann1 = read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr1:1000000-2000000")
-#' ann2 = read_annotations(gtf = "Homo_sapiens.GRCh38.gtf", region = "chr2:5000000-6000000")
 #'
 #' # From a pre-built TxDb package
 #' library(TxDb.Hsapiens.UCSC.hg38.knownGene)
 #' ann = read_annotations(txdb = TxDb.Hsapiens.UCSC.hg38.knownGene,
-#'                         region = "chr1:1000000-2000000")
+#'                        region = "chr1:1000000-2000000")
 #' }
 #'
 #' @export

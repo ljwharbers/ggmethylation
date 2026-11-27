@@ -1,6 +1,7 @@
 # Annotations / variants read for a different region than the plotted data
-# would silently give an empty track; build_gene_panel() and
-# build_variant_overlay() warn instead.
+# would silently give an empty track; build_gene_panel(),
+# build_variant_overlay() and plot_methylation() (for the annotations'
+# chromosome) warn instead.
 
 .vd_for = function(chrom, start, end) {
   structure(
@@ -86,4 +87,33 @@ test_that("build_gene_panel warns when annotations do not overlap the range", {
     "chr1:20000-30000, which does not overlap the plotted range 1000-7000"
   )
   expect_silent(build_gene_panel(.ann_at(2000L, 3000L), 1000L, 7000L))
+})
+
+test_that("plot_methylation warns when annotations are on another chromosome", {
+  md = suppressWarnings(read_methylation(fixture_bam(), "chr1:1000-7000"))
+  ann = structure(
+    list(
+      transcripts = data.frame(
+        tx_id = 1L, tx_name = "tx1", gene_name = "GENE1",
+        strand = "+", tx_start = 1500L, tx_end = 5000L,
+        stringsAsFactors = FALSE
+      ),
+      exons = data.frame(
+        tx_id = 1L, exon_start = c(1500L, 3000L), exon_end = c(2000L, 5000L),
+        stringsAsFactors = FALSE
+      ),
+      cds  = data.frame(tx_id = integer(0), cds_start = integer(0),
+                        cds_end = integer(0)),
+      utr5 = data.frame(tx_id = integer(0), utr_start = integer(0),
+                        utr_end = integer(0)),
+      utr3 = data.frame(tx_id = integer(0), utr_start = integer(0),
+                        utr_end = integer(0)),
+      region = GenomicRanges::GRanges("chr2", IRanges::IRanges(1000L, 7000L))
+    ),
+    class = "gene_annotations"
+  )
+  expect_warning(plot_methylation(md, annotations = ann), "chromosome 'chr2'")
+
+  ann$region = GenomicRanges::GRanges("chr1", IRanges::IRanges(1000L, 7000L))
+  expect_no_warning(plot_methylation(md, annotations = ann))
 })

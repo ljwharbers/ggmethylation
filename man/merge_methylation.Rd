@@ -38,12 +38,21 @@ either via R's named-argument syntax (\code{merge_methylation(A = md1, B = md2)}
 or via the \code{.list} parameter (\code{merge_methylation(.list = list(A = md1, B = md2))}).
 }
 \examples{
-\dontrun{
-md1 = read_methylation("sample1.bam", "chr1:1000-2000")
-md2 = read_methylation("sample2.bam", "chr1:1000-2000")
-merged = merge_methylation(sampleA = md1, sampleB = md2)
-print(merged)
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+
+# Two random subsets of the example BAM stand in for two samples; in
+# practice each would come from its own BAM file
+md_a = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+                        max_reads = 25, seed = 1)
+md_b = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+                        max_reads = 25, seed = 2)
+merged = merge_methylation(tumour = md_a, normal = md_b)
+merged
+
+# One read panel per sample, one smooth line per sample and haplotype
 plot_methylation(merged)
-}
+
+# The same, built from a list
+merged = merge_methylation(.list = list(tumour = md_a, normal = md_b))
 
 }

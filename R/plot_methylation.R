@@ -224,13 +224,24 @@
 #'   saying so.
 #'
 #' @examples
-#' \dontrun{
-#' md = read_methylation("sample.bam", "chr1:1000-2000")
-#' plot_methylation(md)
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
 #'
-#' md = read_methylation("sample.bam", "chr1:1000-2000", group_tag = "HP")
-#' plot_methylation(md, group_colours = c("1" = "steelblue", "2" = "coral"))
-#' }
+#' # Reads grouped by haplotype: one smooth line per haplotype. Binary calls
+#' # at probability 0.5, plus the difference between the haplotypes
+#' md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+#'                       max_reads = 30, seed = 1)
+#' plot_methylation(md, call_threshold = 0.5, show_delta = TRUE)
+#'
+#' # 5mC and 5hmC: one strip per code on each read, one line type per code
+#' md2 = read_methylation(bam, "chr1:1000-7000", mod_code = c("m", "h"),
+#'                        group_tag = "HP", max_reads = 30, seed = 1)
+#' plot_methylation(md2, group_colours = c("1" = "steelblue", "2" = "coral"))
+#'
+#' @examplesIf requireNamespace("VariantAnnotation", quietly = TRUE) && requireNamespace("SummarizedExperiment", quietly = TRUE)
+#' # Overlay the calls of a VCF (an SNV, a deletion and a breakend)
+#' vcf = system.file("extdata", "synthetic.vcf.gz", package = "ggmethylation")
+#' vd = read_variants(vcf, "chr1:1000-7000")
+#' plot_methylation(md, variants = vd)
 #'
 #' @export
 plot_methylation = function(data, sort_by = NULL,
@@ -283,7 +294,7 @@ plot_methylation = function(data, sort_by = NULL,
   samples = if (multi) data$samples else list(data)
   grouped_samples = !vapply(samples, function(s) is.null(s$group_tag), logical(1L))
   if (isTRUE(colour_strand) && any(grouped_samples)) {
-    message("'colour_strand = TRUE' is ignored when reads are grouped; group colour takes precedence.")
+    message("`colour_strand = TRUE` is ignored when reads are grouped; group colour takes precedence.")
   }
   if (multi && isTRUE(show_delta)) {
     message("`show_delta` is not supported for multi-sample data; ignoring.")

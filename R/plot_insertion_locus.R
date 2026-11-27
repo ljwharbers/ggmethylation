@@ -64,11 +64,15 @@
 #'   or there are too few calls to smooth).
 #'
 #' @examples
-#' \dontrun{
-#' md   = read_methylation("sample.bam", "chr21:34500000-34510000")
-#' loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
-#' plot_insertion_locus(md, loci[1, ])
-#' }
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000", mod_code = c("m", "h"))
+#' loci = list_insertion_loci(md, min_length = 50L)
+#' locus = loci[1, ]
+#'
+#' plot_insertion_locus(md, locus)
+#'
+#' # Wider flanks and binary calls
+#' plot_insertion_locus(md, locus, flank = 400L, call_threshold = 0.5)
 #'
 #' @export
 plot_insertion_locus = function(data, locus,
@@ -82,7 +86,7 @@ plot_insertion_locus = function(data, locus,
                                   call_threshold     = NULL,
                                   call_ambiguous     = NULL) {
   if (!inherits(data, "methylation_data")) {
-    stop("'data' must be a methylation_data object.", call. = FALSE)
+    stop("`data` must be a `methylation_data` object.", call. = FALSE)
   }
   locus_cols = c("locus_id", "anchor_pos", "median_length", "carriers",
                  "noncarriers", "tol_pos")

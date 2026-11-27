@@ -10,8 +10,12 @@ plot_insertion_locus(
   flank = 200L,
   show_smoothed = TRUE,
   include_noncarriers = TRUE,
-  colour_low = .PROB_GRADIENT$low,
-  colour_high = .PROB_GRADIENT$high
+  colour_low = "#BDBDBD",
+  colour_high = "#C62828",
+  colour_ambiguous = "#78909C",
+  line_width = 0.5,
+  call_threshold = NULL,
+  call_ambiguous = NULL
 )
 }
 \arguments{
@@ -33,11 +37,30 @@ when \code{data} holds more than one.}
 locus but do not carry the insertion (default \code{TRUE}). Non-carriers are
 shown below carriers, separated by a line, with an empty middle region.}
 
-\item{colour_low}{Character. Colour for low modification probability
-(default \code{"#BDBDBD"}).}
+\item{colour_low}{Character. Colour for low modification probability, or
+for unmethylated calls when \code{call_threshold} is set (default \code{"#BDBDBD"}).}
 
-\item{colour_high}{Character. Colour for high modification probability
-(default \code{"#C62828"}).}
+\item{colour_high}{Character. Colour for high modification probability, or
+for methylated calls when \code{call_threshold} is set (default \code{"#C62828"}).}
+
+\item{colour_ambiguous}{Character. Colour for ambiguous calls, used when
+\code{call_threshold} and \code{call_ambiguous} are set (default \code{"#78909C"}).}
+
+\item{line_width}{Positive number. Line width of the modification call
+segments in the read panel (default \code{0.5}).}
+
+\item{call_threshold}{\code{NULL} (default) or a number in \verb{[0, 1]}. As in
+\code{\link[=plot_methylation]{plot_methylation()}}: with \code{NULL} calls are coloured by a continuous
+probability gradient and the smoothed panel shows the mean modification
+probability; a number switches to \strong{binary calls} (probability at or
+above the threshold is methylated), coloured with a discrete scale, and
+the smoothed panel then shows the fraction of methylated calls.}
+
+\item{call_ambiguous}{\code{NULL} (default) or a single non-negative number \code{w}.
+As in \code{\link[=plot_methylation]{plot_methylation()}}: calls with probability in the open band
+\verb{(call_threshold - w, call_threshold + w)} (other than exactly
+\code{call_threshold}) are drawn as ambiguous and left out of the methylated
+fraction. Requires \code{call_threshold}.}
 }
 \value{
 A \code{patchwork} object (or a single ggplot when \code{show_smoothed = FALSE}
@@ -61,12 +84,21 @@ beyond \code{W} (carriers with a longer insertion than the median) are not drawn
 such carriers are marked with \code{>} at the right boundary.
 
 Use \code{\link[=list_insertion_loci]{list_insertion_loci()}} to find loci; pass one row of its output.
+
+When \code{data} holds several modification codes, each read bar is
+split into one horizontal strip per code (in the order of
+\code{data$mod_code}, first code on top), as in \code{\link[=plot_methylation]{plot_methylation()}}, and the
+smoothed panel draws one linetype per code.
 }
 \examples{
-\dontrun{
-md   = read_methylation("sample.bam", "chr21:34500000-34510000")
-loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
-plot_insertion_locus(md, loci[1, ])
-}
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+md = read_methylation(bam, "chr1:1000-7000", mod_code = c("m", "h"))
+loci = list_insertion_loci(md, min_length = 50L)
+locus = loci[1, ]
+
+plot_insertion_locus(md, locus)
+
+# Wider flanks and binary calls
+plot_insertion_locus(md, locus, flank = 400L, call_threshold = 0.5)
 
 }

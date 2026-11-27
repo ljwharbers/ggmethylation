@@ -17,3 +17,12 @@ A data.frame with columns \code{read_name}, \code{ref_anchor}, \code{query_pos},
 \description{
 Convenience accessor for \code{methylation_data$insertion_sites}.
 }
+\examples{
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+md = read_methylation(bam, "chr1:1000-7000")
+ins = insertion_sites(md)
+head(ins)
+# Calls per insertion anchor
+table(ins$ref_anchor)
+
+}

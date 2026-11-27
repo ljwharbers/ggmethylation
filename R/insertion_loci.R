@@ -10,10 +10,18 @@
 #'   `ins_offset`, `ins_length`, `mod_prob`, `mod_code`, and optionally
 #'   `group`. Zero rows when no inserted-base modifications were found.
 #'
+#' @examples
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000")
+#' ins = insertion_sites(md)
+#' head(ins)
+#' # Calls per insertion anchor
+#' table(ins$ref_anchor)
+#'
 #' @export
 insertion_sites = function(data) {
   if (!inherits(data, "methylation_data")) {
-    stop("'data' must be a methylation_data object.", call. = FALSE)
+    stop("`data` must be a `methylation_data` object.", call. = FALSE)
   }
   data$insertion_sites
 }
@@ -91,19 +99,23 @@ insertion_sites = function(data) {
 #'   pass the `min_reads` threshold.
 #'
 #' @examples
-#' \dontrun{
-#' md   = read_methylation("sample.bam", "chr21:34500000-34510000")
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000")
+#'
+#' # Insertions of at least 50 bp carried by at least two reads
 #' loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L,
 #'                            min_length = 50L)
-#' loci$locus_id
+#' loci[, c("locus_id", "anchor_pos", "n_carriers", "n_noncarriers",
+#'          "median_length")]
+#' loci$carriers[[1]]
+#'
 #' plot_insertion_locus(md, loci[1, ])
-#' }
 #'
 #' @export
 list_insertion_loci = function(data, tol_pos = 10L, tol_len = 0.20,
                                 min_reads = 2L, min_length = 1L) {
   if (!inherits(data, "methylation_data")) {
-    stop("'data' must be a methylation_data object.", call. = FALSE)
+    stop("`data` must be a `methylation_data` object.", call. = FALSE)
   }
   tol_pos    = .check_number(tol_pos, "tol_pos", min = 0, whole = TRUE)
   tol_len    = .check_number(tol_len, "tol_len", min = 0)

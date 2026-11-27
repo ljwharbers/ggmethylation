@@ -7,8 +7,11 @@
 read_variants(vcf, region, bnd_match_tol = 50L)
 }
 \arguments{
-\item{vcf}{Character. Path to a bgzipped VCF file (\code{.vcf.gz}) with a
-corresponding tabix index (\code{.vcf.gz.tbi}).}
+\item{vcf}{Character. Path to an existing bgzipped VCF file (\code{.vcf.gz})
+with a corresponding tabix index (\code{.vcf.gz.tbi}), or the URL of a remote
+one (\verb{http://}, \verb{https://}, \verb{ftp://}, \verb{s3://} or \verb{gs://}), which is read
+through tabix (whether a scheme is supported depends on the htslib build
+of Rsamtools). A local path must exist; a URL is not checked up front.}
 
 \item{region}{Character. Genomic region string, e.g. \code{"chr1:1000-2000"}.
 The same format accepted by \code{\link[=read_methylation]{read_methylation()}}.}
@@ -62,9 +65,17 @@ present in its tabix index (e.g. \code{"chr1"} vs \code{"1"}), a warning is issu
 and an empty \code{variant_data} object is returned.
 }
 \examples{
-\dontrun{
-vd = read_variants("calls.vcf.gz", "chr1:1000000-1050000")
-print(vd)
-}
+\dontshow{if (requireNamespace("VariantAnnotation", quietly = TRUE) && requireNamespace("SummarizedExperiment", quietly = TRUE)) withAutoprint(\{ # examplesIf}
+# A small VCF shipped with the package: an SNV, a deletion and a breakend
+vcf = system.file("extdata", "synthetic.vcf.gz", package = "ggmethylation")
+vd = read_variants(vcf, "chr1:1000-7000")
+vd
+vd$variants
 
+# Overlay the calls on the reads of the matching BAM
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+                      max_reads = 40, seed = 1)
+plot_methylation(md, variants = vd)
+\dontshow{\}) # examplesIf}
 }

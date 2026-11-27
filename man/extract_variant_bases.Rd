@@ -25,8 +25,14 @@ A data.frame with columns \code{read_name} (character), \code{position}
 \code{lane} (integer).
 }
 \description{
-For each combination of (read, variant position) where the read spans the
-variant, walks the CIGAR string to find the query base and classifies it as
-\code{"ref"}, \code{"alt"}, \code{"del"} (position falls in a deletion), or \code{"other"}.
+For each combination of (read, variant position) where the read's clipped
+span (\code{start}..\code{end}) contains the variant, maps the position through the
+read's CIGAR to its query base and classifies it as \code{"ref"}, \code{"alt"},
+\code{"del"} (no aligned query base there: a deletion, skip or uncovered
+position), or \code{"other"}. Bases are compared case-insensitively; positions
+past the end of the stored sequence are skipped. Each read's CIGAR is
+decomposed once and all its variants are mapped in one vectorised step.
+Rows are ordered by read (in \code{reads} order), then by variant (in \code{variants}
+order).
 }
 \keyword{internal}

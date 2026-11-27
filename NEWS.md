@@ -1,3 +1,130 @@
+# ggmethylation 0.6.0
+
+A maintenance release: hard-clipped reads no longer get misplaced calls,
+every exported function checks its arguments and names the offending one,
+`plot_insertion_locus()` draws calls the way `plot_methylation()` does, and
+the VCF overlay is fast enough for a few hundred variants.
+
+## Breaking changes
+
+- A hard-clipped alignment (CIGAR `H`) without an `MN` tag keeps no
+  modification calls and is counted in the malformed-tags warning, which now
+  says how many of the skipped reads were hard-clipped without `MN`. Without
+  `MN` there is no way to tell whether MM/ML were rewritten for the clipped
+  SEQ; when they were not, calls landed on the wrong bases without a warning.
+  A hard-clipped record whose `MN` equals its SEQ length is still read. This
+  is stricter than htslib, which accepts such records. minimap2 hard-clips
+  supplementary alignments unless run with `-Y`, so supplementary reads from
+  a pipeline that does not write `MN` lose their calls.
+- `read_methylation()` validates its arguments: `bam` must be one file path,
+  `group_tag` `NULL` or one two-character SAM tag name, `per_group_downsample`
+  and `drop_na_group` `TRUE` or `FALSE`, and `max_reads` a whole number >= 1
+  or `Inf` (`2.5` was accepted). These gave R or Rsamtools errors before.
+- A `region` on a contig that is not in the BAM header is an error that names
+  the contig, lists the header's contigs and hints at `chr1` vs `1` (was a raw
+  Rsamtools error). A region without reads still gives a warning and an empty
+  object.
+- `summary()` on a `methylation_data` or `multi_methylation_data` object no
+  longer prints as a side effect. It returns an object of class
+  `summary.methylation_data` / `summary.multi_methylation_data` that prints
+  the same report, so console use looks as before, but `s = summary(md)` and
+  calls inside functions are silent.
+- `plot_methylation()` checks its colour and layout arguments before drawing.
+  `colour_low`, `colour_high` and `colour_ambiguous` must each be a single
+  valid colour (was ggplot2's "Unknown colour name"), and `strand_colours`
+  must hold valid colours when `colour_strand = TRUE` (was a render-time
+  error). `panel_heights` must be `NULL` or finite positive numbers
+  (`c(-1, 1)` was accepted). `sort_by` must be `NULL` or a non-empty
+  character vector without `NA`s.
+- `write_methylation()` validates `prefix`, `reads`, `sites` and `gzip`
+  (`reads = NA` failed with "missing value where TRUE/FALSE needed");
+  `read_annotations()` validates `collapse_transcripts`; `read_variants()`
+  checks that `vcf` is one path to an existing file (or a URL) and rejects
+  `bnd_match_tol` beyond the integer range.
+
+## New features
+
+- `read_methylation(include_duplicates = TRUE)` and `include_qc_fail = TRUE`
+  read alignments flagged as duplicates (0x400) or QC-fail (0x200), which are
+  skipped by default. Secondary alignments are never read.
+- `plot_insertion_locus()` gains `call_threshold`, `call_ambiguous`,
+  `colour_ambiguous` and `line_width`, with the same meaning and checks as in
+  `plot_methylation()`. With `call_threshold` set, calls are drawn as
+  methylated / unmethylated / ambiguous and the smoothed panel shows the
+  fraction of methylated calls.
+- `write_methylation()` accepts a `multi_methylation_data` object (from
+  `merge_methylation()`) and writes one set of files per sample, named
+  `<prefix>_<sample>_reads.tsv` etc. Sample names containing a path separator
+  are an error.
+- The help pages have examples that run on the shipped synthetic modBAM and
+  VCF instead of `\dontrun{}` blocks with made-up file names.
+
+## Behaviour changes
+
+- `plot_insertion_locus()` draws modification calls the same way as
+  `plot_methylation()`. With several modification codes each read bar is
+  split into one strip per code, named on the y axis, so calls of different
+  codes at the same base no longer hide each other. The read-panel legend
+  title is now "Modification probability", and each code gets the same
+  linetype in the smoothed panel as in `plot_methylation()` (the third and
+  fourth codes were swapped).
+- `print()` and `summary()` of a `methylation_data` object report the length
+  of each read's full alignment (`bam_end - bam_pos + 1`), labelled "aligned
+  length". They used the span clipped to the queried region, which
+  understated every read longer than the window. An object without reads
+  says so instead of printing `min=NA, median=NA, max=NA`.
+- The "No reads found" warning of `read_methylation()` names only the kinds
+  of alignment that were skipped.
+- The help pages of `plot_methylation()` and `plot_insertion_locus()` show
+  the default colours (`"#BDBDBD"`, `"#C62828"`, ...) instead of the names of
+  internal constants.
+
+## Bug fixes
+
+- `read_annotations()` on a GTF without `transcript` rows (e.g. a UCSC Table
+  Browser export) gave `NA` gene names, and with `collapse_transcripts = TRUE`
+  an empty gene track. Gene names are now taken from the exon rows; a
+  transcript without a gene name falls back to its transcript name and is
+  kept when collapsing.
+- `read_annotations()` skips the AnnotationDbi gene-name lookup when
+  AnnotationDbi (a suggested package) is not installed.
+- A VCF breakend without a parseable mate (a single breakend, `<BND>`) is
+  labelled "⋈" instead of "⋈ NA:NA".
+- The SNV overlay skips reads whose stored sequence or CIGAR is `NA` (was an
+  error).
+
+## Performance
+
+- The VCF overlay maps all variants of a read in one step: 200 reads x 300
+  SNVs take 0.2 s instead of 13 s, and the SV overlay pairs reads and SVs
+  without a data frame per pair.
+- Read bars are split at deletions and turned into polygons for all reads at
+  once (about 25% faster plot build at ~1400 reads; output unchanged).
+
+## Internal
+
+- One set of argument validators (`R/checks.R`) replaces three local copies;
+  error messages name the argument in backticks.
+- `R/plot_methylation.R` is split: the smooth and delta panels are in
+  `R/smooth_panel.R`, the consensus-deletion breaks in `R/deletion_breaks.R`.
+- Removed the unused internal `seq_to_ref()` and `complement_base()`, and the
+  tracked scratch files `test2.R`, `showcase.R` and `docs/superpowers/`.
+  `tools/diagnose_site_coverage.R` defaults to the shipped fixture.
+- Tests cover `panel_heights`, `variants`, the colour arguments and custom
+  `sort_by` in `plot_methylation()`, `strand_filter` and
+  `per_group_downsample` in `read_methylation()`, `collapse_transcripts`, and
+  multi-sample `summary()` and export.
+- CI runs R CMD check on Linux (release and oldrel-1) and macOS.
+
+## Known limitations
+
+- `$sites` does not record which strand a modification call is on
+  (`C+m` vs `G-m`).
+- Secondary alignments are never read.
+- An MM entry without a `?` or `.` flag is treated like `?` (unlisted bases
+  are not reported), deliberately deviating from the SAM specification,
+  because older basecallers that write no flag list only CpG sites.
+
 # ggmethylation 0.5.0
 
 A correctness release from a full audit: MM/ML parsing follows the SAM

@@ -62,7 +62,8 @@ meth = read_methylation(
 plot_methylation(meth)
 ```
 
-Secondary, duplicate and QC-fail alignments are skipped; supplementary
+Secondary, duplicate and QC-fail alignments are skipped (`include_duplicates`
+and `include_qc_fail` read the latter two); supplementary
 alignments are kept.
 
 ### Without grouping
