@@ -183,8 +183,8 @@ parse_mm_ml = function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos, mn = N
   # full read (then every call would land on the wrong base), so the record
   # is not trusted.
   if (!has_mn && isTRUE(grepl("H", cigar, fixed = TRUE))) {
-    .mm_malformed("CIGAR ", cigar, " is hard-clipped and there is no MN tag to ",
-                  "confirm that MM/ML describe the clipped SEQ")
+    .mm_malformed("alignment is hard-clipped and has no MN tag to confirm that ",
+                  "MM/ML describe the clipped SEQ")
   }
   if (seq_len == 0L) {
     if (any(vapply(entries[wanted], function(e) length(e$deltas) > 0L, logical(1L)))) {

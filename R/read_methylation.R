@@ -553,7 +553,7 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   }
 
   if (length(skipped) > 0L) {
-    n_hard = sum(grepl("is hard-clipped and there is no MN tag", skipped, fixed = TRUE))
+    n_hard = sum(grepl("is hard-clipped and has no MN tag", skipped, fixed = TRUE))
     warning(sprintf(
       "Skipped the modification calls of %d read(s) with malformed or inconsistent MM/ML tags%s (e.g. %s: %s).",
       length(skipped),
