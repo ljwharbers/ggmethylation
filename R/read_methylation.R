@@ -4,8 +4,9 @@
 #' a given genomic region. This is the main entry point for data extraction
 #' (Layer 1 of the package).
 #'
-#' Secondary (FLAG 0x100), QC-fail (0x200) and duplicate (0x400) alignments
-#' are never read. Supplementary alignments (0x800) are kept.
+#' Secondary alignments (FLAG 0x100) are never read. QC-fail (0x200) and
+#' duplicate (0x400) alignments are skipped unless `include_qc_fail` or
+#' `include_duplicates` is `TRUE`. Supplementary alignments (0x800) are kept.
 #'
 #' MM/ML tags are parsed as described in the SAM specification (see the
 #' Details of the internal `parse_mm_ml()`), with one deliberate deviation:
@@ -63,6 +64,12 @@
 #'   where the tag is absent (i.e. group is `NA`) are removed before
 #'   downsampling. Default `FALSE` preserves the existing behaviour of keeping
 #'   unphased reads in the data.
+#' @param include_duplicates Logical. When `TRUE`, alignments flagged as PCR
+#'   or optical duplicates (FLAG 0x400) are read too. Default `FALSE` skips
+#'   them.
+#' @param include_qc_fail Logical. When `TRUE`, alignments flagged as not
+#'   passing quality controls (FLAG 0x200) are read too. Default `FALSE`
+#'   skips them.
 #' @param seed `NULL` (default) or a single number. When given, downsampling
 #'   uses `set.seed(seed)` so the same reads are picked on every call, and the
 #'   caller's random number stream is restored afterwards. With `NULL`,
@@ -124,6 +131,8 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
                              strand_filter = c("+", "-"),
                              min_read_length = 0L,
                              drop_na_group = FALSE,
+                             include_duplicates = FALSE,
+                             include_qc_fail = FALSE,
                              seed = NULL) {
   # --- 1. Validate inputs ---
   mod_code = as.character(mod_code)          # coerce in case of factor
@@ -152,6 +161,8 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   .check_number(min_read_length, "min_read_length", min = 0)
   .check_flag(per_group_downsample, "per_group_downsample")
   .check_flag(drop_na_group, "drop_na_group")
+  .check_flag(include_duplicates, "include_duplicates")
+  .check_flag(include_qc_fail, "include_qc_fail")
   if (!is.null(seed)) .check_number(seed, "seed", min = -Inf)
   min_mapq = as.integer(min_mapq)
   min_read_length = as.integer(min_read_length)
@@ -163,20 +174,30 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   result_tag = if (is.null(snv)) group_tag else "SNV"
 
   # --- 2. Query the BAM ---
-  # Secondary, QC-fail and duplicate alignments are skipped; supplementary
-  # alignments are kept (the package draws them and their SA partners).
+  # Secondary alignments are always skipped, QC-fail and duplicate ones unless
+  # asked for (NA = no filter on that flag); supplementary alignments are kept
+  # (the package draws them and their SA partners).
   param = Rsamtools::ScanBamParam(
     which = gr,
     what  = c("qname", "flag", "pos", "cigar", "strand", "seq", "mapq"),
     tag   = unique(c("MM", "ML", "MN", "Mm", "Ml", "SA", group_tag)),
-    flag  = Rsamtools::scanBamFlag(isSecondaryAlignment = FALSE,
-                                   isNotPassingQualityControls = FALSE,
-                                   isDuplicate = FALSE)
+    flag  = Rsamtools::scanBamFlag(
+      isSecondaryAlignment        = FALSE,
+      isNotPassingQualityControls = if (include_qc_fail) NA else FALSE,
+      isDuplicate                 = if (include_duplicates) NA else FALSE
+    )
   )
   bam_data = Rsamtools::scanBam(bam, param = param)[[1]]
   if (length(bam_data$qname) == 0L) {
-    warning("No reads found in region '", region, "' (secondary, QC-fail and ",
-            "duplicate alignments are not counted).", call. = FALSE)
+    # e.g. "secondary, QC-fail and duplicate" or just "secondary"
+    kinds = c("secondary", if (!include_qc_fail) "QC-fail",
+              if (!include_duplicates) "duplicate")
+    n_kinds = length(kinds)
+    if (n_kinds > 1L) {
+      kinds = paste(paste(kinds[-n_kinds], collapse = ", "), "and", kinds[n_kinds])
+    }
+    warning("No reads found in region '", region, "' (", kinds,
+            " alignments are not counted).", call. = FALSE)
     return(empty_methylation_data(gr, mod_code, result_tag, snv$position))
   }
   .check_mm_tags(bam_data, mod_code)

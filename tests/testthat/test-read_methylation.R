@@ -192,17 +192,57 @@ collect_warnings = function(expr) {
 seq10 = "ACGTACGTAC"
 mm3 = c("MM:Z:C+m?,0,0,0;", "ML:B:C,10,20,30")
 
-test_that("secondary, duplicate and QC-fail alignments are excluded", {
-  bam = make_bam(c(
+flag_test_bam = function() {
+  make_bam(c(
     sam_record("primary", 0, 100, "10M", seq10, mm3),
     sam_record("secondary", 256, 100, "10M", seq10, mm3),
     sam_record("qcfail", 512, 110, "10M", seq10, mm3),
     sam_record("duplicate", 1024, 120, "10M", seq10, mm3),
+    sam_record("qcfail_dup", 512 + 1024, 130, "10M", seq10, mm3),
+    sam_record("secondary_dup", 256 + 1024, 140, "10M", seq10, mm3),
     sam_record("supplementary", 2048, 150, "10M", seq10, mm3)
   ))
+}
+
+test_that("secondary, duplicate and QC-fail alignments are excluded", {
+  bam = flag_test_bam()
   md = read_methylation(bam, "chr1:100-200")
   expect_setequal(md$reads$read_name, c("primary", "supplementary"))
   expect_equal(sort(md$sites$position), c(101L, 105L, 109L, 151L, 155L, 159L))
+})
+
+test_that("include_duplicates and include_qc_fail read the flagged alignments", {
+  bam = flag_test_bam()
+  dup = read_methylation(bam, "chr1:100-200", include_duplicates = TRUE)
+  expect_setequal(dup$reads$read_name, c("primary", "duplicate", "supplementary"))
+  expect_true(all(c(121L, 125L, 129L) %in% dup$sites$position))
+
+  qc = read_methylation(bam, "chr1:100-200", include_qc_fail = TRUE)
+  expect_setequal(qc$reads$read_name, c("primary", "qcfail", "supplementary"))
+
+  both = read_methylation(bam, "chr1:100-200", include_duplicates = TRUE,
+                          include_qc_fail = TRUE)
+  # Secondary alignments stay excluded, also when flagged as duplicates.
+  expect_setequal(both$reads$read_name,
+                  c("primary", "qcfail", "duplicate", "qcfail_dup", "supplementary"))
+
+  expect_error(read_methylation(bam, "chr1:100-200", include_duplicates = NA),
+               "`include_duplicates` must be TRUE or FALSE")
+  expect_error(read_methylation(bam, "chr1:100-200", include_qc_fail = "no"),
+               "`include_qc_fail` must be TRUE or FALSE")
+})
+
+test_that("the no-reads warning names only the alignment kinds that were skipped", {
+  bam = make_bam(sam_record("dup_only", 1024, 100, "10M", seq10, mm3))
+  expect_warning(read_methylation(bam, "chr1:100-200"),
+                 "secondary, QC-fail and duplicate alignments are not counted")
+  expect_warning(read_methylation(bam, "chr1:500-600", include_duplicates = TRUE),
+                 "\\(secondary and QC-fail alignments are not counted\\)")
+  expect_warning(read_methylation(bam, "chr1:500-600", include_duplicates = TRUE,
+                                  include_qc_fail = TRUE),
+                 "\\(secondary alignments are not counted\\)")
+  md = read_methylation(bam, "chr1:100-200", include_duplicates = TRUE)
+  expect_equal(md$reads$read_name, "dup_only")
 })
 
 test_that("reads with malformed MM/ML are skipped with one aggregated warning", {
