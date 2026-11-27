@@ -287,18 +287,6 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   list(position = position, ref = snv$ref, alt = snv$alt)
 }
 
-# Stop unless `x` is a single non-missing number >= `min` (finite unless
-# `allow_inf`).
-.check_number = function(x, name, min = 0, allow_inf = FALSE) {
-  ok = is.numeric(x) && length(x) == 1L && !is.na(x) &&
-    (allow_inf || is.finite(x)) && x >= min
-  if (!ok) {
-    stop("'", name, "' must be a single number",
-         if (is.finite(min)) paste0(" >= ", min) else "", ".", call. = FALSE)
-  }
-  invisible(x)
-}
-
 # Modification codes named in a character vector of MM tags (single-letter
 # codes split apart; a numeric ChEBI code kept whole).
 .mm_codes = function(mm) {

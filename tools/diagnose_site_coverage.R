@@ -17,8 +17,8 @@ library(Rsamtools)
 
 # ---- Configuration -----------------------------------------------------------
 
-BAM_PATH = "/staging/leuven/stg_00096/home/lharbers/repositories/ggmethylation/data/PTCL8_PB_tumor_chr21_22_subset.bam"
-REGION   = "chr22:23500000-23503000"
+BAM_PATH = "inst/extdata/synthetic.bam"   # the shipped fixture (run from the repo root)
+REGION   = "chr1:1000-7000"
 MOD_CODES = c("m")  # extend with "a" etc. if present
 OUT_TSV  = file.path(tempdir(), "site_coverage_classification.tsv")
 
