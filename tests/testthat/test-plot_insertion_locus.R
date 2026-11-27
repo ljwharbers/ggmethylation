@@ -184,6 +184,111 @@ test_that("plot_insertion_locus() validates its arguments (I7)", {
   }
 })
 
+# --- Calls drawn as in plot_methylation() ---
+
+test_that("calls of different codes occupy disjoint strips of a lane", {
+  md = pil_md(codes = c("m", "h"))
+  md$sites$mod_prob = ifelse(md$sites$mod_code == "m", 1, 0)
+  p = plot_insertion_locus(md, pil_locus(md), show_smoothed = FALSE)
+  seg = layer_of(p, "GeomSegment")
+  # Flank columns only (inserted-base calls are all code "m" here).
+  seg = seg[seg$x %in% c(990, 999, 1050, 1060), ]
+  seg$code = ifelse(seg$colour == "#C62828", "m", "h")
+  expect_setequal(unique(seg$code), c("m", "h"))
+  # Lane of each segment: its midpoint, rounded (sign-agnostic for the
+  # reversed y scale).
+  seg$lane = round(abs(seg$y + seg$yend) / 2)
+  for (ln in unique(seg$lane)) {
+    s = seg[seg$lane == ln, ]
+    lo = function(cd) range(abs(c(s$y[s$code == cd], s$yend[s$code == cd])))
+    rm = lo("m")
+    rh = lo("h")
+    expect_true(rm[2L] <= rh[1L] || rh[2L] <= rm[1L])
+  }
+  # Two calls at one column of one read no longer overplot each other.
+  expect_false(any(duplicated(seg[, c("x", "y", "yend")])))
+  # The strips are named on the y axis, as in plot_methylation().
+  expect_match(p$labels$y, "m, h", fixed = TRUE)
+})
+
+test_that("call_threshold gives binary calls and a fraction-methylated panel", {
+  md = pil_md()
+  md$sites$mod_prob = rep(c(0.9, 0.1), length.out = nrow(md$sites))
+  md$insertion_sites$mod_prob = 0.9
+  locus = pil_locus(md)
+  p = plot_insertion_locus(md, locus, call_threshold = 0.5)
+  sc = p[[1L]]$scales$get_scales("colour")
+  expect_s3_class(sc, "ScaleDiscrete")
+  seg = layer_of(p[[1L]], "GeomSegment")
+  expect_setequal(unique(seg$colour), c("#C62828", "#BDBDBD"))
+
+  sm = layer_of(p[[2L]], "GeomLine")
+  sm = sm[!is.na(sm$y), ]
+  expect_true(all(sm$y >= 0 & sm$y <= 1))
+  # Inserted bases are all called methylated: their line is exactly 1.
+  mid = sm[sm$x >= 1000 & sm$x <= 1049, ]
+  expect_true(nrow(mid) > 0L && all(abs(mid$y - 1) < 1e-8))
+  expect_equal(p[[2L]]$scales$get_scales("y")$name, "Fraction methylated")
+
+  # The continuous panel averages the raw probabilities instead.
+  p_cont = plot_insertion_locus(md, locus)
+  expect_equal(p_cont[[2L]]$scales$get_scales("y")$name, "Mean mod. prob.")
+  expect_s3_class(p_cont[[1L]]$scales$get_scales("colour"), "ScaleContinuous")
+
+  # Ambiguous calls get their own colour.
+  md$sites$mod_prob[1:4] = 0.52
+  p_amb = plot_insertion_locus(md, locus, call_threshold = 0.5,
+                               call_ambiguous = 0.1, colour_ambiguous = "black",
+                               show_smoothed = FALSE)
+  expect_true("black" %in% layer_of(p_amb, "GeomSegment")$colour)
+})
+
+test_that("smooth-panel linetypes follow .linetype_values()", {
+  codes = c("m", "h", "a")
+  md = pil_md(codes = codes)
+  md$sites$mod_prob = unname(c(m = 0.9, h = 0.5, a = 0.1)[md$sites$mod_code])
+  md$insertion_sites$mod_prob = 0.9  # inserted-base calls are code "m"
+  p =plot_insertion_locus(md, pil_locus(md))
+  sm = layer_of(p[[2L]], "GeomLine")
+  sm = sm[!is.na(sm$y), ]
+  code_of_y = c("0.9" = "m", "0.5" = "h", "0.1" = "a")
+  sm$code = code_of_y[format(round(sm$y, 1))]
+  expected = .linetype_values(codes, "modification codes")
+  got = vapply(codes, function(cd) unique(sm$linetype[sm$code == cd]), character(1L))
+  expect_equal(got, expected[codes])
+})
+
+test_that("colour defaults are written out and match .PROB_GRADIENT", {
+  f = formals(plot_insertion_locus)
+  expect_type(f$colour_low, "character")
+  expect_type(f$colour_high, "character")
+  expect_equal(f$colour_low, .PROB_GRADIENT$low)
+  expect_equal(f$colour_high, .PROB_GRADIENT$high)
+})
+
+test_that("plot_insertion_locus() validates the call and colour arguments", {
+  md = pil_md()
+  locus = pil_locus(md)
+  for (bad in list(-0.1, 1.5, NA, "a", c(0.2, 0.4))) {
+    expect_error(plot_insertion_locus(md, locus, call_threshold = bad),
+                 "`call_threshold`")
+  }
+  expect_error(plot_insertion_locus(md, locus, call_ambiguous = 0.1),
+               "`call_ambiguous`.*`call_threshold`")
+  for (bad in list(-0.1, NA, "a")) {
+    expect_error(plot_insertion_locus(md, locus, call_threshold = 0.5,
+                                      call_ambiguous = bad), "`call_ambiguous`")
+  }
+  for (bad in list(0, -1, NA, "a")) {
+    expect_error(plot_insertion_locus(md, locus, line_width = bad), "`line_width`")
+  }
+  expect_error(plot_insertion_locus(md, locus, colour_low = "notacolour"), "`colour_low`")
+  expect_error(plot_insertion_locus(md, locus, colour_high = c("red", "blue")),
+               "`colour_high`")
+  expect_error(plot_insertion_locus(md, locus, colour_ambiguous = NA_character_),
+               "`colour_ambiguous`")
+})
+
 test_that("list_insertion_loci() validates its arguments (I7)", {
   md = pil_md()
   for (bad in list(NA, "a", -1, c(1, 2))) {

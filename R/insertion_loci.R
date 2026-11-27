@@ -105,10 +105,10 @@ list_insertion_loci = function(data, tol_pos = 10L, tol_len = 0.20,
   if (!inherits(data, "methylation_data")) {
     stop("'data' must be a methylation_data object.", call. = FALSE)
   }
-  tol_pos    = .ins_check_number(tol_pos, "tol_pos", min = 0, whole = TRUE)
-  tol_len    = .ins_check_number(tol_len, "tol_len", min = 0)
-  min_reads  = .ins_check_number(min_reads, "min_reads", min = 1, whole = TRUE)
-  min_length = .ins_check_number(min_length, "min_length", min = 1, whole = TRUE)
+  tol_pos    = .check_number(tol_pos, "tol_pos", min = 0, whole = TRUE)
+  tol_len    = .check_number(tol_len, "tol_len", min = 0)
+  min_reads  = .check_number(min_reads, "min_reads", min = 1, whole = TRUE)
+  min_length = .check_number(min_length, "min_length", min = 1, whole = TRUE)
 
   cf = data$cigar_features
   ins = cf[cf$type == "I" & !is.na(cf$ref_start) & cf$length >= min_length, ,
@@ -270,24 +270,4 @@ list_insertion_loci = function(data, tol_pos = 10L, tol_len = 0.20,
   keep[keep] = ins_sites$ins_length[keep] ==
     carrier_len[ins_sites$read_name[keep]]
   ins_sites[keep, , drop = FALSE]
-}
-
-# Validate a length-1 finite number >= `min` (optionally a whole number) and
-# return it (as integer when `whole`).
-.ins_check_number = function(x, name, min = -Inf, whole = FALSE) {
-  ok = is.numeric(x) && length(x) == 1L && !is.na(x) && is.finite(x) && x >= min
-  if (ok && whole) ok = x == round(x)
-  if (!ok) {
-    what = if (whole) "a single whole number" else "a single number"
-    stop(sprintf("`%s` must be %s >= %s.", name, what, format(min)), call. = FALSE)
-  }
-  if (whole) as.integer(x) else x
-}
-
-# Validate a single TRUE/FALSE.
-.ins_check_flag = function(x, name) {
-  if (!is.logical(x) || length(x) != 1L || is.na(x)) {
-    stop(sprintf("`%s` must be TRUE or FALSE.", name), call. = FALSE)
-  }
-  x
 }
