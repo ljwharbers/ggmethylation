@@ -18,12 +18,13 @@ layer_geoms = function(p) {
   vapply(p$layers, function(l) class(l$geom)[1L], character(1L))
 }
 
-# One row per read of the read panel's bar layer (layer 1): name, span, strand,
-# group and lane, in the order the reads were packed.
+# One row per bar of the read panel's bar layer (layer 1; one bar per
+# alignment with show_cigar = FALSE): name, span, strand, group and lane, in
+# the order the reads were packed.
 packed_reads = function(rp) {
   d = rp$layers[[1L]]$data
   d = d[!startsWith(d$polygon_id, ".legend_"), , drop = FALSE]
-  d[!duplicated(d$read_name), intersect(c("read_name", "start", "end", "strand",
+  d[!duplicated(d$polygon_id), intersect(c("read_name", "start", "end", "strand",
                                           "group", "lane"), names(d))]
 }
 
