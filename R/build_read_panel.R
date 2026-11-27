@@ -3,55 +3,62 @@
 # Split reads into non-deletion sub-segments for IGV-style gap display.
 # Returns a data.frame with the same columns as `reads` but potentially more
 # rows: each row is a contiguous non-deleted stretch of a read.
+#
+# Per read, with its deletions sorted by ref_start and each clipped to the read
+# (d_start = max(ref_start, start), d_end = min(ref_end, end)): a segment runs
+# from the read start, or from the previous deletion's d_end + 1, up to
+# d_start - 1 when that is not empty, and a last one from the last d_end + 1
+# to the read end. A read without any segment is kept whole. Vectorised over
+# all deletions at once; segments are collected in typed pieces so that the
+# start/end column types are the same as row-binding the segments would give.
 .split_reads_on_deletions = function(reads, del_df) {
   if (is.null(del_df) || nrow(del_df) == 0L) return(reads)
 
-  result_list = vector("list", nrow(reads))
+  # Deletion rows of every read row, matched by name (each alignment of a read
+  # gets all of that read's deletions), in ref_start order within a read.
+  per_read = split(seq_len(nrow(del_df)), del_df$read_name)[as.character(reads$read_name)]
+  ri = rep(seq_len(nrow(reads)), lengths(per_read))
+  di = unlist(per_read, use.names = FALSE)
+  o  = order(ri, del_df$ref_start[di])
+  ri = ri[o]
+  di = di[o]
 
-  for (i in seq_len(nrow(reads))) {
-    rn      = reads$read_name[i]
-    r_start = reads$start[i]
-    r_end   = reads$end[i]
+  r_start = reads$start[ri]
+  r_end   = reads$end[ri]
+  d_start = pmax(del_df$ref_start[di], r_start)
+  d_end   = pmin(del_df$ref_end[di], r_end)
+  after   = d_end + 1L
+  first   = !duplicated(ri)
+  last    = !duplicated(ri, fromLast = TRUE)
+  prev    = seq_along(ri) - 1L  # index of the previous deletion (if !first)
 
-    rdels = del_df[del_df$read_name == rn, , drop = FALSE]
+  before = r_start
+  before[!first] = after[prev[!first]]
+  gap      = d_start > before        # a segment before this deletion
+  has_tail = last & after <= r_end   # a segment after the read's last deletion
+  b1 = which(gap & first)
+  b2 = which(gap & !first)
+  cl = which(has_tail)
+  split_rows = unique(ri[c(b1, b2, cl)])
+  whole = setdiff(seq_len(nrow(reads)), split_rows)
 
-    if (nrow(rdels) == 0L) {
-      result_list[[i]] = reads[i, , drop = FALSE]
-      next
-    }
+  # Order within a read: segments by deletion, then the last one.
+  pos = seq_along(ri)
+  pieces = list(
+    list(i = whole,  k = rep(0, length(whole)),
+         start = reads$start[whole], end = reads$end[whole]),
+    list(i = ri[b1], k = pos[b1], start = r_start[b1],        end = d_start[b1] - 1L),
+    list(i = ri[b2], k = pos[b2], start = after[prev[b2]],    end = d_start[b2] - 1L),
+    list(i = ri[cl], k = rep(Inf, length(cl)), start = after[cl], end = r_end[cl])
+  )
+  pieces = Filter(function(p) length(p$i) > 0L, pieces)
+  i   = unlist(lapply(pieces, `[[`, "i"))
+  k   = unlist(lapply(pieces, `[[`, "k"))
+  out_order = order(i, k)
 
-    rdels = rdels[order(rdels$ref_start), , drop = FALSE]
-
-    segments = list()
-    cur_start = r_start
-
-    for (d in seq_len(nrow(rdels))) {
-      d_start = max(rdels$ref_start[d], r_start)
-      d_end   = min(rdels$ref_end[d],   r_end)
-
-      if (d_start > cur_start) {
-        seg        = reads[i, , drop = FALSE]
-        seg$start  = cur_start
-        seg$end    = d_start - 1L
-        segments   = c(segments, list(seg))
-      }
-      cur_start = d_end + 1L
-    }
-
-    if (cur_start <= r_end) {
-      seg        = reads[i, , drop = FALSE]
-      seg$start  = cur_start
-      seg$end    = r_end
-      segments   = c(segments, list(seg))
-    }
-
-    result_list[[i]] = if (length(segments) > 0L)
-      do.call(rbind, segments)
-    else
-      reads[i, , drop = FALSE]
-  }
-
-  out = do.call(rbind, result_list)
+  out = reads[i[out_order], , drop = FALSE]
+  out$start = do.call(c, lapply(pieces, `[[`, "start"))[out_order]
+  out$end   = do.call(c, lapply(pieces, `[[`, "end"))[out_order]
   rownames(out) = NULL
   out
 }
@@ -79,54 +86,44 @@
     ))
   }
 
-  poly_list = vector("list", nrow(reads))
+  n  = nrow(reads)
+  s  = reads$start
+  e  = reads$end
+  ln = reads$lane
+  hh = half_height
+  is_first = if ("is_first_segment" %in% names(reads)) reads$is_first_segment else rep(TRUE, n)
+  is_last  = if ("is_last_segment" %in% names(reads)) reads$is_last_segment else rep(TRUE, n)
+  aw = pmin(arrow_w, e - s)
 
-  for (i in seq_len(nrow(reads))) {
-    r = reads[i, , drop = FALSE]
-    s   = r$start
-    e   = r$end
-    ln  = r$lane
-    hh  = half_height
-    aw  = arrow_w
-    st  = r$strand
+  # Which segments get an arrowhead
+  right = (reads$strand == "+" & is_last) %in% TRUE
+  left  = !right & (reads$strand == "-" & is_first) %in% TRUE
+  arrow = right | left
 
-    is_first = if ("is_first_segment" %in% names(r)) r$is_first_segment else TRUE
-    is_last  = if ("is_last_segment" %in% names(r)) r$is_last_segment else TRUE
+  # One row of vertices per read: right arrow (5), left arrow (5), or plain
+  # rectangle (the first 4).
+  lo = ln - hh
+  hi = ln + hh
+  xs = cbind(s, e, e, s, s)
+  ys = cbind(lo, lo, hi, hi, hi)
+  xs[right, ] = cbind(s, e, e + aw, e, s)[right, ]
+  ys[right, ] = cbind(lo, lo, ln, hi, hi)[right, ]
+  xs[left, ]  = cbind(s - aw, s, e, e, s)[left, ]
+  ys[left, ]  = cbind(ln, lo, lo, hi, hi)[left, ]
+  n_verts = ifelse(arrow, 5L, 4L)
+  keep = t(col(xs) <= n_verts)
 
-    read_len = e - s
-    aw = min(aw, read_len)
+  # Vertex order is read by read; types as c() of each read's vertices gives.
+  x = t(xs)[keep]
+  storage.mode(x) = typeof(c(s[0L], e[0L], if (any(arrow)) aw[0L]))
+  y = t(ys)[keep]
+  storage.mode(y) = typeof(c(ln[0L], lo[0L]))
 
-    # Determine whether this segment gets an arrowhead
-    draw_right_arrow = (st == "+") && is_last
-    draw_left_arrow  = (st == "-") && is_first
-
-    if (draw_right_arrow) {
-      # Arrow pointing right: 5 vertices
-      xs = c(s, e, e + aw, e, s)
-      ys = c(ln - hh, ln - hh, ln, ln + hh, ln + hh)
-    } else if (draw_left_arrow) {
-      # Arrow pointing left: 5 vertices
-      xs = c(s - aw, s, e, e, s)
-      ys = c(ln, ln - hh, ln - hh, ln + hh, ln + hh)
-    } else {
-      # Plain rectangle: 4 vertices
-      xs = c(s, e, e, s)
-      ys = c(ln - hh, ln - hh, ln + hh, ln + hh)
-    }
-
-    pid = paste0("read_", i)
-    n_verts = length(xs)
-
-    # Replicate the row data for each vertex
-    verts = r[rep(1L, n_verts), , drop = FALSE]
-    verts$x = xs
-    verts$y = ys
-    verts$polygon_id = pid
-
-    poly_list[[i]] = verts
-  }
-
-  out = do.call(rbind, poly_list)
+  idx = rep(seq_len(n), n_verts)
+  out = reads[idx, , drop = FALSE]
+  out$x = x
+  out$y = y
+  out$polygon_id = paste0("read_", idx)
   rownames(out) = NULL
   out
 }
