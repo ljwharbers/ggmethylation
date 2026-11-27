@@ -20,15 +20,18 @@
 #' when they carry an `MN` tag equal to the length of their clipped SEQ,
 #' because without it the calls may be placed on the wrong bases.
 #'
-#' @param bam Character. Path to a BAM file containing MM/ML modification
+#' @param bam Character. Path to one BAM file containing MM/ML modification
 #'   tags, indexed with a `.bai` or `.csi` index.
 #' @param region Character. Genomic region string, e.g. `"chr1:1000-2000"`.
 #'   The string is split at its last colon, so contig names containing colons
-#'   are allowed.
+#'   are allowed. A contig that is not in the BAM header is an error (check
+#'   the naming, e.g. `chr1` vs `1`); a region without reads gives a warning
+#'   and an empty object.
 #' @param mod_code Character. Modification code from the MM tag (default `"m"`
 #'   for 5-methylcytosine).
-#' @param group_tag Character or NULL. BAM tag used to group reads (e.g.
-#'   `"HP"` for haplotype, `"RG"` for read group). NULL disables grouping.
+#' @param group_tag Character or NULL. Two-character BAM tag used to group
+#'   reads (e.g. `"HP"` for haplotype, `"RG"` for read group). NULL disables
+#'   grouping.
 #'   If no read in the region carries the tag, a warning is given and the
 #'   data are returned ungrouped (`group_tag` is `NULL` and there is no
 #'   `group` column).
@@ -38,8 +41,9 @@
 #'   other reads are dropped. `ref` and `alt` must be different bases from
 #'   A, C, G, T and `position` must lie inside `region`. Cannot be combined
 #'   with `group_tag`.
-#' @param max_reads Integer. Maximum number of reads to return (default 200).
-#'   If more reads overlap the region, a random subset is kept (see `seed`).
+#' @param max_reads Integer. Maximum number of reads to return (default 200):
+#'   a whole number >= 1, or `Inf` for no cap. If more reads overlap the
+#'   region, a random subset is kept (see `seed`).
 #' @param per_group_downsample Logical. When `TRUE` and grouping is active
 #'   (via `group_tag` or `snv`), the `max_reads` cap is applied
 #'   independently per group, and reads without a group (`NA`, e.g.
@@ -129,19 +133,32 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   }
   mod_code = unique(mod_code)                # drop accidental duplicates
 
+  .check_string(bam, "bam")
+  if (!is.null(group_tag)) {
+    .check_string(group_tag, "group_tag")
+    if (!grepl("^[A-Za-z][A-Za-z0-9]$", group_tag)) {
+      stop("`group_tag` must be a two-character SAM tag name such as \"HP\" or ",
+           "\"RG\" (a letter followed by a letter or digit), not \"", group_tag, "\".",
+           call. = FALSE)
+    }
+  }
   if (!is.null(group_tag) && !is.null(snv)) {
     stop("'group_tag' and 'snv' are mutually exclusive.", call. = FALSE)
   }
   strand_filter = match.arg(strand_filter, choices = c("+", "-"), several.ok = TRUE)
-  .check_number(max_reads, "max_reads", min = 1, allow_inf = TRUE)
+  max_reads = .check_number(max_reads, "max_reads", min = 1, whole = TRUE,
+                            allow_inf = TRUE)
   .check_number(min_mapq, "min_mapq", min = 0)
   .check_number(min_read_length, "min_read_length", min = 0)
+  .check_flag(per_group_downsample, "per_group_downsample")
+  .check_flag(drop_na_group, "drop_na_group")
   if (!is.null(seed)) .check_number(seed, "seed", min = -Inf)
   min_mapq = as.integer(min_mapq)
   min_read_length = as.integer(min_read_length)
   gr = region_to_granges(region)
   snv = .check_snv(snv, gr)
   validate_bam_index(bam)
+  .check_bam_contig(bam, as.character(GenomicRanges::seqnames(gr)))
   # An `snv` request is reported as group tag "SNV", even when no read is left.
   result_tag = if (is.null(snv)) group_tag else "SNV"
 
@@ -289,6 +306,30 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
          GenomicRanges::end(gr), ".", call. = FALSE)
   }
   list(position = position, ref = snv$ref, alt = snv$alt)
+}
+
+# Stop when the region's contig is not among the BAM header's @SQ lines,
+# naming it, listing the header's contigs and pointing at chr-prefix mixups.
+.check_bam_contig = function(bam, chrom) {
+  header = tryCatch(
+    Rsamtools::scanBamHeader(bam, what = "targets")[[1L]],
+    error = function(e) {
+      stop("Failed to read the header of BAM file '", bam, "': ", conditionMessage(e),
+           call. = FALSE)
+    }
+  )
+  contigs = names(header$targets)
+  if (chrom %in% contigs) return(invisible(NULL))
+  alt = if (startsWith(chrom, "chr")) sub("^chr", "", chrom) else paste0("chr", chrom)
+  stop(
+    "Contig '", chrom, "' of `region` is not in the BAM header (contigs: ",
+    .format_contigs(contigs), "). ",
+    if (alt %in% contigs) {
+      paste0("Did you mean '", alt, "'? ")
+    },
+    "Check the chromosome naming (e.g. 'chr1' vs '1').",
+    call. = FALSE
+  )
 }
 
 # Modification codes named in a character vector of MM tags (single-letter

@@ -82,6 +82,44 @@ test_that("numeric arguments are validated", {
   expect_error(read_fixture(min_read_length = NA), "min_read_length")
   expect_error(read_fixture(min_read_length = c(1, 2)), "min_read_length")
   expect_error(read_fixture(seed = "a"), "seed")
+  expect_error(read_fixture(max_reads = 2.5), "`max_reads` must be a single whole number")
+  expect_silent(md <- read_fixture(max_reads = Inf))
+  expect_gt(nrow(md$reads), 0L)
+})
+
+test_that("bam must be a single existing file", {
+  expect_error(read_methylation(c(fixture_bam(), fixture_bam()), fixture_region),
+               "`bam` must be a single non-empty character string")
+  expect_error(read_methylation(NA, fixture_region), "`bam`")
+  expect_error(read_methylation(NA_character_, fixture_region), "`bam`")
+  expect_error(read_methylation(1, fixture_region), "`bam`")
+  expect_error(read_methylation(file.path(tempdir(), "absent.bam"), fixture_region),
+               "does not exist")
+})
+
+test_that("group_tag must be one two-character SAM tag name", {
+  expect_error(read_fixture(group_tag = c("HP", "RG")), "`group_tag` must be a single")
+  expect_error(read_fixture(group_tag = "HPX"), "`group_tag` must be a two-character")
+  expect_error(read_fixture(group_tag = "1P"), "two-character")
+  expect_error(read_fixture(group_tag = NA_character_), "`group_tag`")
+  expect_error(read_fixture(group_tag = 1), "`group_tag`")
+})
+
+test_that("logical arguments are validated", {
+  expect_error(read_fixture(per_group_downsample = NA), "`per_group_downsample`")
+  expect_error(read_fixture(per_group_downsample = "yes"), "`per_group_downsample`")
+  expect_error(read_fixture(drop_na_group = c(TRUE, FALSE)), "`drop_na_group`")
+  expect_error(read_fixture(drop_na_group = 1), "`drop_na_group`")
+})
+
+test_that("a region on a contig missing from the BAM header is an error", {
+  err = tryCatch(read_methylation(fixture_bam(), "chr2:1000-2000"),
+                 error = function(e) conditionMessage(e))
+  expect_match(err, "Contig 'chr2'")
+  expect_match(err, "chr1, chr3, chr7", fixed = TRUE)
+  expect_match(err, "'chr1' vs '1'", fixed = TRUE)
+  # A missing chr prefix gets a specific suggestion.
+  expect_error(read_methylation(fixture_bam(), "1:1000-2000"), "Did you mean 'chr1'")
 })
 
 test_that("seed makes downsampling reproducible without touching the global RNG", {
@@ -133,9 +171,10 @@ sam_record = function(qname, flag, pos, cigar, seq, tags = character(0)) {
         collapse = "\t")
 }
 
-make_bam = function(records) {
+make_bam = function(records, contigs = "chr1") {
   sam = tempfile(fileext = ".sam")
-  writeLines(c("@HD\tVN:1.6\tSO:unsorted", "@SQ\tSN:chr1\tLN:10000", records), sam)
+  writeLines(c("@HD\tVN:1.6\tSO:unsorted",
+               sprintf("@SQ\tSN:%s\tLN:10000", contigs), records), sam)
   Rsamtools::asBam(sam, tempfile("synthetic"), indexDestination = TRUE)
 }
 
@@ -213,6 +252,16 @@ test_that("a warning is given when no read carries MM/ML, naming legacy Mm/Ml ta
   expect_true(any(grepl("MM/ML", res$warnings)))
   expect_true(any(grepl("Mm/Ml", res$warnings)))
   expect_equal(nrow(res$value$sites), 0L)
+})
+
+test_that("the missing-contig error lists at most ten header contigs", {
+  bam = make_bam(sam_record("r", 0, 100, "10M", seq10, mm3),
+                 contigs = paste0("chr", 1:12))
+  err = tryCatch(read_methylation(bam, "chrX:100-200"),
+                 error = function(e) conditionMessage(e))
+  expect_match(err, "chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, ... (12 total)",
+               fixed = TRUE)
+  expect_no_match(err, "chr11", fixed = TRUE)
 })
 
 test_that("snv requests keep group_tag = 'SNV' when the region has no reads", {
