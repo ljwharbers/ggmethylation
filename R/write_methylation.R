@@ -2,9 +2,14 @@
 #'
 #' Saves the `$reads` and/or `$sites` data frames from a `methylation_data`
 #' object to tab-separated (TSV) or BED files. Files can optionally be
-#' gzip-compressed.
+#' gzip-compressed. A `multi_methylation_data` object gets one set of files
+#' per sample.
 #'
-#' @param data A `methylation_data` object as returned by [read_methylation()].
+#' @param data A `methylation_data` object as returned by [read_methylation()],
+#'   or a `multi_methylation_data` object as returned by
+#'   [merge_methylation()]. For the latter, each sample is written with the
+#'   prefix `{prefix}_{sample}`; sample names must not contain a path
+#'   separator (`/` or a backslash).
 #' @param prefix Character. Path prefix for output files. The appropriate
 #'   suffix (`_reads.tsv`, `_sites.tsv`, or `_sites.bed`) is appended
 #'   automatically. Intermediate directories are created if they do not exist.
@@ -18,6 +23,11 @@
 #' @return `data`, invisibly. Allows use in a pipeline.
 #'
 #' @details
+#' The file names below are for a `methylation_data` object. For a
+#' `multi_methylation_data` object, `{prefix}` becomes `{prefix}_{sample}`
+#' for each sample, e.g. `out/run_A_reads.tsv` and `out/run_B_reads.tsv` for
+#' `prefix = "out/run"` and samples `A` and `B`.
+#'
 #' **Reads file** (`{prefix}_reads.tsv[.gz]`)
 #'
 #' Always written as TSV with a header line. Columns: `read_name`, `start`,
@@ -45,25 +55,26 @@
 #' strand of the read's alignment (`.` if unknown).
 #'
 #' @examples
-#' \dontrun{
-#' md = read_methylation("sample.bam", "chr1:1000-2000")
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP")
+#' out = file.path(tempdir(), "ggmethylation-example")
 #'
-#' # Write both TSV files to the current directory
-#' write_methylation(md, prefix = "output/sample_chr1")
+#' # Reads and sites as TSV: out/sample_reads.tsv, out/sample_sites.tsv
+#' write_methylation(md, prefix = file.path(out, "sample"))
+#' head(read.delim(file.path(out, "sample_reads.tsv")))
 #'
-#' # BED format for sites, gzip-compressed
-#' write_methylation(md, prefix = "output/sample_chr1",
-#'                   format = "bed", gzip = TRUE)
+#' # Sites only, as gzip-compressed BED: out/sample_sites.bed.gz
+#' write_methylation(md, prefix = file.path(out, "sample"), format = "bed",
+#'                   reads = FALSE, gzip = TRUE)
 #'
-#' # Reads only
-#' write_methylation(md, prefix = "output/sample_chr1",
-#'                   sites = FALSE)
+#' # Several samples: out/cohort_A_reads.tsv, out/cohort_B_reads.tsv, ...
+#' md2 = read_methylation(bam, "chr1:1000-7000", group_tag = "HP",
+#'                        max_reads = 30, seed = 1)
+#' write_methylation(merge_methylation(A = md, B = md2),
+#'                   prefix = file.path(out, "cohort"))
+#' list.files(out)
 #'
-#' # Pipe-friendly usage
-#' md |>
-#'   write_methylation(prefix = "output/sample_chr1") |>
-#'   plot_methylation()
-#' }
+#' unlink(out, recursive = TRUE)
 #'
 #' @seealso [read_methylation()]
 #' @export
@@ -75,16 +86,46 @@ write_methylation = function(data,
                               gzip   = FALSE) {
 
   # --- Input validation ---
-  if (!inherits(data, "methylation_data"))
-    stop("'data' must be a methylation_data object.", call. = FALSE)
-  if (!is.character(prefix) || length(prefix) != 1L || nchar(prefix) == 0L)
-    stop("'prefix' must be a non-empty character string.", call. = FALSE)
+  multi = inherits(data, "multi_methylation_data")
+  if (!multi && !inherits(data, "methylation_data")) {
+    stop("`data` must be a `methylation_data` or `multi_methylation_data` object.",
+         call. = FALSE)
+  }
+  .check_string(prefix, "prefix")
   format = match.arg(format)
+  .check_flag(reads, "reads")
+  .check_flag(sites, "sites")
+  .check_flag(gzip, "gzip")
+  if (multi) {
+    samples = names(data$samples)
+    bad = samples[grepl("[/\\\\]", samples)]
+    if (length(bad) > 0L) {
+      stop(sprintf(
+        "Sample names are used in file names and must not contain a path separator: %s.",
+        paste(sprintf("'%s'", bad), collapse = ", ")
+      ), call. = FALSE)
+    }
+  }
   if (!reads && !sites) {
-    warning("Nothing to write: both 'reads' and 'sites' are FALSE.")
+    warning("Nothing to write: both `reads` and `sites` are FALSE.", call. = FALSE)
     return(invisible(data))
   }
 
+  if (multi) {
+    for (s in samples) {
+      .write_methylation_one(data$samples[[s]], paste0(prefix, "_", s),
+                             format, reads, sites, gzip)
+    }
+  } else {
+    .write_methylation_one(data, prefix, format, reads, sites, gzip)
+  }
+  invisible(data)
+}
+
+# Internal helpers --------------------------------------------------------
+
+# Write the files of one methylation_data object (arguments already checked).
+.write_methylation_one = function(data, prefix, format, reads, sites, gzip) {
   # --- Create output directory if needed ---
   out_dir = dirname(prefix)
   if (!is.na(out_dir) && out_dir != "." && !dir.exists(out_dir))
@@ -131,10 +172,8 @@ write_methylation = function(data,
     }
   }
 
-  invisible(data)
+  invisible(NULL)
 }
-
-# Internal helpers --------------------------------------------------------
 
 #' Write a tab-separated table, optionally gzip-compressed
 #'

@@ -344,10 +344,16 @@ test_that("binary mode grouped delta panel builds and is relabelled", {
                                        show_delta = TRUE,
                                        show_supplementary = FALSE)
   expect_s3_class(p, "patchwork")
-  expect_match(p[[3]]$labels$y, "fraction")
+  # The label is a plotmath expression (Delta ~ "fraction" over "methylated")
+  expect_match(paste(deparse(p[[3]]$labels$y), collapse = ""), "fraction")
   # Short enough to fit the delta panel's height without colliding with the
   # smooth panel's y-axis title above it.
-  expect_true(all(nchar(strsplit(p[[3]]$labels$y, "\n")[[1]]) <= 12L))
+  # Two short lines: atop(<first line>, <second line>).
+  label = p[[3]]$labels$y[[1L]]
+  expect_identical(as.character(label[[1L]]), "atop")
+  expect_true(all(nchar(vapply(as.list(label)[-1L], function(part) {
+    paste(deparse(part), collapse = "")
+  }, character(1L))) <= 20L))
   # Group "1" is fully methylated, group "2" fully unmethylated -> delta = -1
   expect_equal(mean(p[[3]]$data$delta, na.rm = TRUE), -1, tolerance = 1e-6)
 })

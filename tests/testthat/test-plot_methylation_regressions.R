@@ -1,5 +1,8 @@
-# Regression tests for the 0.5.0 main-plot audit (M1-M13): colours, gaps,
-# binary-mode clamping, mod codes, SA markers, legends and argument checks.
+# Regression tests for plot_methylation(): group colours across panels
+# (including groups the palette does not name), smooth/delta gaps at consensus
+# deletions, binary-mode clamping to [0, 1], several modification codes,
+# supplementary-alignment markers, CI ribbons in multi-sample plots, argument
+# validation, and shared legends and line types.
 
 fixture_md = function(...) {
   set.seed(1)
@@ -36,9 +39,8 @@ make_reads = function(read_name, start = 1000L, end = 2000L, group = NULL,
   df
 }
 
-# Both helpers draw on a throwaway PNG device (no stray Rplots.pdf). A bitmap
-# device is used because pdf(NULL) failed to measure the delta panel's
-# "Δ" label under R CMD check ("conversion failure ... in 'mbcsToSbcs'").
+# Both helpers draw on a throwaway PNG device (no stray Rplots.pdf).
+# test-pdf_device.R covers drawing on pdf().
 
 # Render every panel to grobs: scale and "Removed rows" warnings fire here,
 # not in plot_methylation().
@@ -61,7 +63,7 @@ layer_of = function(p, geom_class) {
   which(vapply(p$layers, function(l) inherits(l$geom, geom_class), logical(1L)))
 }
 
-# --- M1: groups the palette does not name ------------------------------------
+# --- Groups the palette does not name ----------------------------------------
 
 test_that("SNV groups get distinct colours in every panel, without scale warnings", {
   md = fixture_md(snv = list(position = 3000, ref = "A", alt = "G"))
@@ -101,7 +103,7 @@ test_that("a grouped object with zero sites renders without scale warnings", {
   expect_no_warning(render(plot_methylation(md, show_supplementary = FALSE)))
 })
 
-# --- M3: area and ribbon split at consensus deletions ------------------------
+# --- Area and ribbon split at consensus deletions ----------------------------
 
 # Group "1" (one read) carries a 1400-1500 deletion, so it has no sites there;
 # group "2" covers everything.
@@ -156,7 +158,7 @@ test_that("delta bands meet at the zero crossing and drop all-zero bands", {
   expect_false("neg_1" %in% bands$run)
 })
 
-# --- M4: binary-mode fit stays inside [0, 1] ---------------------------------
+# --- Binary-mode fit stays inside [0, 1] -------------------------------------
 
 test_that("binary mode drops no smooth-line rows and raises no warning", {
   md = fixture_md(group_tag = "HP")
@@ -171,7 +173,7 @@ test_that("binary mode drops no smooth-line rows and raises no warning", {
   expect_equal(sum(!is.na(line$y)), sum(!is.na(smooth$data$mean_prob)))
 })
 
-# --- M5: several modification codes -----------------------------------------
+# --- Several modification codes ---------------------------------------------
 
 test_that("multi-sample smooth keeps one line per sample, group and code", {
   md = fixture_md(group_tag = "HP", mod_code = c("m", "h"))
@@ -214,7 +216,7 @@ test_that("calls for different codes at the same position do not overplot", {
   expect_match(rp$labels$y, "m, h")
 })
 
-# --- M6 / M7: supplementary markers ------------------------------------------
+# --- Supplementary markers ---------------------------------------------------
 
 test_that("a split SA read gets one marker per clipped end", {
   reads = make_reads("r1", clip_side = "right", sa_chrom = "chr7")
@@ -244,7 +246,7 @@ test_that("a site next to a clipped end is drawn", {
   expect_true(all(sa$x <= 1000))
 })
 
-# --- M10: one ribbon per line in a mixed merge -------------------------------
+# --- One ribbon per line in a mixed merge ------------------------------------
 
 test_that("ungrouped samples in a mixed merge each get their own ribbon", {
   grouped = fixture_md(group_tag = "HP")
@@ -258,7 +260,7 @@ test_that("ungrouped samples in a mixed merge each get their own ribbon", {
   expect_equal(n_rib, n_line)
 })
 
-# --- M11: consensus deletions use covering reads -----------------------------
+# --- Consensus deletions use covering reads ----------------------------------
 
 test_that("consensus deletion fraction counts only reads covering the deletion", {
   cf = data.frame(type = "D", ref_start = c(1400L, 1400L), ref_end = c(1500L, 1500L),
@@ -277,7 +279,7 @@ test_that("consensus deletion fraction counts only reads covering the deletion",
   expect_equal(nrow(res), 0L)
 })
 
-# --- M12: argument validation -------------------------------------------------
+# --- Argument validation -----------------------------------------------------
 
 test_that("plot_methylation validates its numeric and colour arguments", {
   md = fixture_md(group_tag = "HP")
@@ -303,6 +305,63 @@ test_that("plot_methylation validates its numeric and colour arguments", {
   expect_error(plot_methylation(md, min_indel_size = "x"), "min_indel_size")
   expect_error(plot_methylation(md, min_indel_size = NA_integer_), "min_indel_size")
   expect_error(plot_methylation(md, show_delta = NA), "show_delta")
+  expect_error(plot_methylation(md, smooth_span = 0), "smooth_span")
+  expect_error(plot_methylation(md, line_width = 0), "line_width")
+  expect_error(plot_methylation(md, call_threshold = 1.5), "call_threshold")
+  for (flag in c("colour_strand", "show_cigar", "show_supplementary", "show_ci")) {
+    args = stats::setNames(list(md, "yes"), c("data", flag))
+    expect_error(do.call(plot_methylation, args), sprintf("`%s` must be TRUE or FALSE", flag))
+  }
+})
+
+test_that("plot_methylation rejects invalid colours before drawing anything", {
+  md = fixture_md(group_tag = "HP")
+  for (arg in c("colour_low", "colour_high", "colour_ambiguous")) {
+    bad = stats::setNames(list(md, "notacolour"), c("data", arg))
+    expect_error(do.call(plot_methylation, bad),
+                 sprintf("`%s` contains invalid colour", arg))
+    two = stats::setNames(list(md, c("red", "blue")), c("data", arg))
+    expect_error(do.call(plot_methylation, two), sprintf("`%s` must be a single colour", arg))
+    na = stats::setNames(list(md, NA_character_), c("data", arg))
+    expect_error(do.call(plot_methylation, na), arg)
+  }
+  # strand_colours is checked (names and values) only when it is used
+  mu = fixture_md()
+  bad_strand = c("+" = "notacolour", "-" = "red")
+  expect_error(plot_methylation(mu, colour_strand = TRUE, strand_colours = bad_strand),
+               "`strand_colours` contains invalid colour")
+  expect_error(plot_methylation(mu, colour_strand = TRUE, strand_colours = c("red", "blue")),
+               "`strand_colours` must be a named vector")
+  expect_s3_class(plot_methylation(mu, strand_colours = bad_strand), "patchwork")
+})
+
+test_that("plot_methylation validates panel_heights values and sort_by type", {
+  md = fixture_md(group_tag = "HP")
+  for (bad in list(c(-1, 1), c(0, 1), c(NA, 1), c(Inf, 1), c("1", "1"), numeric(0))) {
+    expect_error(plot_methylation(md, panel_heights = bad),
+                 "`panel_heights` must be NULL or a numeric vector")
+  }
+  for (bad in list(1, NA_character_, c("start", NA), character(0), TRUE)) {
+    expect_error(plot_methylation(md, sort_by = bad),
+                 "`sort_by` must be NULL or a character vector")
+  }
+})
+
+test_that("plot_methylation's literal colour defaults match the internal constants", {
+  f = formals(plot_methylation)
+  expect_identical(eval(f$colour_low), ggmethylation:::.PROB_GRADIENT$low)
+  expect_identical(eval(f$colour_high), ggmethylation:::.PROB_GRADIENT$high)
+  expect_identical(eval(f$colour_ambiguous), ggmethylation:::.CALL_AMBIGUOUS_DEFAULT)
+  expect_identical(eval(f$group_colours), ggmethylation:::.GROUP_PALETTE_DEFAULT)
+})
+
+test_that("the default group palette fills in unnamed groups silently", {
+  # SNV groups REF/ALT are not named by the default HP palette: no message for
+  # the default, one for a user-supplied palette that misses them.
+  md = fixture_md(snv = list(position = 3000, ref = "A", alt = "G"))
+  expect_no_message(plot_methylation(md))
+  expect_message(plot_methylation(md, group_colours = c("1" = "red", "2" = "blue")),
+                 "does not name group")
 })
 
 test_that("show_delta on ungrouped data says why there is no delta panel", {
@@ -311,7 +370,7 @@ test_that("show_delta on ungrouped data says why there is no delta panel", {
   expect_length(p, 2L)
 })
 
-# --- M13: legends and line types ---------------------------------------------
+# --- Legends and line types --------------------------------------------------
 
 legend_titles = function(p) {
   g = render(p)

@@ -12,8 +12,10 @@
 \item{...}{Unused.}
 }
 \value{
-A named list of per-sample summaries (invisibly). Each element is
-the list returned by \code{\link[=summary.methylation_data]{summary.methylation_data()}}.
+An object of class \code{summary.multi_methylation_data}: a list named
+by sample whose elements are the \code{summary.methylation_data} objects
+returned by \code{\link[=summary.methylation_data]{summary.methylation_data()}}. Nothing is printed until the
+result is printed.
 }
 \description{
 Summary of a multi_methylation_data object

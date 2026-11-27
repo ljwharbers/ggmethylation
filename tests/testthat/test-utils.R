@@ -1,4 +1,4 @@
-# Tests for parse_region, ref_to_seq, and complement_base in R/utils.R
+# Tests for parse_region, ref_to_seq and the CIGAR/SA helpers in R/utils.R
 
 # --- parse_region ---
 
@@ -184,19 +184,6 @@ test_that("parse_sa_tag silently skips malformed entries", {
   result = ggmethylation:::parse_sa_tag("bad;chr8,12000,-,30M,0,1;")
   expect_equal(nrow(result), 1L)
   expect_equal(result$rname, "chr8")
-})
-
-# --- complement_base ---
-
-test_that("complement_base returns correct complements", {
-  expect_equal(ggmethylation:::complement_base("A"), "T")
-  expect_equal(ggmethylation:::complement_base("T"), "A")
-  expect_equal(ggmethylation:::complement_base("C"), "G")
-  expect_equal(ggmethylation:::complement_base("G"), "C")
-})
-
-test_that("complement_base errors on unknown base", {
-  expect_error(ggmethylation:::complement_base("N"), "Unknown base")
 })
 
 # --- cigar_ref_width ---

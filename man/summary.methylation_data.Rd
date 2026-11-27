@@ -12,8 +12,21 @@
 \item{...}{Unused.}
 }
 \value{
-A named list with summary statistics (invisibly).
+An object of class \code{summary.methylation_data}: a named list with
+elements \code{region} (string), \code{n_reads}, \code{n_sites}, \code{mod_code},
+\code{group_tag}, \code{strand} (data frame of reads per strand), \code{read_length}
+(list of \code{min}, \code{median} and \code{max} aligned length in bp: the reference
+span of each read's full alignment, \code{NA} without reads), \code{groups}
+(per-group data frame or \code{NULL}) and \code{overall_mean_mod_prob}.
 }
 \description{
-Summary of a methylation_data object
+Computes summary statistics without printing them; printing the result
+(as the console does automatically) shows them.
+}
+\examples{
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP")
+s = summary(md)
+s
+s$groups
 }

@@ -10,10 +10,18 @@
 #'   `ins_offset`, `ins_length`, `mod_prob`, `mod_code`, and optionally
 #'   `group`. Zero rows when no inserted-base modifications were found.
 #'
+#' @examples
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000")
+#' ins = insertion_sites(md)
+#' head(ins)
+#' # Calls per insertion anchor
+#' table(ins$ref_anchor)
+#'
 #' @export
 insertion_sites = function(data) {
   if (!inherits(data, "methylation_data")) {
-    stop("'data' must be a methylation_data object.", call. = FALSE)
+    stop("`data` must be a `methylation_data` object.", call. = FALSE)
   }
   data$insertion_sites
 }
@@ -91,24 +99,28 @@ insertion_sites = function(data) {
 #'   pass the `min_reads` threshold.
 #'
 #' @examples
-#' \dontrun{
-#' md   = read_methylation("sample.bam", "chr21:34500000-34510000")
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000")
+#'
+#' # Insertions of at least 50 bp carried by at least two reads
 #' loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L,
 #'                            min_length = 50L)
-#' loci$locus_id
+#' loci[, c("locus_id", "anchor_pos", "n_carriers", "n_noncarriers",
+#'          "median_length")]
+#' loci$carriers[[1]]
+#'
 #' plot_insertion_locus(md, loci[1, ])
-#' }
 #'
 #' @export
 list_insertion_loci = function(data, tol_pos = 10L, tol_len = 0.20,
                                 min_reads = 2L, min_length = 1L) {
   if (!inherits(data, "methylation_data")) {
-    stop("'data' must be a methylation_data object.", call. = FALSE)
+    stop("`data` must be a `methylation_data` object.", call. = FALSE)
   }
-  tol_pos    = .ins_check_number(tol_pos, "tol_pos", min = 0, whole = TRUE)
-  tol_len    = .ins_check_number(tol_len, "tol_len", min = 0)
-  min_reads  = .ins_check_number(min_reads, "min_reads", min = 1, whole = TRUE)
-  min_length = .ins_check_number(min_length, "min_length", min = 1, whole = TRUE)
+  tol_pos    = .check_number(tol_pos, "tol_pos", min = 0, whole = TRUE)
+  tol_len    = .check_number(tol_len, "tol_len", min = 0)
+  min_reads  = .check_number(min_reads, "min_reads", min = 1, whole = TRUE)
+  min_length = .check_number(min_length, "min_length", min = 1, whole = TRUE)
 
   cf = data$cigar_features
   ins = cf[cf$type == "I" & !is.na(cf$ref_start) & cf$length >= min_length, ,
@@ -270,24 +282,4 @@ list_insertion_loci = function(data, tol_pos = 10L, tol_len = 0.20,
   keep[keep] = ins_sites$ins_length[keep] ==
     carrier_len[ins_sites$read_name[keep]]
   ins_sites[keep, , drop = FALSE]
-}
-
-# Validate a length-1 finite number >= `min` (optionally a whole number) and
-# return it (as integer when `whole`).
-.ins_check_number = function(x, name, min = -Inf, whole = FALSE) {
-  ok = is.numeric(x) && length(x) == 1L && !is.na(x) && is.finite(x) && x >= min
-  if (ok && whole) ok = x == round(x)
-  if (!ok) {
-    what = if (whole) "a single whole number" else "a single number"
-    stop(sprintf("`%s` must be %s >= %s.", name, what, format(min)), call. = FALSE)
-  }
-  if (whole) as.integer(x) else x
-}
-
-# Validate a single TRUE/FALSE.
-.ins_check_flag = function(x, name) {
-  if (!is.logical(x) || length(x) != 1L || is.na(x)) {
-    stop(sprintf("`%s` must be TRUE or FALSE.", name), call. = FALSE)
-  }
-  x
 }

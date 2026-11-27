@@ -35,6 +35,42 @@ test_that("read_variants validates bnd_match_tol", {
                  "bnd_match_tol")
   }
   expect_identical(read_variants(vcf, "chr1:1000-7000", bnd_match_tol = 0)$bnd_match_tol, 0L)
+  # Non-whole values are still accepted (stored truncated, as before)
+  expect_identical(read_variants(vcf, "chr1:1000-7000", bnd_match_tol = 12.5)$bnd_match_tol, 12L)
+  expect_error(read_variants(vcf, "chr1:1000-7000", bnd_match_tol = 3e9), "bnd_match_tol")
+})
+
+test_that("read_variants validates vcf", {
+  skip_if_not_installed("VariantAnnotation")
+  vcf = testthat::test_path("fixtures", "synthetic.vcf.gz")
+  for (bad in list(NULL, NA_character_, "", c(vcf, vcf), 1)) {
+    expect_error(read_variants(bad, "chr1:1000-7000"),
+                 "`vcf` must be a single non-empty character string")
+  }
+  expect_error(read_variants(file.path(tempdir(), "absent.vcf.gz"), "chr1:1000-7000"),
+               "`vcf` file not found")
+})
+
+test_that("the vcf check accepts remote URLs without touching the network", {
+  # No VariantAnnotation needed: only the argument check is exercised.
+  check = ggmethylation:::.check_vcf_path
+  for (url in c("http://example.org/calls.vcf.gz",
+                "https://example.org/calls.vcf.gz",
+                "ftp://ftp.example.org/calls.vcf.gz",
+                "s3://bucket/calls.vcf.gz",
+                "gs://bucket/calls.vcf.gz")) {
+    expect_identical(check(url), url)
+  }
+  expect_identical(check(test_path("fixtures", "synthetic.vcf.gz")),
+                   test_path("fixtures", "synthetic.vcf.gz"))
+  # Local paths, including ones that merely contain "http", must exist
+  for (bad in c(file.path(tempdir(), "absent.vcf.gz"), "http_calls.vcf.gz",
+                "file://calls.vcf.gz")) {
+    expect_error(check(bad), "`vcf` file not found")
+  }
+  for (bad in list(NULL, NA_character_, "", c("a", "b"), 1)) {
+    expect_error(check(bad), "`vcf` must be a single non-empty character string")
+  }
 })
 
 test_that("read_variants warns when the region's chromosome is not in the VCF", {

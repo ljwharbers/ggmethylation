@@ -35,30 +35,58 @@
 #' @param include_noncarriers Logical. Whether to include reads that span the
 #'   locus but do not carry the insertion (default `TRUE`). Non-carriers are
 #'   shown below carriers, separated by a line, with an empty middle region.
-#' @param colour_low Character. Colour for low modification probability
-#'   (default `"#BDBDBD"`).
-#' @param colour_high Character. Colour for high modification probability
-#'   (default `"#C62828"`).
+#' @param colour_low Character. Colour for low modification probability, or
+#'   for unmethylated calls when `call_threshold` is set (default `"#BDBDBD"`).
+#' @param colour_high Character. Colour for high modification probability, or
+#'   for methylated calls when `call_threshold` is set (default `"#C62828"`).
+#' @param colour_ambiguous Character. Colour for ambiguous calls, used when
+#'   `call_threshold` and `call_ambiguous` are set (default `"#78909C"`).
+#' @param line_width Positive number. Line width of the modification call
+#'   segments in the read panel (default `0.5`).
+#' @param call_threshold `NULL` (default) or a number in `[0, 1]`. As in
+#'   [plot_methylation()]: with `NULL` calls are coloured by a continuous
+#'   probability gradient and the smoothed panel shows the mean modification
+#'   probability; a number switches to **binary calls** (probability at or
+#'   above the threshold is methylated), coloured with a discrete scale, and
+#'   the smoothed panel then shows the fraction of methylated calls.
+#' @param call_ambiguous `NULL` (default) or a single non-negative number `w`.
+#'   As in [plot_methylation()]: calls with probability in the open band
+#'   `(call_threshold - w, call_threshold + w)` (other than exactly
+#'   `call_threshold`) are drawn as ambiguous and left out of the methylated
+#'   fraction. Requires `call_threshold`.
+#'
+#' @details When `data` holds several modification codes, each read bar is
+#'   split into one horizontal strip per code (in the order of
+#'   `data$mod_code`, first code on top), as in [plot_methylation()], and the
+#'   smoothed panel draws one linetype per code.
 #'
 #' @return A `patchwork` object (or a single ggplot when `show_smoothed = FALSE`
 #'   or there are too few calls to smooth).
 #'
 #' @examples
-#' \dontrun{
-#' md   = read_methylation("sample.bam", "chr21:34500000-34510000")
-#' loci = list_insertion_loci(md, tol_pos = 10L, tol_len = 0.20, min_reads = 2L)
-#' plot_insertion_locus(md, loci[1, ])
-#' }
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000", mod_code = c("m", "h"))
+#' loci = list_insertion_loci(md, min_length = 50L)
+#' locus = loci[1, ]
+#'
+#' plot_insertion_locus(md, locus)
+#'
+#' # Wider flanks and binary calls
+#' plot_insertion_locus(md, locus, flank = 400L, call_threshold = 0.5)
 #'
 #' @export
 plot_insertion_locus = function(data, locus,
                                   flank              = 200L,
                                   show_smoothed      = TRUE,
                                   include_noncarriers = TRUE,
-                                  colour_low         = .PROB_GRADIENT$low,
-                                  colour_high        = .PROB_GRADIENT$high) {
+                                  colour_low         = "#BDBDBD",
+                                  colour_high        = "#C62828",
+                                  colour_ambiguous   = "#78909C",
+                                  line_width         = 0.5,
+                                  call_threshold     = NULL,
+                                  call_ambiguous     = NULL) {
   if (!inherits(data, "methylation_data")) {
-    stop("'data' must be a methylation_data object.", call. = FALSE)
+    stop("`data` must be a `methylation_data` object.", call. = FALSE)
   }
   locus_cols = c("locus_id", "anchor_pos", "median_length", "carriers",
                  "noncarriers", "tol_pos")
@@ -66,9 +94,26 @@ plot_insertion_locus = function(data, locus,
     stop("`locus` must be one row of list_insertion_loci() output, e.g. loci[1, ].",
          call. = FALSE)
   }
-  flank               = .ins_check_number(flank, "flank", min = 1, whole = TRUE)
-  show_smoothed       = .ins_check_flag(show_smoothed, "show_smoothed")
-  include_noncarriers = .ins_check_flag(include_noncarriers, "include_noncarriers")
+  flank               = .check_number(flank, "flank", min = 1, whole = TRUE)
+  show_smoothed       = .check_flag(show_smoothed, "show_smoothed")
+  include_noncarriers = .check_flag(include_noncarriers, "include_noncarriers")
+  .check_colours(colour_low, "colour_low", n = 1L)
+  .check_colours(colour_high, "colour_high", n = 1L)
+  .check_colours(colour_ambiguous, "colour_ambiguous", n = 1L)
+  .check_number(line_width, "line_width", min = 0)
+  if (line_width == 0) {
+    stop("`line_width` must be a single positive number.", call. = FALSE)
+  }
+  if (!is.null(call_threshold)) {
+    .check_number(call_threshold, "call_threshold", min = 0, max = 1)
+  }
+  if (!is.null(call_ambiguous)) {
+    if (is.null(call_threshold)) {
+      stop("`call_ambiguous` only applies to binary calls; set `call_threshold` too.",
+           call. = FALSE)
+    }
+    .check_number(call_ambiguous, "call_ambiguous", min = 0)
+  }
 
   # --- 1. Carrier / non-carrier reads of the locus ---
   locus_id    = locus$locus_id
@@ -184,23 +229,27 @@ plot_insertion_locus = function(data, locus,
       panel.grid   = ggplot2::element_blank()
     )
 
+  # Calls are drawn as in plot_methylation(): one horizontal strip per code
+  # (first code on top), continuous gradient or binary calls. The same code
+  # order gives the smooth panel's linetypes.
+  mod_codes = .present_codes(data$mod_code, all_sites)
   if (nrow(all_sites) > 0L) {
+    sites_plot = data.frame(position = all_sites$stitch_x,
+                            lane     = all_sites$lane,
+                            mod_prob = all_sites$mod_prob,
+                            mod_code = all_sites$mod_code,
+                            stringsAsFactors = FALSE)
+    p_reads = .add_mod_prob_segments(p_reads, sites_plot, half_height, line_width,
+                                     colour_low, colour_high, colour_ambiguous,
+                                     call_threshold, call_ambiguous,
+                                     mod_codes = mod_codes)
+  }
+  if (length(mod_codes) > 1L) {
+    # Name the per-code strips (top to bottom) on the otherwise blank y axis.
     p_reads = p_reads +
-      ggplot2::geom_segment(
-        data = all_sites,
-        ggplot2::aes(
-          x      = .data$stitch_x,
-          xend   = .data$stitch_x,
-          y      = .data$lane - half_height,
-          yend   = .data$lane + half_height,
-          colour = .data$mod_prob
-        ),
-        linewidth = 0.5
-      ) +
-      ggplot2::scale_colour_gradient(
-        low = colour_low, high = colour_high, limits = c(0, 1),
-        name = "Mod. prob."
-      )
+      ggplot2::labs(y = paste("Strips (top to bottom):", paste(mod_codes, collapse = ", "))) +
+      ggplot2::theme(axis.title.y = ggplot2::element_text(size = ggplot2::rel(0.7),
+                                                           angle = 90))
   }
 
   # Overflow markers for carriers with an insertion longer than the drawn
@@ -226,9 +275,11 @@ plot_insertion_locus = function(data, locus,
 
   # --- 8. Smoothed bottom panel ---
   # One loess line per carrier status x region x mod code; non-carriers have
-  # no middle region. Lines never cross a region boundary.
-  pieces = split(all_sites, list(all_sites$carrier_status, all_sites$region,
-                                 all_sites$mod_code), drop = TRUE)
+  # no middle region. Lines never cross a region boundary. In binary mode the
+  # lines average 0/1 calls (ambiguous calls dropped), as in plot_methylation().
+  agg_sites = .sites_for_aggregation(all_sites, call_threshold, call_ambiguous)
+  pieces = split(agg_sites, list(agg_sites$carrier_status, agg_sites$region,
+                                 agg_sites$mod_code), drop = TRUE)
   smooth_list = lapply(pieces, function(df) {
     if (nrow(df) < 4L) return(NULL)
     out = .smooth_xy(df$stitch_x, df$mod_prob)
@@ -244,10 +295,8 @@ plot_insertion_locus = function(data, locus,
   smooth_df = do.call(rbind, smooth_list)
   rownames(smooth_df) = NULL
 
-  # Codes in data order, as plot_methylation() assigns linetypes.
-  codes = unique(c(data$sites$mod_code, all_sites$mod_code))
-  codes = codes[codes %in% all_sites$mod_code]
-  multi_code = length(codes) > 1L
+  multi_code = length(mod_codes) > 1L
+  y_label = if (is.null(call_threshold)) "Mean mod. prob." else "Fraction methylated"
   p_smooth = ggplot2::ggplot(smooth_df, ggplot2::aes(
     x = .data$position, y = .data$mean_prob, colour = .data$carrier_status,
     group = interaction(.data$carrier_status, .data$region, .data$mod_code)
@@ -258,7 +307,7 @@ plot_insertion_locus = function(data, locus,
     ) +
     ggplot2::scale_colour_manual(values = .CARRIER_COLOURS, name = NULL) +
     x_axis +
-    ggplot2::scale_y_continuous(limits = c(0, 1), name = "Mean mod. prob.") +
+    ggplot2::scale_y_continuous(limits = c(0, 1), name = y_label) +
     ggplot2::coord_cartesian(xlim = x_lim) +
     theme_ggmethylation() +
     ggplot2::theme(
@@ -266,11 +315,13 @@ plot_insertion_locus = function(data, locus,
       panel.grid    = ggplot2::element_blank()
     )
   if (multi_code) {
-    p_smooth = p_smooth + ggplot2::scale_linetype_manual(
-      values = stats::setNames(
-        rep_len(c("solid", "dashed", "dotdash", "dotted"), length(codes)), codes),
-      name = "Modification"
-    )
+    # Same linetype per code as plot_methylation(), in the read strips' order.
+    p_smooth = p_smooth +
+      ggplot2::scale_linetype_manual(
+        values = .linetype_values(mod_codes, "modification codes"),
+        limits = mod_codes, name = "Modification"
+      ) +
+      ggplot2::theme(legend.key.width = ggplot2::unit(1.2, "cm"))
   }
 
   p_reads = p_reads + ggplot2::theme(
@@ -347,7 +398,7 @@ plot_insertion_locus = function(data, locus,
   list(
     breaks = c(left, mid, right + mid_width),
     labels = c(scales::comma(left),
-               sprintf("+1\u2026+%d bp", as.integer(mid_width)),
+               sprintf("+1...+%d bp", as.integer(mid_width)),
                scales::comma(right))
   )
 }

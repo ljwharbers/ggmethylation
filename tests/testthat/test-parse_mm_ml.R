@@ -1,43 +1,4 @@
-# Tests for seq_to_ref and parse_mm_ml in R/parse_mm_ml.R
-
-# --- seq_to_ref ---
-# seq_to_ref(cigar, pos, query_positions) -> ref positions for each query position
-
-test_that("seq_to_ref M-only alignment maps query positions to ref", {
-  # 10M from ref 1000: query pos 1 -> ref 1000, pos 5 -> ref 1004, pos 10 -> ref 1009
-  result = ggmethylation:::seq_to_ref("10M", 1000L, c(1L, 5L, 10L))
-  expect_equal(result, c(1000L, 1004L, 1009L))
-})
-
-test_that("seq_to_ref soft clip returns NA for clipped query positions", {
-  # 4S6M from ref 100: query pos 1-4 are soft-clipped -> NA
-  # query pos 5 -> ref 100, pos 10 -> ref 105
-  result = ggmethylation:::seq_to_ref("4S6M", 100L, c(1L, 4L, 5L, 10L))
-  expect_equal(result, c(NA_integer_, NA_integer_, 100L, 105L))
-})
-
-test_that("seq_to_ref deletion skips reference positions", {
-  # 5M3D5M from ref 100:
-  #   query 1-5 -> ref 100-104
-  #   deletion skips ref 105-107
-  #   query 6-10 -> ref 108-112
-  result = ggmethylation:::seq_to_ref("5M3D5M", 100L, c(5L, 6L))
-  expect_equal(result, c(104L, 108L))
-})
-
-test_that("seq_to_ref insertion positions return NA", {
-  # 3M2I4M from ref 1:
-  #   query 1-3 -> ref 1-3
-  #   query 4-5 are insertion -> NA
-  #   query 6-9 -> ref 4-7
-  result = ggmethylation:::seq_to_ref("3M2I4M", 1L, c(3L, 4L, 5L, 6L))
-  expect_equal(result, c(3L, NA_integer_, NA_integer_, 4L))
-})
-
-test_that("seq_to_ref returns same length as query_positions", {
-  result = ggmethylation:::seq_to_ref("10M", 1L, c(1L, 3L, 7L, 10L))
-  expect_equal(length(result), 4L)
-})
+# Tests for parse_mm_ml() and .parse_mods() in R/parse_mm_ml.R
 
 # --- parse_mm_ml ---
 
@@ -390,6 +351,83 @@ test_that("calls are dropped when MN differs from the SEQ length", {
   ok = ggmethylation:::parse_mm_ml("ACGTACGTAC", "C+m,0;", 200L, "m", "+",
                                    "5H10M", 1L, mn = 10L)
   expect_equal(ok$sites$position, 2L)
+})
+
+# The 12-base read CCGTACGTCGCG has C's at 1, 2, 6, 9, 11. "C+m,0,0" lists
+# the first two, which lie in the first four bases.
+full_read = "CCGTACGTCGCG"
+
+test_that("a hard-clipped record without MN is rejected instead of misplacing calls", {
+  # Ground truth: soft-clipped (4S8M) with the full SEQ. The listed C's are
+  # in the clip, so no reference position gets a call.
+  truth = ggmethylation:::parse_mm_ml(full_read, "C+m,0,0;", c(200L, 100L), "m", "+",
+                                      "4S8M", 100L)
+  expect_equal(nrow(truth$sites), 0L)
+  # Same alignment hard-clipped (4H8M, SEQ = last 8 bases) with MM/ML still
+  # written for the full read: read naively, the first two C's of the
+  # clipped SEQ would get calls at 101 and 104. It is rejected instead.
+  expect_warning(
+    hard <- ggmethylation:::parse_mm_ml(substr(full_read, 5, 12), "C+m,0,0;",
+                                        c(200L, 100L), "m", "+", "4H8M", 100L),
+    "hard-clipped.*MN"
+  )
+  expect_equal(nrow(hard$sites), 0L)
+  expect_error(
+    ggmethylation:::.parse_mods(substr(full_read, 5, 12), "C+m,0,0;", c(200L, 100L),
+                                "m", "+", "4H8M", 100L, mn = NA_integer_),
+    class = "ggmethylation_malformed_mm"
+  )
+})
+
+test_that("a hard-clipped record whose MN equals the SEQ length is trusted", {
+  # MM/ML rewritten for the clipped SEQ ACGTCGCG (C's at 2, 5, 7): the first
+  # two C's -> ref 101 and 104. This matches the full read soft-clipped with
+  # MM "C+m,2,0" (C's 6 and 9 of the full read).
+  clipped = ggmethylation:::parse_mm_ml(substr(full_read, 5, 12), "C+m,0,0;",
+                                        c(200L, 100L), "m", "+", "4H8M", 100L, mn = 8L)
+  truth = ggmethylation:::parse_mm_ml(full_read, "C+m,2,0;", c(200L, 100L), "m", "+",
+                                      "4S8M", 100L)
+  expect_equal(clipped$sites$position, c(101L, 104L))
+  expect_equal(clipped$sites, truth$sites)
+  # An MN that still gives the full read length is rejected (existing check).
+  expect_warning(
+    ggmethylation:::parse_mm_ml(substr(full_read, 5, 12), "C+m,0,0;", c(200L, 100L),
+                                "m", "+", "4H8M", 100L, mn = 12L),
+    "MN tag \\(12\\)"
+  )
+})
+
+test_that("a hard clip on the right side is handled the same way", {
+  left8 = substr(full_read, 1, 8)
+  expect_warning(
+    res <- ggmethylation:::parse_mm_ml(left8, "C+m,0,0;", c(200L, 100L), "m", "+",
+                                       "8M4H", 100L),
+    "hard-clipped"
+  )
+  expect_equal(nrow(res$sites), 0L)
+  ok = ggmethylation:::parse_mm_ml(left8, "C+m,0,0;", c(200L, 100L), "m", "+",
+                                   "8M4H", 100L, mn = 8L)
+  expect_equal(ok$sites$position, c(100L, 101L))
+})
+
+test_that("a hard-clipped reverse-strand record needs MN as well", {
+  # Stored SEQ ACGTCGCG, reverse strand: G's at 8, 6, 3 in read order.
+  seq8 = substr(full_read, 5, 12)
+  expect_warning(
+    res <- ggmethylation:::parse_mm_ml(seq8, "C+m,0;", 200L, "m", "-", "4H8M", 100L),
+    "hard-clipped"
+  )
+  expect_equal(nrow(res$sites), 0L)
+  ok = ggmethylation:::parse_mm_ml(seq8, "C+m,0;", 200L, "m", "-", "4H8M", 100L, mn = 8L)
+  expect_equal(ok$sites$position, 107L)
+})
+
+test_that("a hard-clipped record without calls for the requested code is not rejected", {
+  # The MM tag only has an 'h' entry: nothing to place, nothing to reject.
+  expect_silent(
+    res <- ggmethylation:::parse_mm_ml("ACGTCGCG", "C+h,0;", 200L, "m", "+", "4H8M", 100L)
+  )
+  expect_equal(nrow(res$sites), 0L)
 })
 
 test_that("an empty SEQ ('*') with MM calls is rejected, not crashed on", {

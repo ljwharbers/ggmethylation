@@ -21,7 +21,7 @@
 #' @keywords internal
 parse_region = function(region) {
   if (!is.character(region) || length(region) != 1L || is.na(region)) {
-    stop("'region' must be a single character string such as 'chr1:1000-2000'.",
+    stop("`region` must be a single character string such as \"chr1:1000-2000\".",
          call. = FALSE)
   }
 
@@ -174,24 +174,6 @@ ref_to_seq = function(cigar, ref_start, target_ref_pos) {
   }
 
   NA_integer_
-}
-
-#' Return the complement of a DNA base
-#'
-#' Maps A to T, T to A, C to G, and G to C.
-#'
-#' @param base Single character. One of `"A"`, `"T"`, `"C"`, or `"G"`.
-#'
-#' @return Single character. The complementary base.
-#'
-#' @keywords internal
-complement_base = function(base) {
-  comp = c(A = "T", T = "A", C = "G", G = "C")
-  result = comp[toupper(base)]
-  if (is.na(result)) {
-    stop("Unknown base: '", base, "'.", call. = FALSE)
-  }
-  as.character(result)
 }
 
 #' Parse an SA (Supplementary Alignment) BAM auxiliary tag

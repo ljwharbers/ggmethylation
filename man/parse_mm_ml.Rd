@@ -24,7 +24,9 @@ for 5mC, \code{"h"} for 5hmC).}
 \item{pos}{Integer. 1-based leftmost alignment position (BAM POS field).}
 
 \item{mn}{Integer or \code{NULL}. The value of the optional \code{MN} tag (the SEQ
-length the MM/ML tags were written for). \code{NULL} or \code{NA} skips the check.}
+length the MM/ML tags were written for). \code{NULL} or \code{NA} means the tag is
+absent: a record without hard clips is then trusted, a hard-clipped one
+is rejected.}
 }
 \value{
 A named \code{list} with two \code{data.frame} elements:
@@ -73,8 +75,12 @@ non-CpG C as unmodified.
 A tag that cannot be interpreted is rejected as a whole, with a warning,
 and no calls are returned: an unparseable entry, a missing or negative
 skip count, an ML length that differs from the number of calls in MM, an
-entry that lists more bases than SEQ contains, an empty SEQ (\code{*}), or an
+entry that lists more bases than SEQ contains, an empty SEQ (\code{*}), an
 \code{mn} value that differs from the length of \code{seq} (a hard-clipped record
-whose MM/ML still describe the full read).
+whose MM/ML still describe the full read), or a hard-clipped record (an
+\code{H} operation in \code{cigar}) without \code{mn}. In the last case there is no way
+to tell whether MM/ML were rewritten for the clipped SEQ, and if they were
+not, every call would be placed on the wrong base. When \code{mn} is given and
+equals the length of \code{seq}, a hard-clipped record is trusted.
 }
 \keyword{internal}

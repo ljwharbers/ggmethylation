@@ -13,3 +13,13 @@ A \link[ggplot2:theme]{ggplot2::theme} object.
 Shared minimal theme used across \code{ggmethylation} panels. Provides the base
 \code{theme_minimal()} plus compact legend styling and suppressed minor grid.
 }
+\examples{
+bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP")
+sites = md$sites[!is.na(md$sites$group), ]
+
+# Use the package's look for your own plots of the same data
+ggplot2::ggplot(sites, ggplot2::aes(mod_prob, colour = group)) +
+  ggplot2::geom_density() +
+  theme_ggmethylation()
+}

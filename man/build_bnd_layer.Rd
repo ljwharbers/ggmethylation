@@ -19,7 +19,7 @@ or \code{NULL} when \code{bnd_df} is \code{NULL} or zero-row.
 \description{
 Returns a flat list of ggplot2 layer objects (one \code{geom_text} per BND)
 showing the full mate location (chromosome:position with comma thousands
-separator) using the join symbol (⋈).
+separator) after the text \code{BND}.
 }
 \details{
 The label is anchored at \code{y = -Inf} with \code{vjust = -0.3}, which (with the

@@ -1,64 +1,5 @@
 # MM/ML tag parser for ggmethylation
 
-#' Convert query (read) positions to reference (genomic) positions via CIGAR
-#'
-#' Walks through a CIGAR string to build a mapping from 1-based query positions
-#' to 1-based reference positions. Positions that fall within soft clips or
-#' insertions return `NA`.
-#'
-#' @param cigar Character. A CIGAR string (e.g., `"5S10M2I3M4D5M"`).
-#' @param pos Integer. The 1-based leftmost reference position of the
-#'   alignment (the POS field from BAM, which corresponds to the first
-#'   M/=/X base after any leading S/H).
-#' @param query_positions Integer vector. 1-based positions within the query
-#'   sequence to map.
-#'
-#' @return Integer vector of the same length as `query_positions`, with
-#'   reference positions or `NA` for unmappable positions.
-#'
-#' @keywords internal
-seq_to_ref = function(cigar, pos, query_positions) {
-  # Parse CIGAR into operations and lengths
-  parsed_cigar = split_cigar(cigar)
-  ops  = parsed_cigar$ops
-  lens = parsed_cigar$lens
-
-  # Pre-allocate a mapping vector from query offset to ref position.
-  # Compute total query consumption to size the vector.
-  query_consumers = ops %in% c("M", "I", "S", "=", "X")
-  total_query = sum(lens[query_consumers])
-  query_to_ref = rep(NA_integer_, total_query)
-
-  query_offset = 0L
-  ref_offset = 0L
-
-  for (i in seq_along(ops)) {
-    op = ops[i]
-    len = lens[i]
-
-    if (op %in% c("M", "=", "X")) {
-      # Consumes both query and reference
-      idx = seq_len(len)
-      query_to_ref[query_offset + idx] = pos + ref_offset + idx - 1L
-      query_offset = query_offset + len
-      ref_offset = ref_offset + len
-    } else if (op == "I") {
-      # Consumes query only -- positions map to NA (already NA)
-      query_offset = query_offset + len
-    } else if (op == "S") {
-      # Soft clip: consumes query only -- positions map to NA (already NA)
-      query_offset = query_offset + len
-    } else if (op %in% c("D", "N")) {
-      # Consumes reference only
-      ref_offset = ref_offset + len
-    } else if (op == "H") {
-      # Hard clip: consumes neither
-    }
-  }
-
-  query_to_ref[query_positions]
-}
-
 #' Parse MM and ML tags for a single read
 #'
 #' Extracts modification probabilities and their genomic positions from the
@@ -90,9 +31,13 @@ seq_to_ref = function(cigar, pos, query_positions) {
 #' A tag that cannot be interpreted is rejected as a whole, with a warning,
 #' and no calls are returned: an unparseable entry, a missing or negative
 #' skip count, an ML length that differs from the number of calls in MM, an
-#' entry that lists more bases than SEQ contains, an empty SEQ (`*`), or an
+#' entry that lists more bases than SEQ contains, an empty SEQ (`*`), an
 #' `mn` value that differs from the length of `seq` (a hard-clipped record
-#' whose MM/ML still describe the full read).
+#' whose MM/ML still describe the full read), or a hard-clipped record (an
+#' `H` operation in `cigar`) without `mn`. In the last case there is no way
+#' to tell whether MM/ML were rewritten for the clipped SEQ, and if they were
+#' not, every call would be placed on the wrong base. When `mn` is given and
+#' equals the length of `seq`, a hard-clipped record is trusted.
 #'
 #' @param seq Character. The read sequence from the BAM SEQ field.
 #' @param mm_tag Character. The MM tag value, e.g. `"C+m,0,1,3;C+h,2;"`.
@@ -104,7 +49,9 @@ seq_to_ref = function(cigar, pos, query_positions) {
 #' @param cigar Character. The CIGAR string for the alignment.
 #' @param pos Integer. 1-based leftmost alignment position (BAM POS field).
 #' @param mn Integer or `NULL`. The value of the optional `MN` tag (the SEQ
-#'   length the MM/ML tags were written for). `NULL` or `NA` skips the check.
+#'   length the MM/ML tags were written for). `NULL` or `NA` means the tag is
+#'   absent: a record without hard clips is then trusted, a hard-clipped one
+#'   is rejected.
 #'
 #' @return A named `list` with two `data.frame` elements:
 #'   \describe{
@@ -227,8 +174,17 @@ parse_mm_ml = function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos, mn = N
   seq = toupper(as.character(seq))
   if (identical(seq, "*")) seq = ""
   seq_len = nchar(seq)
-  if (!is.null(mn) && length(mn) == 1L && !is.na(mn) && mn != seq_len) {
+  has_mn = !is.null(mn) && length(mn) == 1L && !is.na(mn)
+  if (has_mn && mn != seq_len) {
     .mm_malformed("MN tag (", mn, ") does not match the SEQ length (", seq_len, ")")
+  }
+  # A hard clip removed bases from SEQ. Without MN there is no way to tell
+  # whether MM/ML were rewritten for the clipped SEQ or still describe the
+  # full read (then every call would land on the wrong base), so the record
+  # is not trusted.
+  if (!has_mn && isTRUE(grepl("H", cigar, fixed = TRUE))) {
+    .mm_malformed("alignment is hard-clipped and has no MN tag to confirm that ",
+                  "MM/ML describe the clipped SEQ")
   }
   if (seq_len == 0L) {
     if (any(vapply(entries[wanted], function(e) length(e$deltas) > 0L, logical(1L)))) {

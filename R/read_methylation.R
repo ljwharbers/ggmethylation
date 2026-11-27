@@ -4,8 +4,9 @@
 #' a given genomic region. This is the main entry point for data extraction
 #' (Layer 1 of the package).
 #'
-#' Secondary (FLAG 0x100), QC-fail (0x200) and duplicate (0x400) alignments
-#' are never read. Supplementary alignments (0x800) are kept.
+#' Secondary alignments (FLAG 0x100) are never read. QC-fail (0x200) and
+#' duplicate (0x400) alignments are skipped unless `include_qc_fail` or
+#' `include_duplicates` is `TRUE`. Supplementary alignments (0x800) are kept.
 #'
 #' MM/ML tags are parsed as described in the SAM specification (see the
 #' Details of the internal `parse_mm_ml()`), with one deliberate deviation:
@@ -13,18 +14,25 @@
 #' are not reported), because older basecallers that write no flag list only
 #' CpG sites. A read whose MM/ML tags are malformed or inconsistent with its
 #' sequence (wrong number of ML values, unparseable skip counts, an `MN` tag
-#' that differs from the SEQ length, ...) is kept in `$reads` without any
-#' calls; a single warning reports how many reads were affected.
+#' that differs from the SEQ length, a hard-clipped alignment without an `MN`
+#' tag, ...) is kept in `$reads` without any calls; a single warning reports
+#' how many reads were affected. Hard-clipped alignments (often supplementary
+#' alignments, which minimap2 hard-clips by default) keep their calls only
+#' when they carry an `MN` tag equal to the length of their clipped SEQ,
+#' because without it the calls may be placed on the wrong bases.
 #'
-#' @param bam Character. Path to a BAM file containing MM/ML modification
+#' @param bam Character. Path to one BAM file containing MM/ML modification
 #'   tags, indexed with a `.bai` or `.csi` index.
 #' @param region Character. Genomic region string, e.g. `"chr1:1000-2000"`.
 #'   The string is split at its last colon, so contig names containing colons
-#'   are allowed.
+#'   are allowed. A contig that is not in the BAM header is an error (check
+#'   the naming, e.g. `chr1` vs `1`); a region without reads gives a warning
+#'   and an empty object.
 #' @param mod_code Character. Modification code from the MM tag (default `"m"`
 #'   for 5-methylcytosine).
-#' @param group_tag Character or NULL. BAM tag used to group reads (e.g.
-#'   `"HP"` for haplotype, `"RG"` for read group). NULL disables grouping.
+#' @param group_tag Character or NULL. Two-character BAM tag used to group
+#'   reads (e.g. `"HP"` for haplotype, `"RG"` for read group). NULL disables
+#'   grouping.
 #'   If no read in the region carries the tag, a warning is given and the
 #'   data are returned ungrouped (`group_tag` is `NULL` and there is no
 #'   `group` column).
@@ -34,8 +42,9 @@
 #'   other reads are dropped. `ref` and `alt` must be different bases from
 #'   A, C, G, T and `position` must lie inside `region`. Cannot be combined
 #'   with `group_tag`.
-#' @param max_reads Integer. Maximum number of reads to return (default 200).
-#'   If more reads overlap the region, a random subset is kept (see `seed`).
+#' @param max_reads Integer. Maximum number of reads to return (default 200):
+#'   a whole number >= 1, or `Inf` for no cap. If more reads overlap the
+#'   region, a random subset is kept (see `seed`).
 #' @param per_group_downsample Logical. When `TRUE` and grouping is active
 #'   (via `group_tag` or `snv`), the `max_reads` cap is applied
 #'   independently per group, and reads without a group (`NA`, e.g.
@@ -55,6 +64,12 @@
 #'   where the tag is absent (i.e. group is `NA`) are removed before
 #'   downsampling. Default `FALSE` preserves the existing behaviour of keeping
 #'   unphased reads in the data.
+#' @param include_duplicates Logical. When `TRUE`, alignments flagged as PCR
+#'   or optical duplicates (FLAG 0x400) are read too. Default `FALSE` skips
+#'   them.
+#' @param include_qc_fail Logical. When `TRUE`, alignments flagged as not
+#'   passing quality controls (FLAG 0x200) are read too. Default `FALSE`
+#'   skips them.
 #' @param seed `NULL` (default) or a single number. When given, downsampling
 #'   uses `set.seed(seed)` so the same reads are picked on every call, and the
 #'   caller's random number stream is restored afterwards. With `NULL`,
@@ -98,15 +113,24 @@
 #'   when a requested `mod_code` appears in no MM tag.
 #'
 #' @examples
-#' \dontrun{
-#' md = read_methylation("sample.bam", "chr1:1000-2000")
-#' md = read_methylation("sample.bam", "chr1:1000-2000",
-#'   group_tag = "HP", max_reads = 100
-#' )
-#' md = read_methylation("sample.bam", "chr1:1000-2000",
-#'   snv = list(position = 1500, ref = "C", alt = "T")
-#' )
-#' }
+#' # A small synthetic modBAM shipped with the package
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#'
+#' # 5mC calls of every read in the region
+#' md = read_methylation(bam, "chr1:1000-7000")
+#' md
+#' head(md$sites)
+#'
+#' # 5mC and 5hmC, reads grouped by haplotype (HP tag), downsampled to 40
+#' # reads; `seed` picks the same reads on every run
+#' md_hp = read_methylation(bam, "chr1:1000-7000", mod_code = c("m", "h"),
+#'                          group_tag = "HP", max_reads = 40, seed = 1)
+#' md_hp
+#'
+#' # Group reads by the base they carry at an A>G SNV instead
+#' md_snv = read_methylation(bam, "chr1:1000-7000",
+#'                           snv = list(position = 3000, ref = "A", alt = "G"))
+#' table(md_snv$reads$group)
 #'
 #' @export
 read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
@@ -116,46 +140,73 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
                              strand_filter = c("+", "-"),
                              min_read_length = 0L,
                              drop_na_group = FALSE,
+                             include_duplicates = FALSE,
+                             include_qc_fail = FALSE,
                              seed = NULL) {
   # --- 1. Validate inputs ---
   mod_code = as.character(mod_code)          # coerce in case of factor
   if (length(mod_code) == 0L || anyNA(mod_code) || any(!nzchar(mod_code))) {
-    stop("'mod_code' must be a non-empty character vector of modification codes.",
+    stop("`mod_code` must be a non-empty character vector of modification codes.",
          call. = FALSE)
   }
   mod_code = unique(mod_code)                # drop accidental duplicates
 
+  .check_string(bam, "bam")
+  if (!is.null(group_tag)) {
+    .check_string(group_tag, "group_tag")
+    if (!grepl("^[A-Za-z][A-Za-z0-9]$", group_tag)) {
+      stop("`group_tag` must be a two-character SAM tag name such as \"HP\" or ",
+           "\"RG\" (a letter followed by a letter or digit), not \"", group_tag, "\".",
+           call. = FALSE)
+    }
+  }
   if (!is.null(group_tag) && !is.null(snv)) {
-    stop("'group_tag' and 'snv' are mutually exclusive.", call. = FALSE)
+    stop("`group_tag` and `snv` are mutually exclusive.", call. = FALSE)
   }
   strand_filter = match.arg(strand_filter, choices = c("+", "-"), several.ok = TRUE)
-  .check_number(max_reads, "max_reads", min = 1, allow_inf = TRUE)
+  max_reads = .check_number(max_reads, "max_reads", min = 1, whole = TRUE,
+                            allow_inf = TRUE)
   .check_number(min_mapq, "min_mapq", min = 0)
   .check_number(min_read_length, "min_read_length", min = 0)
+  .check_flag(per_group_downsample, "per_group_downsample")
+  .check_flag(drop_na_group, "drop_na_group")
+  .check_flag(include_duplicates, "include_duplicates")
+  .check_flag(include_qc_fail, "include_qc_fail")
   if (!is.null(seed)) .check_number(seed, "seed", min = -Inf)
   min_mapq = as.integer(min_mapq)
   min_read_length = as.integer(min_read_length)
   gr = region_to_granges(region)
   snv = .check_snv(snv, gr)
   validate_bam_index(bam)
+  .check_bam_contig(bam, as.character(GenomicRanges::seqnames(gr)))
   # An `snv` request is reported as group tag "SNV", even when no read is left.
   result_tag = if (is.null(snv)) group_tag else "SNV"
 
   # --- 2. Query the BAM ---
-  # Secondary, QC-fail and duplicate alignments are skipped; supplementary
-  # alignments are kept (the package draws them and their SA partners).
+  # Secondary alignments are always skipped, QC-fail and duplicate ones unless
+  # asked for (NA = no filter on that flag); supplementary alignments are kept
+  # (the package draws them and their SA partners).
   param = Rsamtools::ScanBamParam(
     which = gr,
     what  = c("qname", "flag", "pos", "cigar", "strand", "seq", "mapq"),
     tag   = unique(c("MM", "ML", "MN", "Mm", "Ml", "SA", group_tag)),
-    flag  = Rsamtools::scanBamFlag(isSecondaryAlignment = FALSE,
-                                   isNotPassingQualityControls = FALSE,
-                                   isDuplicate = FALSE)
+    flag  = Rsamtools::scanBamFlag(
+      isSecondaryAlignment        = FALSE,
+      isNotPassingQualityControls = if (include_qc_fail) NA else FALSE,
+      isDuplicate                 = if (include_duplicates) NA else FALSE
+    )
   )
   bam_data = Rsamtools::scanBam(bam, param = param)[[1]]
   if (length(bam_data$qname) == 0L) {
-    warning("No reads found in region '", region, "' (secondary, QC-fail and ",
-            "duplicate alignments are not counted).", call. = FALSE)
+    # e.g. "secondary, QC-fail and duplicate" or just "secondary"
+    kinds = c("secondary", if (!include_qc_fail) "QC-fail",
+              if (!include_duplicates) "duplicate")
+    n_kinds = length(kinds)
+    if (n_kinds > 1L) {
+      kinds = paste(paste(kinds[-n_kinds], collapse = ", "), "and", kinds[n_kinds])
+    }
+    warning("No reads found in region '", region, "' (", kinds,
+            " alignments are not counted).", call. = FALSE)
     return(empty_methylation_data(gr, mod_code, result_tag, snv$position))
   }
   .check_mm_tags(bam_data, mod_code)
@@ -287,16 +338,28 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   list(position = position, ref = snv$ref, alt = snv$alt)
 }
 
-# Stop unless `x` is a single non-missing number >= `min` (finite unless
-# `allow_inf`).
-.check_number = function(x, name, min = 0, allow_inf = FALSE) {
-  ok = is.numeric(x) && length(x) == 1L && !is.na(x) &&
-    (allow_inf || is.finite(x)) && x >= min
-  if (!ok) {
-    stop("'", name, "' must be a single number",
-         if (is.finite(min)) paste0(" >= ", min) else "", ".", call. = FALSE)
-  }
-  invisible(x)
+# Stop when the region's contig is not among the BAM header's @SQ lines,
+# naming it, listing the header's contigs and pointing at chr-prefix mixups.
+.check_bam_contig = function(bam, chrom) {
+  header = tryCatch(
+    Rsamtools::scanBamHeader(bam, what = "targets")[[1L]],
+    error = function(e) {
+      stop("Failed to read the header of BAM file '", bam, "': ", conditionMessage(e),
+           call. = FALSE)
+    }
+  )
+  contigs = names(header$targets)
+  if (chrom %in% contigs) return(invisible(NULL))
+  alt = if (startsWith(chrom, "chr")) sub("^chr", "", chrom) else paste0("chr", chrom)
+  stop(
+    "Contig '", chrom, "' of `region` is not in the BAM header (contigs: ",
+    .format_contigs(contigs), "). ",
+    if (alt %in% contigs) {
+      paste0("Did you mean '", alt, "'? ")
+    },
+    "Check the chromosome naming (e.g. 'chr1' vs '1').",
+    call. = FALSE
+  )
 }
 
 # Modification codes named in a character vector of MM tags (single-letter
@@ -499,9 +562,12 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   }
 
   if (length(skipped) > 0L) {
+    n_hard = sum(grepl("is hard-clipped and has no MN tag", skipped, fixed = TRUE))
     warning(sprintf(
-      "Skipped the modification calls of %d read(s) with malformed or inconsistent MM/ML tags (e.g. %s: %s).",
-      length(skipped), names(skipped)[1L], skipped[[1L]]
+      "Skipped the modification calls of %d read(s) with malformed or inconsistent MM/ML tags%s (e.g. %s: %s).",
+      length(skipped),
+      if (n_hard > 0L) sprintf(", %d of them hard-clipped without an MN tag", n_hard) else "",
+      names(skipped)[1L], skipped[[1L]]
     ), call. = FALSE)
   }
 
@@ -655,7 +721,21 @@ empty_methylation_data = function(gr, mod_code, group_tag, snv_position = NULL) 
   }))
 }
 
+# Reference span of each read's full alignment (`bam_end - bam_pos + 1`), not
+# the span clipped to the region. Hand-built objects without those columns
+# fall back to `end - start + 1`.
+.aligned_lengths = function(reads) {
+  if (all(c("bam_pos", "bam_end") %in% names(reads))) {
+    reads$bam_end - reads$bam_pos + 1L
+  } else {
+    reads$end - reads$start + 1L
+  }
+}
+
 #' Print a methylation_data object
+#'
+#' The median aligned length is the reference span of each read's full
+#' alignment, not of the part inside the queried region.
 #'
 #' @param x A `methylation_data` object.
 #' @param ... Additional arguments (ignored).
@@ -671,7 +751,7 @@ print.methylation_data = function(x, ...) {
   n_plus  = sum(x$reads$strand == "+", na.rm = TRUE)
   n_minus = sum(x$reads$strand == "-", na.rm = TRUE)
 
-  read_lengths = x$reads$end - x$reads$start + 1L
+  read_lengths = .aligned_lengths(x$reads)
   med_len = if (length(read_lengths) > 0L) as.integer(stats::median(read_lengths)) else NA_integer_
 
   cat("methylation_data object\n")
@@ -679,7 +759,7 @@ print.methylation_data = function(x, ...) {
   cat(sprintf("Reads: %d  (+ strand: %d,  - strand: %d)\n",
               nrow(x$reads), n_plus, n_minus))
   if (!is.na(med_len))
-    cat(sprintf("Median read length: %d bp\n", med_len))
+    cat(sprintf("Median aligned length: %d bp\n", med_len))
   cat(sprintf("Modification sites: %d\n", nrow(x$sites)))
   cat(sprintf("Modification code(s): %s\n", paste(x$mod_code, collapse = ", ")))
 
@@ -698,9 +778,23 @@ print.methylation_data = function(x, ...) {
 
 #' Summary of a methylation_data object
 #'
+#' Computes summary statistics without printing them; printing the result
+#' (as the console does automatically) shows them.
+#'
 #' @param object A \code{methylation_data} object.
 #' @param ... Unused.
-#' @return A named list with summary statistics (invisibly).
+#' @return An object of class `summary.methylation_data`: a named list with
+#'   elements `region` (string), `n_reads`, `n_sites`, `mod_code`,
+#'   `group_tag`, `strand` (data frame of reads per strand), `read_length`
+#'   (list of `min`, `median` and `max` aligned length in bp: the reference
+#'   span of each read's full alignment, `NA` without reads), `groups`
+#'   (per-group data frame or `NULL`) and `overall_mean_mod_prob`.
+#' @examples
+#' bam = system.file("extdata", "synthetic.bam", package = "ggmethylation")
+#' md = read_methylation(bam, "chr1:1000-7000", group_tag = "HP")
+#' s = summary(md)
+#' s
+#' s$groups
 #' @export
 summary.methylation_data = function(object, ...) {
   chrom = as.character(GenomicRanges::seqnames(object$region))
@@ -713,7 +807,7 @@ summary.methylation_data = function(object, ...) {
                          n_reads = as.integer(strand_tab),
                          stringsAsFactors = FALSE)
 
-  lens = object$reads$end - object$reads$start + 1L
+  lens = .aligned_lengths(object$reads)
   rl = if (length(lens) > 0L)
     list(median = as.integer(stats::median(lens)), min = min(lens), max = max(lens))
   else
@@ -733,32 +827,51 @@ summary.methylation_data = function(object, ...) {
     }
   }
 
-  out = list(
-    region                = reg_str,
-    n_reads               = nrow(object$reads),
-    n_sites               = nrow(object$sites),
-    mod_code              = object$mod_code,
-    group_tag             = object$group_tag,
-    strand                = strand_df,
-    read_length           = rl,
-    groups                = groups_df,
-    overall_mean_mod_prob = overall_mean
+  structure(
+    list(
+      region                = reg_str,
+      n_reads               = nrow(object$reads),
+      n_sites               = nrow(object$sites),
+      mod_code              = object$mod_code,
+      group_tag             = object$group_tag,
+      strand                = strand_df,
+      read_length           = rl,
+      groups                = groups_df,
+      overall_mean_mod_prob = overall_mean
+    ),
+    class = "summary.methylation_data"
   )
+}
 
+#' Print a summary of a methylation_data object
+#'
+#' @param x A `summary.methylation_data` object, from
+#'   [summary.methylation_data()].
+#' @param ... Unused.
+#' @return `x`, invisibly.
+#' @method print summary.methylation_data
+#' @export
+print.summary.methylation_data = function(x, ...) {
   cat("methylation_data summary\n========================\n")
-  cat(sprintf("Region:            %s\n", reg_str))
-  cat(sprintf("Reads:             %d\n", out$n_reads))
-  for (i in seq_len(nrow(strand_df)))
-    cat(sprintf("  %s strand:        %d\n", strand_df$strand[i], strand_df$n_reads[i]))
-  cat(sprintf("  Read length:     min=%d, median=%d, max=%d bp\n",
-              rl$min, rl$median, rl$max))
-  cat(sprintf("Sites:             %d\n", out$n_sites))
-  cat(sprintf("Modification:      %s\n", paste(out$mod_code, collapse = ", ")))
-  cat(sprintf("Overall mean mod:  %.2f\n", overall_mean))
-  if (!is.null(groups_df)) {
-    cat(sprintf("\nGroup breakdown (%s):\n", object$group_tag))
-    print(groups_df, row.names = FALSE, digits = 4)
+  cat(sprintf("Region:            %s\n", x$region))
+  cat(sprintf("Reads:             %d\n", x$n_reads))
+  for (i in seq_len(nrow(x$strand)))
+    cat(sprintf("  %s strand:        %d\n", x$strand$strand[i], x$strand$n_reads[i]))
+  rl = x$read_length
+  if (x$n_reads > 0L && !is.na(rl$median)) {
+    cat(sprintf("  Aligned length:  min=%d, median=%d, max=%d bp\n",
+                rl$min, rl$median, rl$max))
+  } else {
+    cat("  Aligned length:  none (no reads)\n")
   }
-
-  invisible(out)
+  cat(sprintf("Sites:             %d\n", x$n_sites))
+  cat(sprintf("Modification:      %s\n", paste(x$mod_code, collapse = ", ")))
+  cat(sprintf("Overall mean mod:  %s\n",
+              if (is.na(x$overall_mean_mod_prob)) "NA (no sites)"
+              else sprintf("%.2f", x$overall_mean_mod_prob)))
+  if (!is.null(x$groups)) {
+    cat(sprintf("\nGroup breakdown (%s):\n", x$group_tag))
+    print(x$groups, row.names = FALSE, digits = 4)
+  }
+  invisible(x)
 }

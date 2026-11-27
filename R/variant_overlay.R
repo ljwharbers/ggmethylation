@@ -2,9 +2,15 @@
 
 #' Extract per-read bases at variant positions
 #'
-#' For each combination of (read, variant position) where the read spans the
-#' variant, walks the CIGAR string to find the query base and classifies it as
-#' `"ref"`, `"alt"`, `"del"` (position falls in a deletion), or `"other"`.
+#' For each combination of (read, variant position) where the read's clipped
+#' span (`start`..`end`) contains the variant, maps the position through the
+#' read's CIGAR to its query base and classifies it as `"ref"`, `"alt"`,
+#' `"del"` (no aligned query base there: a deletion, skip or uncovered
+#' position), or `"other"`. Bases are compared case-insensitively; positions
+#' past the end of the stored sequence are skipped. Each read's CIGAR is
+#' decomposed once and all its variants are mapped in one vectorised step.
+#' Rows are ordered by read (in `reads` order), then by variant (in `variants`
+#' order).
 #'
 #' @param reads Data.frame. The `$reads` element of a `methylation_data` object.
 #'   Must contain columns `read_name`, `start`, `end`, and `lane`.
@@ -21,92 +27,83 @@
 #'
 #' @keywords internal
 extract_variant_bases = function(reads, sequences, cigars, variants) {
-  # Handle empty variants immediately
-  if (is.null(variants) || nrow(variants) == 0L) {
-    return(data.frame(
-      read_name     = character(0L),
-      position      = integer(0L),
-      base          = character(0L),
-      variant_class = character(0L),
-      lane          = integer(0L),
-      stringsAsFactors = FALSE
-    ))
-  }
+  empty = data.frame(
+    read_name     = character(0L),
+    position      = integer(0L),
+    base          = character(0L),
+    variant_class = character(0L),
+    lane          = integer(0L),
+    stringsAsFactors = FALSE
+  )
+  if (is.null(variants) || nrow(variants) == 0L) return(empty)
 
-  result_list = vector("list", nrow(reads) * nrow(variants))
-  result_idx  = 0L
+  var_pos = variants$position
+  ref_uc  = toupper(variants$ref)
+  alt_uc  = toupper(variants$alt)
 
-  for (i in seq_len(nrow(reads))) {
-    read_name = reads$read_name[i]
+  # Reads without a stored sequence or CIGAR are skipped (first match by name)
+  seq_idx = match(reads$read_name, names(sequences))
+  cig_idx = match(reads$read_name, names(cigars))
+  usable  = which(!is.na(seq_idx) & !is.na(cig_idx) &
+                    !is.na(unname(sequences)[seq_idx]) &
+                    !is.na(unname(cigars)[cig_idx]))
 
-    # Skip reads without a stored sequence
-    if (!read_name %in% names(sequences)) next
-    if (!read_name %in% names(cigars))    next
+  per_read = vector("list", nrow(reads))
+  for (i in usable) {
+    # Variants inside this read's clipped span, in `variants` order
+    vi = which(var_pos >= reads$start[i] & var_pos <= reads$end[i])
+    if (length(vi) == 0L) next
 
-    seq_str  = sequences[[read_name]]
-    cigar    = cigars[[read_name]]
-    r_start  = reads$start[i]
-    r_end    = reads$end[i]
-    bam_pos  = reads$bam_pos[i]
-    lane     = reads$lane[i]
+    # The CIGAR is walked from bam_pos (the unclipped alignment start), not
+    # the region-clipped reads$start.
+    q = .ref_to_query(cigars[[cig_idx[i]]], reads$bam_pos[i], var_pos[vi])
 
-    for (v in seq_len(nrow(variants))) {
-      var_pos = variants$position[v]
-
-      # Skip if variant is outside this read's clipped span
-      if (var_pos < r_start || var_pos > r_end) next
-
-      # Map genomic position to query position via CIGAR.
-      # Use bam_pos (original unclipped alignment start), not the clipped
-      # reads$start, so the CIGAR walk begins from the correct reference offset.
-      q_pos = ref_to_seq(
-        cigar          = cigar,
-        ref_start      = bam_pos,
-        target_ref_pos = var_pos
-      )
-
-      if (is.na(q_pos)) {
-        # Position falls in a deletion
-        base          = "-"
-        variant_class = "del"
-      } else {
-        base = substr(seq_str, q_pos, q_pos)
-        if (nchar(base) == 0L || base == "") {
-          next  # q_pos out of sequence length — skip
-        }
-        variant_class = if (toupper(base) == toupper(variants$ref[v])) {
-          "ref"
-        } else if (toupper(base) == toupper(variants$alt[v])) {
-          "alt"
-        } else {
-          "other"
-        }
-      }
-
-      result_idx = result_idx + 1L
-      result_list[[result_idx]] = data.frame(
-        read_name     = read_name,
-        position      = var_pos,
-        base          = base,
-        variant_class = variant_class,
-        lane          = lane,
-        stringsAsFactors = FALSE
-      )
+    in_del = is.na(q)  # no aligned query base: deletion, skip or uncovered
+    base   = rep("-", length(vi))
+    if (!all(in_del)) {
+      base[!in_del] = substring(sequences[[seq_idx[i]]], q[!in_del], q[!in_del])
     }
+    keep = in_del | nzchar(base)  # query position past the stored sequence
+    if (!any(keep)) next
+    vi     = vi[keep]
+    base   = base[keep]
+    in_del = in_del[keep]
+
+    ub  = toupper(base)
+    cls = ifelse(!is.na(ref_uc[vi]) & ub == ref_uc[vi], "ref",
+                 ifelse(!is.na(alt_uc[vi]) & ub == alt_uc[vi], "alt", "other"))
+    cls[in_del] = "del"
+    per_read[[i]] = list(ri = rep(i, length(vi)), vi = vi, base = base, cls = cls)
   }
 
-  if (result_idx == 0L) {
-    return(data.frame(
-      read_name     = character(0L),
-      position      = integer(0L),
-      base          = character(0L),
-      variant_class = character(0L),
-      lane          = integer(0L),
-      stringsAsFactors = FALSE
-    ))
-  }
+  per_read = per_read[!vapply(per_read, is.null, logical(1L))]
+  if (length(per_read) == 0L) return(empty)
 
-  do.call(rbind, result_list[seq_len(result_idx)])
+  ri = unlist(lapply(per_read, `[[`, "ri"), use.names = FALSE)
+  vi = unlist(lapply(per_read, `[[`, "vi"), use.names = FALSE)
+  data.frame(
+    read_name     = reads$read_name[ri],
+    position      = var_pos[vi],
+    base          = unlist(lapply(per_read, `[[`, "base"), use.names = FALSE),
+    variant_class = unlist(lapply(per_read, `[[`, "cls"), use.names = FALSE),
+    lane          = reads$lane[ri],
+    stringsAsFactors = FALSE
+  )
+}
+
+# Query positions of the reference positions `targets` in one read, from its
+# CIGAR and alignment start `pos`: vectorised ref_to_seq(). NA where a target
+# has no aligned query base (inside D/N, or outside the M/=/X blocks).
+.ref_to_query = function(cigar, pos, targets) {
+  dc = decompose_cigar(cigar, pos)
+  dc = dc[dc$type %in% c("M", "=", "X"), , drop = FALSE]
+  q  = rep(NA_integer_, length(targets))
+  if (nrow(dc) == 0L) return(q)
+  k  = findInterval(targets, dc$ref_start)
+  ok = k > 0L
+  ok[ok] = targets[ok] <= dc$ref_end[k[ok]]
+  q[ok] = dc$query_start[k[ok]] + as.integer(targets[ok] - dc$ref_start[k[ok]])
+  q
 }
 
 # Warn when the region a variant_data object was read for is on another

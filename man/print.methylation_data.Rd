@@ -15,5 +15,6 @@
 \code{x}, invisibly.
 }
 \description{
-Print a methylation_data object
+The median aligned length is the reference span of each read's full
+alignment, not of the part inside the queried region.
 }

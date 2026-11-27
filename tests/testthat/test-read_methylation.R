@@ -82,6 +82,44 @@ test_that("numeric arguments are validated", {
   expect_error(read_fixture(min_read_length = NA), "min_read_length")
   expect_error(read_fixture(min_read_length = c(1, 2)), "min_read_length")
   expect_error(read_fixture(seed = "a"), "seed")
+  expect_error(read_fixture(max_reads = 2.5), "`max_reads` must be a single whole number")
+  expect_silent(md <- read_fixture(max_reads = Inf))
+  expect_gt(nrow(md$reads), 0L)
+})
+
+test_that("bam must be a single existing file", {
+  expect_error(read_methylation(c(fixture_bam(), fixture_bam()), fixture_region),
+               "`bam` must be a single non-empty character string")
+  expect_error(read_methylation(NA, fixture_region), "`bam`")
+  expect_error(read_methylation(NA_character_, fixture_region), "`bam`")
+  expect_error(read_methylation(1, fixture_region), "`bam`")
+  expect_error(read_methylation(file.path(tempdir(), "absent.bam"), fixture_region),
+               "does not exist")
+})
+
+test_that("group_tag must be one two-character SAM tag name", {
+  expect_error(read_fixture(group_tag = c("HP", "RG")), "`group_tag` must be a single")
+  expect_error(read_fixture(group_tag = "HPX"), "`group_tag` must be a two-character")
+  expect_error(read_fixture(group_tag = "1P"), "two-character")
+  expect_error(read_fixture(group_tag = NA_character_), "`group_tag`")
+  expect_error(read_fixture(group_tag = 1), "`group_tag`")
+})
+
+test_that("logical arguments are validated", {
+  expect_error(read_fixture(per_group_downsample = NA), "`per_group_downsample`")
+  expect_error(read_fixture(per_group_downsample = "yes"), "`per_group_downsample`")
+  expect_error(read_fixture(drop_na_group = c(TRUE, FALSE)), "`drop_na_group`")
+  expect_error(read_fixture(drop_na_group = 1), "`drop_na_group`")
+})
+
+test_that("a region on a contig missing from the BAM header is an error", {
+  err = tryCatch(read_methylation(fixture_bam(), "chr2:1000-2000"),
+                 error = function(e) conditionMessage(e))
+  expect_match(err, "Contig 'chr2'")
+  expect_match(err, "chr1, chr3, chr7", fixed = TRUE)
+  expect_match(err, "'chr1' vs '1'", fixed = TRUE)
+  # A missing chr prefix gets a specific suggestion.
+  expect_error(read_methylation(fixture_bam(), "1:1000-2000"), "Did you mean 'chr1'")
 })
 
 test_that("seed makes downsampling reproducible without touching the global RNG", {
@@ -133,9 +171,10 @@ sam_record = function(qname, flag, pos, cigar, seq, tags = character(0)) {
         collapse = "\t")
 }
 
-make_bam = function(records) {
+make_bam = function(records, contigs = "chr1") {
   sam = tempfile(fileext = ".sam")
-  writeLines(c("@HD\tVN:1.6\tSO:unsorted", "@SQ\tSN:chr1\tLN:10000", records), sam)
+  writeLines(c("@HD\tVN:1.6\tSO:unsorted",
+               sprintf("@SQ\tSN:%s\tLN:10000", contigs), records), sam)
   Rsamtools::asBam(sam, tempfile("synthetic"), indexDestination = TRUE)
 }
 
@@ -153,17 +192,57 @@ collect_warnings = function(expr) {
 seq10 = "ACGTACGTAC"
 mm3 = c("MM:Z:C+m?,0,0,0;", "ML:B:C,10,20,30")
 
-test_that("secondary, duplicate and QC-fail alignments are excluded", {
-  bam = make_bam(c(
+flag_test_bam = function() {
+  make_bam(c(
     sam_record("primary", 0, 100, "10M", seq10, mm3),
     sam_record("secondary", 256, 100, "10M", seq10, mm3),
     sam_record("qcfail", 512, 110, "10M", seq10, mm3),
     sam_record("duplicate", 1024, 120, "10M", seq10, mm3),
+    sam_record("qcfail_dup", 512 + 1024, 130, "10M", seq10, mm3),
+    sam_record("secondary_dup", 256 + 1024, 140, "10M", seq10, mm3),
     sam_record("supplementary", 2048, 150, "10M", seq10, mm3)
   ))
+}
+
+test_that("secondary, duplicate and QC-fail alignments are excluded", {
+  bam = flag_test_bam()
   md = read_methylation(bam, "chr1:100-200")
   expect_setequal(md$reads$read_name, c("primary", "supplementary"))
   expect_equal(sort(md$sites$position), c(101L, 105L, 109L, 151L, 155L, 159L))
+})
+
+test_that("include_duplicates and include_qc_fail read the flagged alignments", {
+  bam = flag_test_bam()
+  dup = read_methylation(bam, "chr1:100-200", include_duplicates = TRUE)
+  expect_setequal(dup$reads$read_name, c("primary", "duplicate", "supplementary"))
+  expect_true(all(c(121L, 125L, 129L) %in% dup$sites$position))
+
+  qc = read_methylation(bam, "chr1:100-200", include_qc_fail = TRUE)
+  expect_setequal(qc$reads$read_name, c("primary", "qcfail", "supplementary"))
+
+  both = read_methylation(bam, "chr1:100-200", include_duplicates = TRUE,
+                          include_qc_fail = TRUE)
+  # Secondary alignments stay excluded, also when flagged as duplicates.
+  expect_setequal(both$reads$read_name,
+                  c("primary", "qcfail", "duplicate", "qcfail_dup", "supplementary"))
+
+  expect_error(read_methylation(bam, "chr1:100-200", include_duplicates = NA),
+               "`include_duplicates` must be TRUE or FALSE")
+  expect_error(read_methylation(bam, "chr1:100-200", include_qc_fail = "no"),
+               "`include_qc_fail` must be TRUE or FALSE")
+})
+
+test_that("the no-reads warning names only the alignment kinds that were skipped", {
+  bam = make_bam(sam_record("dup_only", 1024, 100, "10M", seq10, mm3))
+  expect_warning(read_methylation(bam, "chr1:100-200"),
+                 "secondary, QC-fail and duplicate alignments are not counted")
+  expect_warning(read_methylation(bam, "chr1:500-600", include_duplicates = TRUE),
+                 "\\(secondary and QC-fail alignments are not counted\\)")
+  expect_warning(read_methylation(bam, "chr1:500-600", include_duplicates = TRUE,
+                                  include_qc_fail = TRUE),
+                 "\\(secondary alignments are not counted\\)")
+  md = read_methylation(bam, "chr1:100-200", include_duplicates = TRUE)
+  expect_equal(md$reads$read_name, "dup_only")
 })
 
 test_that("reads with malformed MM/ML are skipped with one aggregated warning", {
@@ -179,19 +258,27 @@ test_that("reads with malformed MM/ML are skipped with one aggregated warning", 
     # Hard-clipped record whose MM still describes the 15-base read.
     sam_record("hard_clipped", 0, 140, "5H10M", seq10,
                c("MM:Z:C+m?,0,0,0;", "ML:B:C,10,20,30", "MN:i:15")),
+    # Hard-clipped without MN: MM/ML may describe the unclipped read.
+    sam_record("hard_no_mn", 0, 150, "5H10M", seq10, mm3),
     # MN agrees with SEQ: first C at query 2 -> ref 161.
     sam_record("mn_ok", 0, 160, "10M", seq10,
-               c("MM:Z:C+m?,0;", "ML:B:C,99", "MN:i:10"))
+               c("MM:Z:C+m?,0;", "ML:B:C,99", "MN:i:10")),
+    # Hard-clipped with MN equal to the clipped SEQ length: trusted.
+    sam_record("hard_mn_ok", 0, 170, "10M5H", seq10,
+               c("MM:Z:C+m?,0;", "ML:B:C,88", "MN:i:10"))
   ))
   res = collect_warnings(read_methylation(bam, "chr1:100-200"))
   md = res$value
   skip_msgs = grep("malformed", res$warnings, value = TRUE)
   expect_length(skip_msgs, 1L)
-  expect_match(skip_msgs, "3 read")
+  expect_match(skip_msgs, "4 read")
+  expect_match(skip_msgs, "1 of them hard-clipped without an MN tag")
   # Skipped reads stay in $reads, without calls.
   expect_setequal(md$reads$read_name,
-                  c("good", "short_ml", "bad_delta", "hard_clipped", "mn_ok"))
-  expect_setequal(unique(md$sites$read_name), c("good", "mn_ok"))
+                  c("good", "short_ml", "bad_delta", "hard_clipped", "hard_no_mn",
+                    "mn_ok", "hard_mn_ok"))
+  expect_setequal(unique(md$sites$read_name), c("good", "mn_ok", "hard_mn_ok"))
+  expect_equal(md$sites$position[md$sites$read_name == "hard_mn_ok"], 171L)
   expect_false(anyNA(md$sites$mod_prob))
   expect_equal(md$sites$mod_prob[md$sites$read_name == "mn_ok"], 99 / 255)
 })
@@ -205,6 +292,16 @@ test_that("a warning is given when no read carries MM/ML, naming legacy Mm/Ml ta
   expect_true(any(grepl("MM/ML", res$warnings)))
   expect_true(any(grepl("Mm/Ml", res$warnings)))
   expect_equal(nrow(res$value$sites), 0L)
+})
+
+test_that("the missing-contig error lists at most ten header contigs", {
+  bam = make_bam(sam_record("r", 0, 100, "10M", seq10, mm3),
+                 contigs = paste0("chr", 1:12))
+  err = tryCatch(read_methylation(bam, "chrX:100-200"),
+                 error = function(e) conditionMessage(e))
+  expect_match(err, "chr1, chr2, chr3, chr4, chr5, chr6, chr7, chr8, chr9, chr10, ... (12 total)",
+               fixed = TRUE)
+  expect_no_match(err, "chr11", fixed = TRUE)
 })
 
 test_that("snv requests keep group_tag = 'SNV' when the region has no reads", {

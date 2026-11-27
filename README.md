@@ -62,7 +62,8 @@ meth = read_methylation(
 plot_methylation(meth)
 ```
 
-Secondary, duplicate and QC-fail alignments are skipped; supplementary
+Secondary, duplicate and QC-fail alignments are skipped (`include_duplicates`
+and `include_qc_fail` read the latter two); supplementary
 alignments are kept.
 
 ### Without grouping
@@ -120,8 +121,10 @@ plot_methylation(meth, sort_by = "mean_mod_prob")
 ### Several samples, variants, genes
 
 ```r
-# One read panel per sample above a shared smooth panel
-merged = merge_methylation(tumour = meth_tumour, normal = meth_normal)
+# One read panel per sample above a shared smooth panel. Every sample must be
+# read for the same region and modification code(s); here the same BAM is read
+# twice, in practice you pass one object per BAM.
+merged = merge_methylation(phased = meth, all_reads = meth_all)
 plot_methylation(merged)
 
 # VCF overlay: SNV carriers, DEL/DUP/INV spans, BND mate labels
@@ -151,6 +154,16 @@ loci
 
 # Plot the first locus
 plot_insertion_locus(meth, loci[1L, ])
+```
+
+## Exporting
+
+`write_methylation()` writes the per-read table and the per-call table to
+tab-separated files (or the calls as BED), optionally gzipped:
+
+```r
+write_methylation(meth, file.path(tempdir(), "locus"))                 # locus_reads.tsv, locus_sites.tsv
+write_methylation(meth, file.path(tempdir(), "locus"), format = "bed") # locus_sites.bed
 ```
 
 ## Supported modification types

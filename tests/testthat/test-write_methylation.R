@@ -56,3 +56,73 @@ test_that("reads TSV mean_mod_prob pools every modification code of a read", {
   # r1: m 0.8567 and m 0.0004; r2: m 0.5 and h 1.
   expect_equal(reads$mean_mod_prob, c((0.8567 + 0.0004) / 2, (0.5 + 1) / 2))
 })
+
+test_that("write_methylation validates its arguments, naming them", {
+  md = make_write_data()
+  prefix = file.path(tempfile("bad"), "x")
+  expect_error(write_methylation(md, prefix, reads = NA), "`reads` must be TRUE or FALSE")
+  expect_error(write_methylation(md, prefix, sites = "yes"), "`sites` must be TRUE or FALSE")
+  expect_error(write_methylation(md, prefix, gzip = c(TRUE, FALSE)), "`gzip` must be TRUE or FALSE")
+  expect_error(write_methylation(md, NA_character_), "`prefix` must be")
+  expect_error(write_methylation(md, ""), "`prefix` must be")
+  expect_error(write_methylation(md$sites, prefix), "`data` must be")
+  expect_false(dir.exists(dirname(prefix)))
+
+  expect_warning(write_methylation(md, prefix, reads = FALSE, sites = FALSE),
+                 "Nothing to write")
+  expect_false(dir.exists(dirname(prefix)))
+})
+
+# Second sample: only r1 and its sites.
+make_multi_write_data = function() {
+  md_a = make_write_data()
+  md_b = make_write_data()
+  md_b$reads = md_b$reads[md_b$reads$read_name == "r1", , drop = FALSE]
+  md_b$sites = md_b$sites[md_b$sites$read_name == "r1", , drop = FALSE]
+  merge_methylation(A = md_a, B = md_b)
+}
+
+test_that("write_methylation writes one file set per sample of a multi_methylation_data", {
+  multi = make_multi_write_data()
+  dir = tempfile("multi")
+  prefix = file.path(dir, "run")
+
+  expect_invisible(out <- write_methylation(multi, prefix))
+  expect_identical(out, multi)
+  expect_setequal(list.files(dir), c("run_A_reads.tsv", "run_A_sites.tsv",
+                                     "run_B_reads.tsv", "run_B_sites.tsv"))
+  expect_equal(nrow(utils::read.delim(file.path(dir, "run_A_reads.tsv"))), 2L)
+  expect_equal(nrow(utils::read.delim(file.path(dir, "run_B_reads.tsv"))), 1L)
+  expect_equal(nrow(utils::read.delim(file.path(dir, "run_A_sites.tsv"))), 4L)
+  expect_equal(nrow(utils::read.delim(file.path(dir, "run_B_sites.tsv"))), 2L)
+
+  write_methylation(multi, prefix, format = "bed", reads = FALSE)
+  expect_length(readLines(file.path(dir, "run_A_sites.bed")), 4L)
+  expect_length(readLines(file.path(dir, "run_B_sites.bed")), 2L)
+})
+
+test_that("write_methylation writes gzipped per-sample files", {
+  multi = make_multi_write_data()
+  dir = tempfile("multigz")
+  prefix = file.path(dir, "run")
+
+  write_methylation(multi, prefix, gzip = TRUE)
+  write_methylation(multi, prefix, format = "bed", reads = FALSE, gzip = TRUE)
+  expect_setequal(list.files(dir), c(
+    "run_A_reads.tsv.gz", "run_A_sites.tsv.gz", "run_A_sites.bed.gz",
+    "run_B_reads.tsv.gz", "run_B_sites.tsv.gz", "run_B_sites.bed.gz"
+  ))
+  expect_equal(nrow(utils::read.delim(gzfile(file.path(dir, "run_B_reads.tsv.gz")))), 1L)
+  expect_equal(nrow(utils::read.delim(gzfile(file.path(dir, "run_A_sites.tsv.gz")))), 4L)
+  expect_length(readLines(gzfile(file.path(dir, "run_A_sites.bed.gz"))), 4L)
+  expect_length(readLines(gzfile(file.path(dir, "run_B_sites.bed.gz"))), 2L)
+})
+
+test_that("write_methylation rejects sample names containing a path separator", {
+  md = make_write_data()
+  multi = merge_methylation(.list = list(`a/b` = md, ok = md))
+  dir = tempfile("sep")
+  expect_error(write_methylation(multi, file.path(dir, "run")),
+               "must not contain a path separator: 'a/b'")
+  expect_false(dir.exists(dir))
+})

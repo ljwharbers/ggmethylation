@@ -131,8 +131,17 @@ test_that("print.multi_methylation_data runs without error", {
   md2 = make_methylation_data(n_reads = 4L)
   merged = merge_methylation(x = md1, y = md2)
 
-  expect_no_error(print(merged))
-  expect_invisible(print(merged))
+  expect_output(print(merged), "x: 2 reads")
+  utils::capture.output(expect_invisible(print(merged)))
+})
+
+test_that("summary.multi_methylation_data covers every sample without printing", {
+  merged = merge_methylation(x = make_methylation_data(n_reads = 2L),
+                             y = make_methylation_data(n_reads = 4L))
+  expect_silent(s <- summary(merged))
+  expect_s3_class(s, "summary.multi_methylation_data")
+  expect_equal(vapply(s, `[[`, integer(1L), "n_reads"), c(x = 2L, y = 4L))
+  expect_output(print(s), "=== Sample: y ===")
 })
 
 # --- Test 7: names must be unique and present; clear errors for bad input ---
