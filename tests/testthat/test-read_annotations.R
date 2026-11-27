@@ -126,6 +126,107 @@ test_that("read_annotations builds a TxDb from a GTF without deprecation warning
   expect_equal(nrow(ann$exons), 2L)
 })
 
+# A TxDb with gene GENE2 carrying two transcripts of different span
+# (tx2: 3000-3400, tx3: 3000-3800) next to the one-transcript GENE1.
+txdb2 = withCallingHandlers(make_txdb(
+  transcripts = data.frame(
+    tx_id     = 1:3,
+    tx_name   = c("tx1", "tx2", "tx3"),
+    tx_chrom  = "chr1",
+    tx_strand = "+",
+    tx_start  = c(1000L, 3000L, 3000L),
+    tx_end    = c(2000L, 3400L, 3800L)
+  ),
+  splicings = data.frame(
+    tx_id      = c(1L, 2L, 3L, 3L),
+    exon_rank  = c(1L, 1L, 1L, 2L),
+    exon_start = c(1000L, 3000L, 3000L, 3700L),
+    exon_end   = c(1200L, 3400L, 3200L, 3800L)
+  ),
+  genes = data.frame(
+    tx_id   = 1:3,
+    gene_id = c("GENE1", "GENE2", "GENE2")
+  )
+), warning = function(w) {
+  if (grepl("without CDS information|chromosome lengths", conditionMessage(w))) {
+    invokeRestart("muffleWarning")
+  }
+})
+
+test_that("collapse_transcripts keeps one transcript per gene, or all of them", {
+  skip_if_not_installed("AnnotationDbi")
+  ann = read_annotations(txdb = txdb2, region = "chr1:900-4000")
+  expect_identical(ann$transcripts$tx_name, c("tx1", "tx3"))  # longest span
+  expect_identical(ann$transcripts$gene_name, c("GENE1", "GENE2"))
+  expect_setequal(ann$exons$tx_id, c(1L, 3L))
+
+  ann_all = read_annotations(txdb = txdb2, region = "chr1:900-4000",
+                             collapse_transcripts = FALSE)
+  expect_setequal(ann_all$transcripts$tx_name, c("tx1", "tx2", "tx3"))
+  expect_identical(sort(ann_all$transcripts$gene_name),
+                   c("GENE1", "GENE2", "GENE2"))
+  expect_setequal(ann_all$exons$tx_id, 1:3)
+})
+
+test_that("collapse_transcripts is validated", {
+  for (bad in list(NA, "yes", c(TRUE, FALSE), NULL)) {
+    expect_error(
+      read_annotations(txdb = txdb2, region = "chr1:900-4000",
+                       collapse_transcripts = bad),
+      "`collapse_transcripts` must be TRUE or FALSE"
+    )
+  }
+})
+
+test_that("collapsing keeps a transcript without a gene name as its own gene", {
+  txs = data.frame(tx_id = 1:3, tx_name = c("a", "b", "c"),
+                   gene_name = c("G", "G", NA), strand = "+",
+                   tx_start = c(100L, 100L, 500L), tx_end = c(200L, 300L, 600L),
+                   stringsAsFactors = FALSE)
+  exons = data.frame(tx_id = 1:3, exon_start = c(100L, 100L, 500L),
+                     exon_end = c(200L, 300L, 600L))
+  res = ggmethylation:::.select_canonical_transcripts(txs, exons)
+  expect_identical(res$transcripts$tx_id, 2:3)
+  expect_identical(res$exons$tx_id, 2:3)
+})
+
+test_that("without AnnotationDbi, transcripts are named after themselves", {
+  # local_mocked_bindings() needs testthat >= 3.1.7
+  skip_if(utils::packageVersion("testthat") < "3.1.7")
+  local_mocked_bindings(.has_annotationdbi = function() FALSE)
+  ann = read_annotations(txdb = txdb2, region = "chr1:900-4000")
+  # Every transcript is its own gene, so collapsing keeps all three
+  expect_setequal(ann$transcripts$tx_name, c("tx1", "tx2", "tx3"))
+  expect_identical(ann$transcripts$gene_name, ann$transcripts$tx_name)
+})
+
+test_that("a GTF without transcript rows still gives gene names and collapses", {
+  skip_if_not_installed("rtracklayer")
+  skip_if_not_installed("txdbmaker")
+  gtf = tempfile(fileext = ".gtf")
+  a1 = 'gene_id "G1"; transcript_id "T1"; gene_name "GENEA";'
+  a2 = 'gene_id "G1"; transcript_id "T2"; gene_name "GENEA";'
+  a3 = 'gene_id "G2"; transcript_id "T3";'
+  # Exon rows only, as in UCSC Table Browser GTF exports
+  writeLines(c(
+    paste("chr1", "test", "exon", 1000, 1200, ".", "+", ".", a1, sep = "\t"),
+    paste("chr1", "test", "exon", 1800, 2000, ".", "+", ".", a1, sep = "\t"),
+    paste("chr1", "test", "exon", 1000, 1200, ".", "+", ".", a2, sep = "\t"),
+    paste("chr1", "test", "exon", 1500, 1600, ".", "+", ".", a2, sep = "\t"),
+    paste("chr1", "test", "exon", 3000, 3500, ".", "-", ".", a3, sep = "\t")
+  ), gtf)
+  on.exit(clear_annotation_cache(), add = TRUE)
+
+  ann = suppressMessages(read_annotations(gtf = gtf, region = "chr1:900-4000"))
+  expect_identical(ann$transcripts$tx_name, c("T1", "T3"))
+  expect_identical(ann$transcripts$gene_name, c("GENEA", "G2"))  # gene_id fallback
+
+  ann_all = suppressMessages(read_annotations(gtf = gtf, region = "chr1:900-4000",
+                                              collapse_transcripts = FALSE))
+  expect_setequal(ann_all$transcripts$tx_name, c("T1", "T2", "T3"))
+  expect_false(anyNA(ann_all$transcripts$gene_name))
+})
+
 # --- Test 3: error when both txdb and gtf are provided ---
 
 test_that("read_annotations errors when both txdb and gtf are provided", {

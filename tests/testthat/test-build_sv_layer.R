@@ -147,3 +147,52 @@ test_that("build_sv_layer returns NULL when SV is fully outside the plot window"
   sv_df = make_sv(position = 600L, end = 700L, type = "INV")
   expect_null(ggmethylation:::build_sv_layer(reads, sv_df, 100L, 500L))
 })
+
+# --- Pinned layer data (guards the vectorised read x SV pairing) ------------
+
+test_that("build_sv_layer layer data is pinned on a mixed input", {
+  reads = make_reads(
+    read_name = c("a", "b", "c", "d"),
+    start     = c(100L, 150L, 400L, 900L),
+    end       = c(300L, 600L, 800L, 950L),
+    lane      = c(1L, 2L, 1L, 3L)
+  )
+  # A DUP, a DEL clipped on the left, an INV clipped on the right, a DEL
+  # outside the window and a small DEL; SV-major row order.
+  sv_df = data.frame(
+    position = c(500L, 50L, 200L, 2000L, 250L),
+    end      = c(700L, 120L, 1200L, 2500L, 260L),
+    type     = c("DUP", "DEL", "INV", "DEL", "DEL"),
+    stringsAsFactors = FALSE
+  )
+  layers = ggmethylation:::build_sv_layer(reads, sv_df, 100L, 1000L)
+
+  seg = data.frame(
+    read_name     = c("b", "c", "a", "a", "b", "c", "d", "a", "b"),
+    lane          = c(2L, 1L, 1L, 1L, 2L, 1L, 3L, 1L, 2L),
+    seg_left      = c(500L, 500L, 100L, 200L, 200L, 400L, 900L, 250L, 250L),
+    seg_right     = c(600L, 700L, 120L, 300L, 600L, 800L, 950L, 260L, 260L),
+    type          = rep(c("DUP", "DEL", "INV", "DEL"), c(2L, 1L, 4L, 2L)),
+    clipped_left  = rep(c(FALSE, TRUE, FALSE, FALSE), c(2L, 1L, 4L, 2L)),
+    clipped_right = rep(c(FALSE, FALSE, TRUE, FALSE), c(2L, 1L, 4L, 2L)),
+    sv_colour     = rep(c("#00695C", "#B71C1C", "#4A148C", "#B71C1C"),
+                        c(2L, 1L, 4L, 2L)),
+    stringsAsFactors = FALSE
+  )
+  dup = seg[1:2, ]
+  rownames(dup) = NULL
+  dup_upper = dup
+  dup_upper$lane_offset = dup$lane - 0.12
+  dup_lower = dup
+  dup_lower$lane_offset = dup$lane + 0.12
+
+  data_of = lapply(layers, function(l) if (inherits(l, "Layer")) l$data)
+  expect_length(layers, 10L)  # ... + scale_colour_identity()
+  for (k in 1:3) expect_identical(data_of[[k]], seg[c(3L, 8L, 9L), ])
+  expect_identical(data_of[[4]], dup_upper)
+  expect_identical(data_of[[5]], dup_lower)
+  expect_identical(data_of[[6]], seg[4:7, ])
+  expect_null(data_of[[7]])  # new_scale_colour()
+  expect_identical(data_of[[8]], seg[3L, ])
+  expect_identical(data_of[[9]], seg[4:7, ])
+})

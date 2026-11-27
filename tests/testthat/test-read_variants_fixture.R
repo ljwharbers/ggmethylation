@@ -35,6 +35,20 @@ test_that("read_variants validates bnd_match_tol", {
                  "bnd_match_tol")
   }
   expect_identical(read_variants(vcf, "chr1:1000-7000", bnd_match_tol = 0)$bnd_match_tol, 0L)
+  # Non-whole values are still accepted (stored truncated, as before)
+  expect_identical(read_variants(vcf, "chr1:1000-7000", bnd_match_tol = 12.5)$bnd_match_tol, 12L)
+  expect_error(read_variants(vcf, "chr1:1000-7000", bnd_match_tol = 3e9), "bnd_match_tol")
+})
+
+test_that("read_variants validates vcf", {
+  skip_if_not_installed("VariantAnnotation")
+  vcf = testthat::test_path("fixtures", "synthetic.vcf.gz")
+  for (bad in list(NULL, NA_character_, "", c(vcf, vcf), 1)) {
+    expect_error(read_variants(bad, "chr1:1000-7000"),
+                 "`vcf` must be a single non-empty character string")
+  }
+  expect_error(read_variants(file.path(tempdir(), "absent.vcf.gz"), "chr1:1000-7000"),
+               "`vcf` file not found")
 })
 
 test_that("read_variants warns when the region's chromosome is not in the VCF", {

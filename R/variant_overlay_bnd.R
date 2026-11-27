@@ -87,12 +87,19 @@ match_sa_to_vcf_bnd = function(reads, bnd_df, tol = 50L) {
 build_bnd_layer = function(bnd_df) {
   if (is.null(bnd_df) || nrow(bnd_df) == 0L) return(NULL)
 
-  # Pre-format the full mate location label (done outside aes for clarity)
-  bnd_df$mate_label = paste0(
-    "\u22c8 ",
-    bnd_df$mate_chrom,
-    ":",
-    format(bnd_df$mate_pos, big.mark = ",", scientific = FALSE, trim = TRUE)
+  # Pre-format the full mate location label (done outside aes for clarity).
+  # A breakend without a parseable mate (single breakend such as "A.", or a
+  # symbolic <BND>) gets the bare symbol rather than "NA:NA".
+  no_mate = is.na(bnd_df$mate_chrom) | is.na(bnd_df$mate_pos)
+  bnd_df$mate_label = ifelse(
+    no_mate,
+    "\u22c8",
+    paste0(
+      "\u22c8 ",
+      bnd_df$mate_chrom,
+      ":",
+      format(bnd_df$mate_pos, big.mark = ",", scientific = FALSE, trim = TRUE)
+    )
   )
 
   list(

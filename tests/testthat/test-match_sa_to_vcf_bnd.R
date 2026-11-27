@@ -214,3 +214,15 @@ test_that("build_bnd_layer returns a single mate-label layer for a one-row bnd_d
   expect_type(result, "list")
   expect_length(result, 1L)
 })
+
+test_that("build_bnd_layer labels a breakend without a mate with the bare symbol", {
+  bnd_df = data.frame(
+    position   = c(1000L, 2000L),
+    mate_chrom = c("chr7", NA),
+    mate_pos   = c(1234567L, NA),
+    stringsAsFactors = FALSE
+  )
+  result = ggmethylation:::build_bnd_layer(bnd_df)
+  expect_identical(result[[1]]$data$mate_label,
+                   c("⋈ chr7:1,234,567", "⋈"))
+})

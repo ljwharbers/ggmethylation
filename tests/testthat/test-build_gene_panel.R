@@ -1,9 +1,5 @@
 # Tests for build_gene_panel() in R/build_gene_panel.R
 
-skip_if_not_installed("ggplot2")
-skip_if_not_installed("GenomicRanges")
-skip_if_not_installed("IRanges")
-
 test_that("build_gene_panel renders without CDS (fallback)", {
   # Create minimal annotations with no cds
   ann = structure(

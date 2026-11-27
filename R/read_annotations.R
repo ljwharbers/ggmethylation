@@ -132,32 +132,44 @@
   result
 }
 
+# Internal helper: is AnnotationDbi (Suggests) available? A function so that
+# tests can mock it.
+.has_annotationdbi = function() requireNamespace("AnnotationDbi", quietly = TRUE)
+
 # Internal helper: resolve gene names for transcripts.
 # Uses GTF gene_name attribute when available, falls back to AnnotationDbi lookup,
 # then to tx_name.
 .resolve_gene_names = function(txs, txdb, gtf_granges = NULL) {
   if (!is.null(gtf_granges)) {
-    # Filter to transcript rows only
-    tx_rows = gtf_granges[gtf_granges$type == "transcript"]
-    # Match on transcript_id metadata column
-    tx_ids_gtf = tx_rows$transcript_id
-    idx = match(as.character(txs$tx_name), tx_ids_gtf)
+    tx_name = as.character(txs$tx_name)
+    if (is.null(gtf_granges$transcript_id)) return(tx_name)
+    # Match on transcript_id: in the transcript rows, or, for GTFs without
+    # them (e.g. UCSC Table Browser exports: exon/CDS rows only), in any row
+    # carrying a transcript_id (the first one per transcript).
+    has_id = !is.na(gtf_granges$transcript_id)
+    is_tx  = has_id & gtf_granges$type == "transcript"
+    tx_rows = gtf_granges[if (any(is_tx)) is_tx else has_id]
+    idx = match(tx_name, tx_rows$transcript_id)
     # Extract gene_name, fall back to gene_id
     if (!is.null(tx_rows$gene_name)) {
       gene_names = tx_rows$gene_name[idx]
-      gene_fallback = if (!is.null(tx_rows$gene_id)) tx_rows$gene_id[idx] else as.character(txs$tx_name)
+      gene_fallback = if (!is.null(tx_rows$gene_id)) tx_rows$gene_id[idx] else tx_name
       gene_name_vec = ifelse(is.na(gene_names) | gene_names == "", gene_fallback, gene_names)
     } else if (!is.null(tx_rows$gene_id)) {
       gene_name_vec = tx_rows$gene_id[idx]
-      gene_name_vec = ifelse(is.na(gene_name_vec), as.character(txs$tx_name), gene_name_vec)
     } else {
-      gene_name_vec = as.character(txs$tx_name)
+      gene_name_vec = tx_name
     }
-    return(as.character(gene_name_vec))
+    # Never NA: an unnamed transcript would otherwise be dropped when
+    # collapsing to one transcript per gene
+    gene_name_vec = as.character(gene_name_vec)
+    gene_name_vec[is.na(gene_name_vec)] = tx_name[is.na(gene_name_vec)]
+    return(gene_name_vec)
   }
 
-  # No GTF — try AnnotationDbi lookup
+  # No GTF — try AnnotationDbi lookup (skipped when it is not installed)
   gene_name_vec = as.character(txs$tx_name)  # fallback
+  if (!.has_annotationdbi()) return(gene_name_vec)
 
   gene_map = tryCatch(
     AnnotationDbi::select(
@@ -206,6 +218,12 @@
     return(list(transcripts = transcripts_df, exons = exons_df))
   }
 
+  # Grouping key: a transcript without a gene name is its own gene (by()
+  # would otherwise drop it)
+  gene_key = ifelse(is.na(transcripts_df$gene_name),
+                    paste0("\001tx", transcripts_df$tx_id),
+                    transcripts_df$gene_name)
+
   if (!is.null(cds_df) && nrow(cds_df) > 0L) {
     # Compute total CDS length per tx_id
     cds_lengths = tapply(
@@ -218,14 +236,14 @@
     transcripts_df$tx_span = transcripts_df$tx_end - transcripts_df$tx_start
 
     # Per gene: pick tx with max cds_length; tie-break by tx_span
-    selected_ids = by(transcripts_df, transcripts_df$gene_name, function(grp) {
+    selected_ids = by(transcripts_df, gene_key, function(grp) {
       grp = grp[order(-grp$cds_length, -grp$tx_span), ]
       grp$tx_id[1L]
     })
   } else {
     # No CDS: pick tx with longest span per gene
     transcripts_df$tx_span = transcripts_df$tx_end - transcripts_df$tx_start
-    selected_ids = by(transcripts_df, transcripts_df$gene_name, function(grp) {
+    selected_ids = by(transcripts_df, gene_key, function(grp) {
       grp = grp[order(-grp$tx_span), ]
       grp$tx_id[1L]
     })
@@ -294,7 +312,9 @@ clear_annotation_cache = function() {
 #'   `gene_annotations` object is returned.
 #' @param collapse_transcripts Logical. When `TRUE` (default), only one
 #'   canonical transcript per gene is retained (longest CDS, or longest span
-#'   if no CDS data are available).
+#'   if no CDS data are available). For a `txdb`, genes are identified
+#'   through `AnnotationDbi` (Suggests); without it every transcript is
+#'   named, and kept, as its own gene.
 #'
 #' @return A `gene_annotations` S3 object (a list) with elements:
 #'   \describe{
@@ -335,6 +355,8 @@ clear_annotation_cache = function() {
 #' @export
 read_annotations = function(genome = NULL, txdb = NULL, gtf = NULL, region,
                              collapse_transcripts = TRUE) {
+  .check_flag(collapse_transcripts, "collapse_transcripts")
+
   # --- 1. Validate exactly one source ---
   has_genome = !is.null(genome)
   has_txdb   = !is.null(txdb)

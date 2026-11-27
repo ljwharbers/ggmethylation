@@ -23,57 +23,42 @@ build_sv_layer = function(reads, sv_df, region_start, region_end) {
   # Return NULL for empty/NULL input
   if (is.null(sv_df) || nrow(sv_df) == 0L) return(NULL)
 
-  # --- Build per-read per-SV segment data frame ---
-  result_list = vector("list", nrow(reads) * nrow(sv_df))
-  result_idx  = 0L
-
-  for (v in seq_len(nrow(sv_df))) {
-    sv = sv_df[v, , drop = FALSE]
-    sv_pos  = sv$position
-    sv_end  = sv$end
-    sv_type = sv$type
-
-    # Clip SV span to visible plot window
+  # --- Pair reads with SVs: one segment per overlapping (SV, read) ---
+  # SV-major order; each SV is clipped to the plot window, then to the read.
+  r_start = reads$start
+  r_end   = reads$end
+  pairs = lapply(seq_len(nrow(sv_df)), function(v) {
+    sv_pos     = sv_df$position[v]
+    sv_end     = sv_df$end[v]
     span_left  = max(sv_pos, region_start)
     span_right = min(sv_end, region_end)
+    # SVs entirely outside the plot window
+    if (span_right < span_left) return(NULL)
 
-    # Skip SVs entirely outside the plot window
-    if (span_right < span_left) next
+    ri = which(!(r_start > sv_end | r_end < sv_pos))
+    seg_left  = pmax(span_left,  r_start[ri])
+    seg_right = pmin(span_right, r_end[ri])
+    keep = seg_right >= seg_left
+    if (!any(keep)) return(NULL)
+    list(ri = ri[keep], vi = rep(v, sum(keep)),
+         seg_left = seg_left[keep], seg_right = seg_right[keep])
+  })
+  pairs = pairs[!vapply(pairs, is.null, logical(1L))]
+  if (length(pairs) == 0L) return(NULL)
 
-    clipped_left  = sv_pos < region_start
-    clipped_right = sv_end > region_end
-
-    for (i in seq_len(nrow(reads))) {
-      r_start = reads$start[i]
-      r_end   = reads$end[i]
-
-      # Check read overlaps the SV span
-      if (r_start > sv_end || r_end < sv_pos) next
-
-      # Clip to the read
-      seg_left  = max(span_left,  r_start)
-      seg_right = min(span_right, r_end)
-
-      if (seg_right < seg_left) next
-
-      result_idx = result_idx + 1L
-      result_list[[result_idx]] = data.frame(
-        read_name     = reads$read_name[i],
-        lane          = reads$lane[i],
-        seg_left      = seg_left,
-        seg_right     = seg_right,
-        type          = sv_type,
-        clipped_left  = clipped_left,
-        clipped_right = clipped_right,
-        stringsAsFactors = FALSE
-      )
-    }
-  }
-
-  if (result_idx == 0L) return(NULL)
-
-  seg_df = do.call(rbind, result_list[seq_len(result_idx)])
-  rownames(seg_df) = NULL
+  pick = function(nm) unlist(lapply(pairs, `[[`, nm), use.names = FALSE)
+  ri = pick("ri")
+  vi = pick("vi")
+  seg_df = data.frame(
+    read_name     = reads$read_name[ri],
+    lane          = reads$lane[ri],
+    seg_left      = pick("seg_left"),
+    seg_right     = pick("seg_right"),
+    type          = sv_df$type[vi],
+    clipped_left  = sv_df$position[vi] < region_start,
+    clipped_right = sv_df$end[vi] > region_end,
+    stringsAsFactors = FALSE
+  )
 
   # Colour lookup per type
   sv_colours = c(DEL = "#B71C1C", DUP = "#00695C", INV = "#4A148C")

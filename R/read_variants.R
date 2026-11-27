@@ -25,8 +25,8 @@
 #' present in its tabix index (e.g. `"chr1"` vs `"1"`), a warning is issued
 #' and an empty `variant_data` object is returned.
 #'
-#' @param vcf Character. Path to a bgzipped VCF file (`.vcf.gz`) with a
-#'   corresponding tabix index (`.vcf.gz.tbi`).
+#' @param vcf Character. Path to an existing bgzipped VCF file (`.vcf.gz`)
+#'   with a corresponding tabix index (`.vcf.gz.tbi`).
 #' @param region Character. Genomic region string, e.g. `"chr1:1000-2000"`.
 #'   The same format accepted by [read_methylation()].
 #' @param bnd_match_tol Single non-negative number. Position tolerance (bp)
@@ -70,10 +70,13 @@ read_variants = function(vcf, region, bnd_match_tol = 50L) {
     )
   }
 
-  if (!is.numeric(bnd_match_tol) || length(bnd_match_tol) != 1L ||
-      !is.finite(bnd_match_tol) || bnd_match_tol < 0) {
-    stop("`bnd_match_tol` must be a single non-negative number.", call. = FALSE)
+  .check_string(vcf, "vcf")
+  if (!file.exists(vcf)) {
+    stop("`vcf` file not found: '", vcf, "'.", call. = FALSE)
   }
+  # Stored as an integer: the bound keeps as.integer() from giving NA
+  .check_number(bnd_match_tol, "bnd_match_tol", min = 0,
+                max = .Machine$integer.max)
 
   # Parse region string
   region_gr = region_to_granges(region)
