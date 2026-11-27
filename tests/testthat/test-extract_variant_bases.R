@@ -238,3 +238,17 @@ test_that("extract_variant_bases output is pinned on a mixed input", {
   )
   expect_identical(result, expected)
 })
+
+test_that("extract_variant_bases skips reads whose sequence or CIGAR is NA", {
+  reads = rbind(make_reads("r1", 100L, 115L, lane = 1L),
+                make_reads("r2", 100L, 115L, lane = 2L),
+                make_reads("r3", 100L, 115L, lane = 3L))
+  seqs = c(r1 = NA_character_, r2 = "ACGTACGTACGTACGT", r3 = "ACGTACGTACGTACGT")
+  cigs = c(r1 = "16M", r2 = "16M", r3 = NA_character_)
+  variants = make_variants(position = 103L, ref = "T", alt = "A")
+
+  result = ggmethylation:::extract_variant_bases(reads, seqs, cigs, variants)
+
+  expect_identical(result$read_name, "r2")
+  expect_identical(result$variant_class, "ref")
+})
