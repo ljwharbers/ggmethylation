@@ -712,7 +712,21 @@ empty_methylation_data = function(gr, mod_code, group_tag, snv_position = NULL) 
   }))
 }
 
+# Reference span of each read's full alignment (`bam_end - bam_pos + 1`), not
+# the span clipped to the region. Hand-built objects without those columns
+# fall back to `end - start + 1`.
+.aligned_lengths = function(reads) {
+  if (all(c("bam_pos", "bam_end") %in% names(reads))) {
+    reads$bam_end - reads$bam_pos + 1L
+  } else {
+    reads$end - reads$start + 1L
+  }
+}
+
 #' Print a methylation_data object
+#'
+#' The median aligned length is the reference span of each read's full
+#' alignment, not of the part inside the queried region.
 #'
 #' @param x A `methylation_data` object.
 #' @param ... Additional arguments (ignored).
@@ -728,7 +742,7 @@ print.methylation_data = function(x, ...) {
   n_plus  = sum(x$reads$strand == "+", na.rm = TRUE)
   n_minus = sum(x$reads$strand == "-", na.rm = TRUE)
 
-  read_lengths = x$reads$end - x$reads$start + 1L
+  read_lengths = .aligned_lengths(x$reads)
   med_len = if (length(read_lengths) > 0L) as.integer(stats::median(read_lengths)) else NA_integer_
 
   cat("methylation_data object\n")
@@ -736,7 +750,7 @@ print.methylation_data = function(x, ...) {
   cat(sprintf("Reads: %d  (+ strand: %d,  - strand: %d)\n",
               nrow(x$reads), n_plus, n_minus))
   if (!is.na(med_len))
-    cat(sprintf("Median read length: %d bp\n", med_len))
+    cat(sprintf("Median aligned length: %d bp\n", med_len))
   cat(sprintf("Modification sites: %d\n", nrow(x$sites)))
   cat(sprintf("Modification code(s): %s\n", paste(x$mod_code, collapse = ", ")))
 
@@ -755,9 +769,17 @@ print.methylation_data = function(x, ...) {
 
 #' Summary of a methylation_data object
 #'
+#' Computes summary statistics without printing them; printing the result
+#' (as the console does automatically) shows them.
+#'
 #' @param object A \code{methylation_data} object.
 #' @param ... Unused.
-#' @return A named list with summary statistics (invisibly).
+#' @return An object of class `summary.methylation_data`: a named list with
+#'   elements `region` (string), `n_reads`, `n_sites`, `mod_code`,
+#'   `group_tag`, `strand` (data frame of reads per strand), `read_length`
+#'   (list of `min`, `median` and `max` aligned length in bp: the reference
+#'   span of each read's full alignment, `NA` without reads), `groups`
+#'   (per-group data frame or `NULL`) and `overall_mean_mod_prob`.
 #' @export
 summary.methylation_data = function(object, ...) {
   chrom = as.character(GenomicRanges::seqnames(object$region))
@@ -770,7 +792,7 @@ summary.methylation_data = function(object, ...) {
                          n_reads = as.integer(strand_tab),
                          stringsAsFactors = FALSE)
 
-  lens = object$reads$end - object$reads$start + 1L
+  lens = .aligned_lengths(object$reads)
   rl = if (length(lens) > 0L)
     list(median = as.integer(stats::median(lens)), min = min(lens), max = max(lens))
   else
@@ -790,32 +812,51 @@ summary.methylation_data = function(object, ...) {
     }
   }
 
-  out = list(
-    region                = reg_str,
-    n_reads               = nrow(object$reads),
-    n_sites               = nrow(object$sites),
-    mod_code              = object$mod_code,
-    group_tag             = object$group_tag,
-    strand                = strand_df,
-    read_length           = rl,
-    groups                = groups_df,
-    overall_mean_mod_prob = overall_mean
+  structure(
+    list(
+      region                = reg_str,
+      n_reads               = nrow(object$reads),
+      n_sites               = nrow(object$sites),
+      mod_code              = object$mod_code,
+      group_tag             = object$group_tag,
+      strand                = strand_df,
+      read_length           = rl,
+      groups                = groups_df,
+      overall_mean_mod_prob = overall_mean
+    ),
+    class = "summary.methylation_data"
   )
+}
 
+#' Print a summary of a methylation_data object
+#'
+#' @param x A `summary.methylation_data` object, from
+#'   [summary.methylation_data()].
+#' @param ... Unused.
+#' @return `x`, invisibly.
+#' @method print summary.methylation_data
+#' @export
+print.summary.methylation_data = function(x, ...) {
   cat("methylation_data summary\n========================\n")
-  cat(sprintf("Region:            %s\n", reg_str))
-  cat(sprintf("Reads:             %d\n", out$n_reads))
-  for (i in seq_len(nrow(strand_df)))
-    cat(sprintf("  %s strand:        %d\n", strand_df$strand[i], strand_df$n_reads[i]))
-  cat(sprintf("  Read length:     min=%d, median=%d, max=%d bp\n",
-              rl$min, rl$median, rl$max))
-  cat(sprintf("Sites:             %d\n", out$n_sites))
-  cat(sprintf("Modification:      %s\n", paste(out$mod_code, collapse = ", ")))
-  cat(sprintf("Overall mean mod:  %.2f\n", overall_mean))
-  if (!is.null(groups_df)) {
-    cat(sprintf("\nGroup breakdown (%s):\n", object$group_tag))
-    print(groups_df, row.names = FALSE, digits = 4)
+  cat(sprintf("Region:            %s\n", x$region))
+  cat(sprintf("Reads:             %d\n", x$n_reads))
+  for (i in seq_len(nrow(x$strand)))
+    cat(sprintf("  %s strand:        %d\n", x$strand$strand[i], x$strand$n_reads[i]))
+  rl = x$read_length
+  if (x$n_reads > 0L && !is.na(rl$median)) {
+    cat(sprintf("  Aligned length:  min=%d, median=%d, max=%d bp\n",
+                rl$min, rl$median, rl$max))
+  } else {
+    cat("  Aligned length:  none (no reads)\n")
   }
-
-  invisible(out)
+  cat(sprintf("Sites:             %d\n", x$n_sites))
+  cat(sprintf("Modification:      %s\n", paste(x$mod_code, collapse = ", ")))
+  cat(sprintf("Overall mean mod:  %s\n",
+              if (is.na(x$overall_mean_mod_prob)) "NA (no sites)"
+              else sprintf("%.2f", x$overall_mean_mod_prob)))
+  if (!is.null(x$groups)) {
+    cat(sprintf("\nGroup breakdown (%s):\n", x$group_tag))
+    print(x$groups, row.names = FALSE, digits = 4)
+  }
+  invisible(x)
 }

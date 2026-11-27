@@ -10,11 +10,19 @@ test_that("print.methylation_data reports region, reads, codes and groups", {
   expect_output(print(md), "^methylation_data object")
   expect_output(print(md), "Region: chr1:1000-7000")
   expect_output(print(md), "Reads: [0-9]+ +\\(\\+ strand: [0-9]+, +- strand: [0-9]+\\)")
+  expect_output(print(md), "Median aligned length: [0-9]+ bp")
   expect_output(print(md), "Modification code\\(s\\): m")
   expect_output(print(md), "Group tag: HP \\(2 groups\\)")
   utils::capture.output(out <- withVisible(print(md)))
   expect_false(out$visible)
   expect_identical(out$value, md)
+})
+
+test_that("print.methylation_data of an empty object prints no aligned length", {
+  md = empty_methylation_data(region_to_granges("chr1:1-100"), "m", NULL)
+  expect_output(print(md), "Reads: 0")
+  out = utils::capture.output(print(md))
+  expect_false(any(grepl("aligned length", out)))
 })
 
 test_that("print.methylation_data lists several modification codes", {

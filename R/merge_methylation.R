@@ -195,15 +195,30 @@ print.multi_methylation_data = function(x, ...) {
 #' @param object A `multi_methylation_data` object.
 #' @param ... Unused.
 #'
-#' @return A named list of per-sample summaries (invisibly). Each element is
-#'   the list returned by [summary.methylation_data()].
+#' @return An object of class `summary.multi_methylation_data`: a list named
+#'   by sample whose elements are the `summary.methylation_data` objects
+#'   returned by [summary.methylation_data()]. Nothing is printed until the
+#'   result is printed.
 #'
 #' @export
 summary.multi_methylation_data = function(object, ...) {
-  out = lapply(names(object$samples), function(nm) {
-    cat(sprintf("\n=== Sample: %s ===\n", nm))
-    summary(object$samples[[nm]])
-  })
+  out = lapply(object$samples, summary)
   names(out) = names(object$samples)
-  invisible(out)
+  structure(out, class = "summary.multi_methylation_data")
+}
+
+#' Print a summary of a multi_methylation_data object
+#'
+#' @param x A `summary.multi_methylation_data` object, from
+#'   [summary.multi_methylation_data()].
+#' @param ... Unused.
+#' @return `x`, invisibly.
+#' @method print summary.multi_methylation_data
+#' @export
+print.summary.multi_methylation_data = function(x, ...) {
+  for (nm in names(x)) {
+    cat(sprintf("\n=== Sample: %s ===\n", nm))
+    print(x[[nm]])
+  }
+  invisible(x)
 }
