@@ -13,8 +13,12 @@
 #' are not reported), because older basecallers that write no flag list only
 #' CpG sites. A read whose MM/ML tags are malformed or inconsistent with its
 #' sequence (wrong number of ML values, unparseable skip counts, an `MN` tag
-#' that differs from the SEQ length, ...) is kept in `$reads` without any
-#' calls; a single warning reports how many reads were affected.
+#' that differs from the SEQ length, a hard-clipped alignment without an `MN`
+#' tag, ...) is kept in `$reads` without any calls; a single warning reports
+#' how many reads were affected. Hard-clipped alignments (often supplementary
+#' alignments, which minimap2 hard-clips by default) keep their calls only
+#' when they carry an `MN` tag equal to the length of their clipped SEQ,
+#' because without it the calls may be placed on the wrong bases.
 #'
 #' @param bam Character. Path to a BAM file containing MM/ML modification
 #'   tags, indexed with a `.bai` or `.csi` index.
@@ -487,9 +491,12 @@ read_methylation = function(bam, region, mod_code = "m", group_tag = NULL,
   }
 
   if (length(skipped) > 0L) {
+    n_hard = sum(grepl("is hard-clipped and there is no MN tag", skipped, fixed = TRUE))
     warning(sprintf(
-      "Skipped the modification calls of %d read(s) with malformed or inconsistent MM/ML tags (e.g. %s: %s).",
-      length(skipped), names(skipped)[1L], skipped[[1L]]
+      "Skipped the modification calls of %d read(s) with malformed or inconsistent MM/ML tags%s (e.g. %s: %s).",
+      length(skipped),
+      if (n_hard > 0L) sprintf(", %d of them hard-clipped without an MN tag", n_hard) else "",
+      names(skipped)[1L], skipped[[1L]]
     ), call. = FALSE)
   }
 

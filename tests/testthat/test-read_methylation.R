@@ -179,19 +179,27 @@ test_that("reads with malformed MM/ML are skipped with one aggregated warning", 
     # Hard-clipped record whose MM still describes the 15-base read.
     sam_record("hard_clipped", 0, 140, "5H10M", seq10,
                c("MM:Z:C+m?,0,0,0;", "ML:B:C,10,20,30", "MN:i:15")),
+    # Hard-clipped without MN: MM/ML may describe the unclipped read.
+    sam_record("hard_no_mn", 0, 150, "5H10M", seq10, mm3),
     # MN agrees with SEQ: first C at query 2 -> ref 161.
     sam_record("mn_ok", 0, 160, "10M", seq10,
-               c("MM:Z:C+m?,0;", "ML:B:C,99", "MN:i:10"))
+               c("MM:Z:C+m?,0;", "ML:B:C,99", "MN:i:10")),
+    # Hard-clipped with MN equal to the clipped SEQ length: trusted.
+    sam_record("hard_mn_ok", 0, 170, "10M5H", seq10,
+               c("MM:Z:C+m?,0;", "ML:B:C,88", "MN:i:10"))
   ))
   res = collect_warnings(read_methylation(bam, "chr1:100-200"))
   md = res$value
   skip_msgs = grep("malformed", res$warnings, value = TRUE)
   expect_length(skip_msgs, 1L)
-  expect_match(skip_msgs, "3 read")
+  expect_match(skip_msgs, "4 read")
+  expect_match(skip_msgs, "1 of them hard-clipped without an MN tag")
   # Skipped reads stay in $reads, without calls.
   expect_setequal(md$reads$read_name,
-                  c("good", "short_ml", "bad_delta", "hard_clipped", "mn_ok"))
-  expect_setequal(unique(md$sites$read_name), c("good", "mn_ok"))
+                  c("good", "short_ml", "bad_delta", "hard_clipped", "hard_no_mn",
+                    "mn_ok", "hard_mn_ok"))
+  expect_setequal(unique(md$sites$read_name), c("good", "mn_ok", "hard_mn_ok"))
+  expect_equal(md$sites$position[md$sites$read_name == "hard_mn_ok"], 171L)
   expect_false(anyNA(md$sites$mod_prob))
   expect_equal(md$sites$mod_prob[md$sites$read_name == "mn_ok"], 99 / 255)
 })

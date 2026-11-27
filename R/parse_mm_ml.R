@@ -31,9 +31,13 @@
 #' A tag that cannot be interpreted is rejected as a whole, with a warning,
 #' and no calls are returned: an unparseable entry, a missing or negative
 #' skip count, an ML length that differs from the number of calls in MM, an
-#' entry that lists more bases than SEQ contains, an empty SEQ (`*`), or an
+#' entry that lists more bases than SEQ contains, an empty SEQ (`*`), an
 #' `mn` value that differs from the length of `seq` (a hard-clipped record
-#' whose MM/ML still describe the full read).
+#' whose MM/ML still describe the full read), or a hard-clipped record (an
+#' `H` operation in `cigar`) without `mn`. In the last case there is no way
+#' to tell whether MM/ML were rewritten for the clipped SEQ, and if they were
+#' not, every call would be placed on the wrong base. When `mn` is given and
+#' equals the length of `seq`, a hard-clipped record is trusted.
 #'
 #' @param seq Character. The read sequence from the BAM SEQ field.
 #' @param mm_tag Character. The MM tag value, e.g. `"C+m,0,1,3;C+h,2;"`.
@@ -45,7 +49,9 @@
 #' @param cigar Character. The CIGAR string for the alignment.
 #' @param pos Integer. 1-based leftmost alignment position (BAM POS field).
 #' @param mn Integer or `NULL`. The value of the optional `MN` tag (the SEQ
-#'   length the MM/ML tags were written for). `NULL` or `NA` skips the check.
+#'   length the MM/ML tags were written for). `NULL` or `NA` means the tag is
+#'   absent: a record without hard clips is then trusted, a hard-clipped one
+#'   is rejected.
 #'
 #' @return A named `list` with two `data.frame` elements:
 #'   \describe{
@@ -168,8 +174,17 @@ parse_mm_ml = function(seq, mm_tag, ml_tag, mod_code, strand, cigar, pos, mn = N
   seq = toupper(as.character(seq))
   if (identical(seq, "*")) seq = ""
   seq_len = nchar(seq)
-  if (!is.null(mn) && length(mn) == 1L && !is.na(mn) && mn != seq_len) {
+  has_mn = !is.null(mn) && length(mn) == 1L && !is.na(mn)
+  if (has_mn && mn != seq_len) {
     .mm_malformed("MN tag (", mn, ") does not match the SEQ length (", seq_len, ")")
+  }
+  # A hard clip removed bases from SEQ. Without MN there is no way to tell
+  # whether MM/ML were rewritten for the clipped SEQ or still describe the
+  # full read (then every call would land on the wrong base), so the record
+  # is not trusted.
+  if (!has_mn && isTRUE(grepl("H", cigar, fixed = TRUE))) {
+    .mm_malformed("CIGAR ", cigar, " is hard-clipped and there is no MN tag to ",
+                  "confirm that MM/ML describe the clipped SEQ")
   }
   if (seq_len == 0L) {
     if (any(vapply(entries[wanted], function(e) length(e$deltas) > 0L, logical(1L)))) {

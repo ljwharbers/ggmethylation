@@ -353,6 +353,83 @@ test_that("calls are dropped when MN differs from the SEQ length", {
   expect_equal(ok$sites$position, 2L)
 })
 
+# The 12-base read CCGTACGTCGCG has C's at 1, 2, 6, 9, 11. "C+m,0,0" lists
+# the first two, which lie in the first four bases.
+full_read = "CCGTACGTCGCG"
+
+test_that("a hard-clipped record without MN is rejected instead of misplacing calls", {
+  # Ground truth: soft-clipped (4S8M) with the full SEQ. The listed C's are
+  # in the clip, so no reference position gets a call.
+  truth = ggmethylation:::parse_mm_ml(full_read, "C+m,0,0;", c(200L, 100L), "m", "+",
+                                      "4S8M", 100L)
+  expect_equal(nrow(truth$sites), 0L)
+  # Same alignment hard-clipped (4H8M, SEQ = last 8 bases) with MM/ML still
+  # written for the full read: read naively, the first two C's of the
+  # clipped SEQ would get calls at 101 and 104. It is rejected instead.
+  expect_warning(
+    hard <- ggmethylation:::parse_mm_ml(substr(full_read, 5, 12), "C+m,0,0;",
+                                        c(200L, 100L), "m", "+", "4H8M", 100L),
+    "hard-clipped.*MN"
+  )
+  expect_equal(nrow(hard$sites), 0L)
+  expect_error(
+    ggmethylation:::.parse_mods(substr(full_read, 5, 12), "C+m,0,0;", c(200L, 100L),
+                                "m", "+", "4H8M", 100L, mn = NA_integer_),
+    class = "ggmethylation_malformed_mm"
+  )
+})
+
+test_that("a hard-clipped record whose MN equals the SEQ length is trusted", {
+  # MM/ML rewritten for the clipped SEQ ACGTCGCG (C's at 2, 5, 7): the first
+  # two C's -> ref 101 and 104. This matches the full read soft-clipped with
+  # MM "C+m,2,0" (C's 6 and 9 of the full read).
+  clipped = ggmethylation:::parse_mm_ml(substr(full_read, 5, 12), "C+m,0,0;",
+                                        c(200L, 100L), "m", "+", "4H8M", 100L, mn = 8L)
+  truth = ggmethylation:::parse_mm_ml(full_read, "C+m,2,0;", c(200L, 100L), "m", "+",
+                                      "4S8M", 100L)
+  expect_equal(clipped$sites$position, c(101L, 104L))
+  expect_equal(clipped$sites, truth$sites)
+  # An MN that still gives the full read length is rejected (existing check).
+  expect_warning(
+    ggmethylation:::parse_mm_ml(substr(full_read, 5, 12), "C+m,0,0;", c(200L, 100L),
+                                "m", "+", "4H8M", 100L, mn = 12L),
+    "MN tag \\(12\\)"
+  )
+})
+
+test_that("a hard clip on the right side is handled the same way", {
+  left8 = substr(full_read, 1, 8)
+  expect_warning(
+    res <- ggmethylation:::parse_mm_ml(left8, "C+m,0,0;", c(200L, 100L), "m", "+",
+                                       "8M4H", 100L),
+    "hard-clipped"
+  )
+  expect_equal(nrow(res$sites), 0L)
+  ok = ggmethylation:::parse_mm_ml(left8, "C+m,0,0;", c(200L, 100L), "m", "+",
+                                   "8M4H", 100L, mn = 8L)
+  expect_equal(ok$sites$position, c(100L, 101L))
+})
+
+test_that("a hard-clipped reverse-strand record needs MN as well", {
+  # Stored SEQ ACGTCGCG, reverse strand: G's at 8, 6, 3 in read order.
+  seq8 = substr(full_read, 5, 12)
+  expect_warning(
+    res <- ggmethylation:::parse_mm_ml(seq8, "C+m,0;", 200L, "m", "-", "4H8M", 100L),
+    "hard-clipped"
+  )
+  expect_equal(nrow(res$sites), 0L)
+  ok = ggmethylation:::parse_mm_ml(seq8, "C+m,0;", 200L, "m", "-", "4H8M", 100L, mn = 8L)
+  expect_equal(ok$sites$position, 107L)
+})
+
+test_that("a hard-clipped record without calls for the requested code is not rejected", {
+  # The MM tag only has an 'h' entry: nothing to place, nothing to reject.
+  expect_silent(
+    res <- ggmethylation:::parse_mm_ml("ACGTCGCG", "C+h,0;", 200L, "m", "+", "4H8M", 100L)
+  )
+  expect_equal(nrow(res$sites), 0L)
+})
+
 test_that("an empty SEQ ('*') with MM calls is rejected, not crashed on", {
   expect_warning(
     result <- ggmethylation:::parse_mm_ml("", "C+m,0;", 200L, "m", "+", "4M", 1L),
