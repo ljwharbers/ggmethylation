@@ -234,13 +234,13 @@
 #'
 #' @export
 plot_methylation = function(data, sort_by = NULL,
-                            colour_low = .PROB_GRADIENT$low,
-                            colour_high = .PROB_GRADIENT$high,
-                            colour_ambiguous = .CALL_AMBIGUOUS_DEFAULT,
+                            colour_low = "#BDBDBD",
+                            colour_high = "#C62828",
+                            colour_ambiguous = "#78909C",
                             line_width = 0.2,
                             colour_strand = FALSE,
                             strand_colours = c("+" = "#4393C3", "-" = "#D6604D"),
-                            group_colours = .GROUP_PALETTE_DEFAULT,
+                            group_colours = c("1" = "#0072B2", "2" = "#E69F00"),
                             smooth_span = NULL,
                             panel_heights = NULL,
                             annotations = NULL,
@@ -261,10 +261,13 @@ plot_methylation = function(data, sort_by = NULL,
     )
   }
   .validate_plot_args(
+    sort_by = sort_by, colour_low = colour_low, colour_high = colour_high,
+    colour_ambiguous = colour_ambiguous,
     colour_strand = colour_strand, strand_colours = strand_colours,
     call_threshold = call_threshold, call_ambiguous = call_ambiguous,
     smooth_span = smooth_span, group_colours = group_colours,
     line_width = line_width, min_indel_size = min_indel_size,
+    panel_heights = panel_heights,
     show_cigar = show_cigar, show_supplementary = show_supplementary,
     show_ci = show_ci, show_delta = show_delta
   )
@@ -419,59 +422,72 @@ plot_methylation = function(data, sort_by = NULL,
 # Argument checks for plot_methylation(), each with a message naming the
 # argument (instead of an R-level "missing value where TRUE/FALSE needed" or
 # a silent fallback further down).
-.validate_plot_args = function(colour_strand, strand_colours, call_threshold,
+.validate_plot_args = function(sort_by, colour_low, colour_high, colour_ambiguous,
+                               colour_strand, strand_colours, call_threshold,
                                call_ambiguous, smooth_span, group_colours,
-                               line_width, min_indel_size, show_cigar,
-                               show_supplementary, show_ci, show_delta) {
-  is_number = function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
-  flags = list(colour_strand = colour_strand, show_cigar = show_cigar,
-               show_supplementary = show_supplementary, show_ci = show_ci,
-               show_delta = show_delta)
-  for (nm in names(flags)) {
-    x = flags[[nm]]
-    if (!is.logical(x) || length(x) != 1L || is.na(x)) {
-      stop(sprintf("`%s` must be TRUE or FALSE.", nm), call. = FALSE)
+                               line_width, min_indel_size, panel_heights,
+                               show_cigar, show_supplementary, show_ci,
+                               show_delta) {
+  .check_flag(colour_strand, "colour_strand")
+  .check_flag(show_cigar, "show_cigar")
+  .check_flag(show_supplementary, "show_supplementary")
+  .check_flag(show_ci, "show_ci")
+  .check_flag(show_delta, "show_delta")
+
+  # Checked here, not by .check_sort_by(), so the type is caught before the
+  # "No reads" early return. An empty vector would make order() drop every read.
+  if (!is.null(sort_by) &&
+      !(is.character(sort_by) && length(sort_by) > 0L && !anyNA(sort_by))) {
+    stop("`sort_by` must be NULL or a character vector of column names without NAs.",
+         call. = FALSE)
+  }
+
+  .check_colours(colour_low, "colour_low", n = 1L)
+  .check_colours(colour_high, "colour_high", n = 1L)
+  .check_colours(colour_ambiguous, "colour_ambiguous", n = 1L)
+  if (isTRUE(colour_strand)) {
+    if (!all(c("+", "-") %in% names(strand_colours))) {
+      stop("`strand_colours` must be a named vector with \"+\" and \"-\" entries.",
+           call. = FALSE)
     }
+    .check_colours(strand_colours, "strand_colours")
   }
-  if (isTRUE(colour_strand) && !all(c("+", "-") %in% names(strand_colours))) {
-    stop("'strand_colours' must be a named vector with '+' and '-' entries.", call. = FALSE)
-  }
-  if (!is.null(call_threshold) &&
-      !(is_number(call_threshold) && call_threshold >= 0 && call_threshold <= 1)) {
-    stop("`call_threshold` must be NULL or a single number in [0, 1].", call. = FALSE)
+
+  if (!is.null(call_threshold)) {
+    .check_number(call_threshold, "call_threshold", min = 0, max = 1)
   }
   if (!is.null(call_ambiguous)) {
     if (is.null(call_threshold)) {
       stop("`call_ambiguous` only applies to binary calls; set `call_threshold` too.",
            call. = FALSE)
     }
-    if (!(is_number(call_ambiguous) && call_ambiguous >= 0)) {
-      stop("`call_ambiguous` must be NULL or a single non-negative number.", call. = FALSE)
-    }
+    .check_number(call_ambiguous, "call_ambiguous", min = 0)
   }
-  if (!is.null(smooth_span) && !(is_number(smooth_span) && smooth_span > 0)) {
-    stop("`smooth_span` must be NULL or a single positive number (e.g. 0.3).",
-         call. = FALSE)
-  }
-  if (!(is_number(line_width) && line_width > 0)) {
-    stop("`line_width` must be a single positive number.", call. = FALSE)
-  }
-  if (!(is_number(min_indel_size) && min_indel_size >= 0)) {
-    stop("`min_indel_size` must be a single non-negative number.", call. = FALSE)
-  }
-  if (!is.null(group_colours)) {
-    if (!is.character(group_colours) || length(group_colours) == 0L ||
-        anyNA(group_colours)) {
-      stop("`group_colours` must be NULL or a character vector of colours without NAs.",
+  # .check_number()'s bounds are inclusive; these two must be strictly positive.
+  if (!is.null(smooth_span)) {
+    .check_number(smooth_span, "smooth_span", min = 0)
+    if (smooth_span == 0) {
+      stop("`smooth_span` must be NULL or a single positive number (e.g. 0.3).",
            call. = FALSE)
     }
-    bad = group_colours[!vapply(group_colours, function(col) {
-      !inherits(tryCatch(grDevices::col2rgb(col), error = function(e) e), "error")
-    }, logical(1L))]
-    if (length(bad) > 0L) {
-      stop(sprintf("`group_colours` contains invalid colour(s): %s.",
-                   paste(bad, collapse = ", ")), call. = FALSE)
-    }
+  }
+  .check_number(line_width, "line_width", min = 0)
+  if (line_width == 0) {
+    stop("`line_width` must be a single positive number.", call. = FALSE)
+  }
+  .check_number(min_indel_size, "min_indel_size", min = 0)
+
+  # Only the values are checked here; their number is checked against the
+  # panels once those are known.
+  if (!is.null(panel_heights) &&
+      !(is.numeric(panel_heights) && length(panel_heights) > 0L &&
+          all(is.finite(panel_heights)) && all(panel_heights > 0))) {
+    stop("`panel_heights` must be NULL or a numeric vector of finite positive numbers.",
+         call. = FALSE)
+  }
+
+  if (!is.null(group_colours)) {
+    .check_colours(group_colours, "group_colours")
     nms = names(group_colours)
     if (!is.null(nms) && (any(is.na(nms) | !nzchar(nms)) || anyDuplicated(nms))) {
       stop("`group_colours` must be either unnamed or named with unique, non-empty group names.",

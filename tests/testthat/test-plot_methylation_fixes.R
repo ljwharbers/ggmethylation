@@ -303,6 +303,63 @@ test_that("plot_methylation validates its numeric and colour arguments", {
   expect_error(plot_methylation(md, min_indel_size = "x"), "min_indel_size")
   expect_error(plot_methylation(md, min_indel_size = NA_integer_), "min_indel_size")
   expect_error(plot_methylation(md, show_delta = NA), "show_delta")
+  expect_error(plot_methylation(md, smooth_span = 0), "smooth_span")
+  expect_error(plot_methylation(md, line_width = 0), "line_width")
+  expect_error(plot_methylation(md, call_threshold = 1.5), "call_threshold")
+  for (flag in c("colour_strand", "show_cigar", "show_supplementary", "show_ci")) {
+    args = stats::setNames(list(md, "yes"), c("data", flag))
+    expect_error(do.call(plot_methylation, args), sprintf("`%s` must be TRUE or FALSE", flag))
+  }
+})
+
+test_that("plot_methylation rejects invalid colours before drawing anything", {
+  md = fixture_md(group_tag = "HP")
+  for (arg in c("colour_low", "colour_high", "colour_ambiguous")) {
+    bad = stats::setNames(list(md, "notacolour"), c("data", arg))
+    expect_error(do.call(plot_methylation, bad),
+                 sprintf("`%s` contains invalid colour", arg))
+    two = stats::setNames(list(md, c("red", "blue")), c("data", arg))
+    expect_error(do.call(plot_methylation, two), sprintf("`%s` must be a single colour", arg))
+    na = stats::setNames(list(md, NA_character_), c("data", arg))
+    expect_error(do.call(plot_methylation, na), arg)
+  }
+  # strand_colours is checked (names and values) only when it is used
+  mu = fixture_md()
+  bad_strand = c("+" = "notacolour", "-" = "red")
+  expect_error(plot_methylation(mu, colour_strand = TRUE, strand_colours = bad_strand),
+               "`strand_colours` contains invalid colour")
+  expect_error(plot_methylation(mu, colour_strand = TRUE, strand_colours = c("red", "blue")),
+               "`strand_colours` must be a named vector")
+  expect_s3_class(plot_methylation(mu, strand_colours = bad_strand), "patchwork")
+})
+
+test_that("plot_methylation validates panel_heights values and sort_by type", {
+  md = fixture_md(group_tag = "HP")
+  for (bad in list(c(-1, 1), c(0, 1), c(NA, 1), c(Inf, 1), c("1", "1"), numeric(0))) {
+    expect_error(plot_methylation(md, panel_heights = bad),
+                 "`panel_heights` must be NULL or a numeric vector")
+  }
+  for (bad in list(1, NA_character_, c("start", NA), character(0), TRUE)) {
+    expect_error(plot_methylation(md, sort_by = bad),
+                 "`sort_by` must be NULL or a character vector")
+  }
+})
+
+test_that("plot_methylation's literal colour defaults match the internal constants", {
+  f = formals(plot_methylation)
+  expect_identical(eval(f$colour_low), ggmethylation:::.PROB_GRADIENT$low)
+  expect_identical(eval(f$colour_high), ggmethylation:::.PROB_GRADIENT$high)
+  expect_identical(eval(f$colour_ambiguous), ggmethylation:::.CALL_AMBIGUOUS_DEFAULT)
+  expect_identical(eval(f$group_colours), ggmethylation:::.GROUP_PALETTE_DEFAULT)
+})
+
+test_that("the default group palette fills in unnamed groups silently", {
+  # SNV groups REF/ALT are not named by the default HP palette: no message for
+  # the default, one for a user-supplied palette that misses them.
+  md = fixture_md(snv = list(position = 3000, ref = "A", alt = "G"))
+  expect_no_message(plot_methylation(md))
+  expect_message(plot_methylation(md, group_colours = c("1" = "red", "2" = "blue")),
+                 "does not name group")
 })
 
 test_that("show_delta on ungrouped data says why there is no delta panel", {
