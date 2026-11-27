@@ -186,3 +186,55 @@ test_that("extract_variant_bases uses bam_pos for CIGAR walk when start is clipp
   expect_equal(result$base, correct_base)
   expect_equal(result$variant_class, "ref")
 })
+
+# --- Pinned output on a mixed input (guards the vectorised implementation) ---
+# r1: soft clip, insertion, deletion (ref 110-113), hard clip; listed twice.
+# r2: reverse strand, starts before the region (bam_pos 90 < start 100), an N
+#     skip over ref 100-104 and lowercase bases at ref 105-114.
+# r3: sequence shorter than its CIGAR (positions past SEQ are skipped).
+# r4: no CIGAR (skipped).
+# r5: hard clip; `end` past the alignment end (uncovered positions -> "del").
+# Variants are unsorted; 95 and 200 lie outside every clipped span.
+test_that("extract_variant_bases output is pinned on a mixed input", {
+  reads = data.frame(
+    read_name = c("r1", "r2", "r3", "r4", "r5", "r1"),
+    start     = c(100L, 100L, 100L, 100L, 100L, 100L),
+    end       = c(123L, 124L, 129L, 129L, 127L, 123L),
+    bam_pos   = c(100L, 90L, 100L, 100L, 100L, 100L),
+    strand    = c("+", "-", "+", "+", "-", "+"),
+    lane      = 1:6,
+    stringsAsFactors = FALSE
+  )
+  seqs = c(
+    r1 = "NNNACGTAGGTTGCAACGTACGTAC",
+    r2 = "ACGTACGTACgtacgtacgtACGTACGTAC",
+    r3 = "ACGTACGTACGTACGTACGT",
+    r4 = "ACGTACGTACGTACGTACGTACGTACGTAC",
+    r5 = "TTTTTCCCCCGGGGGAAAAA"
+  )
+  cigs = c(r1 = "3S5M2I5M4D10M1H", r2 = "10M5N20M", r3 = "30M", r5 = "5H20M")
+  variants = data.frame(
+    position = c(120L, 102L, 111L, 95L, 200L, 105L, 125L),
+    ref      = c("a", "G", "C", "A", "A", "t", "C"),
+    alt      = c("C", "t", "T", "G", "T", "G", "A"),
+    type     = "SNV",
+    stringsAsFactors = FALSE
+  )
+
+  result = ggmethylation:::extract_variant_bases(reads, seqs, cigs, variants)
+
+  r1 = list(pos = c(120L, 102L, 111L, 105L), base = c("G", "G", "-", "T"),
+            cls = c("other", "ref", "del", "ref"))
+  expected = data.frame(
+    read_name = rep(c("r1", "r2", "r3", "r5", "r1"), c(4L, 4L, 3L, 5L, 4L)),
+    position  = c(r1$pos, 120L, 102L, 111L, 105L, 102L, 111L, 105L,
+                  120L, 102L, 111L, 105L, 125L, r1$pos),
+    base      = c(r1$base, "C", "-", "a", "g", "G", "T", "C",
+                  "-", "T", "G", "C", "-", r1$base),
+    variant_class = c(r1$cls, "alt", "del", "other", "alt", "ref", "alt",
+                      "other", "del", "alt", "other", "other", "del", r1$cls),
+    lane      = rep(c(1L, 2L, 3L, 5L, 6L), c(4L, 4L, 3L, 5L, 4L)),
+    stringsAsFactors = FALSE
+  )
+  expect_identical(result, expected)
+})
