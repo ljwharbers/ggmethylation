@@ -176,24 +176,6 @@ ref_to_seq = function(cigar, ref_start, target_ref_pos) {
   NA_integer_
 }
 
-#' Return the complement of a DNA base
-#'
-#' Maps A to T, T to A, C to G, and G to C.
-#'
-#' @param base Single character. One of `"A"`, `"T"`, `"C"`, or `"G"`.
-#'
-#' @return Single character. The complementary base.
-#'
-#' @keywords internal
-complement_base = function(base) {
-  comp = c(A = "T", T = "A", C = "G", G = "C")
-  result = comp[toupper(base)]
-  if (is.na(result)) {
-    stop("Unknown base: '", base, "'.", call. = FALSE)
-  }
-  as.character(result)
-}
-
 #' Parse an SA (Supplementary Alignment) BAM auxiliary tag
 #'
 #' Splits a semicolon-delimited SA tag string into a data.frame, one row per

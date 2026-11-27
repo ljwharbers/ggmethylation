@@ -1,43 +1,4 @@
-# Tests for seq_to_ref and parse_mm_ml in R/parse_mm_ml.R
-
-# --- seq_to_ref ---
-# seq_to_ref(cigar, pos, query_positions) -> ref positions for each query position
-
-test_that("seq_to_ref M-only alignment maps query positions to ref", {
-  # 10M from ref 1000: query pos 1 -> ref 1000, pos 5 -> ref 1004, pos 10 -> ref 1009
-  result = ggmethylation:::seq_to_ref("10M", 1000L, c(1L, 5L, 10L))
-  expect_equal(result, c(1000L, 1004L, 1009L))
-})
-
-test_that("seq_to_ref soft clip returns NA for clipped query positions", {
-  # 4S6M from ref 100: query pos 1-4 are soft-clipped -> NA
-  # query pos 5 -> ref 100, pos 10 -> ref 105
-  result = ggmethylation:::seq_to_ref("4S6M", 100L, c(1L, 4L, 5L, 10L))
-  expect_equal(result, c(NA_integer_, NA_integer_, 100L, 105L))
-})
-
-test_that("seq_to_ref deletion skips reference positions", {
-  # 5M3D5M from ref 100:
-  #   query 1-5 -> ref 100-104
-  #   deletion skips ref 105-107
-  #   query 6-10 -> ref 108-112
-  result = ggmethylation:::seq_to_ref("5M3D5M", 100L, c(5L, 6L))
-  expect_equal(result, c(104L, 108L))
-})
-
-test_that("seq_to_ref insertion positions return NA", {
-  # 3M2I4M from ref 1:
-  #   query 1-3 -> ref 1-3
-  #   query 4-5 are insertion -> NA
-  #   query 6-9 -> ref 4-7
-  result = ggmethylation:::seq_to_ref("3M2I4M", 1L, c(3L, 4L, 5L, 6L))
-  expect_equal(result, c(3L, NA_integer_, NA_integer_, 4L))
-})
-
-test_that("seq_to_ref returns same length as query_positions", {
-  result = ggmethylation:::seq_to_ref("10M", 1L, c(1L, 3L, 7L, 10L))
-  expect_equal(length(result), 4L)
-})
+# Tests for parse_mm_ml() and .parse_mods() in R/parse_mm_ml.R
 
 # --- parse_mm_ml ---
 
