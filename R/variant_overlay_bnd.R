@@ -68,7 +68,7 @@ match_sa_to_vcf_bnd = function(reads, bnd_df, tol = 50L) {
 #'
 #' Returns a flat list of ggplot2 layer objects (one `geom_text` per BND)
 #' showing the full mate location (chromosome:position with comma thousands
-#' separator) using the join symbol (⋈).
+#' separator) after the text `BND`.
 #'
 #' The label is anchored at `y = -Inf` with `vjust = -0.3`, which (with the
 #' read panel's `scale_y_reverse()`) puts it just inside the *bottom* edge of
@@ -89,13 +89,14 @@ build_bnd_layer = function(bnd_df) {
 
   # Pre-format the full mate location label (done outside aes for clarity).
   # A breakend without a parseable mate (single breakend such as "A.", or a
-  # symbolic <BND>) gets the bare symbol rather than "NA:NA".
+  # symbolic <BND>) gets the bare "BND" rather than "NA:NA". The label is
+  # plain ASCII so that every graphics device, including pdf(), can draw it.
   no_mate = is.na(bnd_df$mate_chrom) | is.na(bnd_df$mate_pos)
   bnd_df$mate_label = ifelse(
     no_mate,
-    "\u22c8",
+    "BND",
     paste0(
-      "\u22c8 ",
+      "BND ",
       bnd_df$mate_chrom,
       ":",
       format(bnd_df$mate_pos, big.mark = ",", scientific = FALSE, trim = TRUE)

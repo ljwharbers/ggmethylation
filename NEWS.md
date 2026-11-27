@@ -88,8 +88,13 @@ the VCF overlay is fast enough for a few hundred variants.
   kept when collapsing.
 - `read_annotations()` skips the AnnotationDbi gene-name lookup when
   AnnotationDbi (a suggested package) is not installed.
+- Plots can be drawn on the default `pdf()` device (so `ggsave("x.pdf")`
+  works without `device = cairo_pdf`). The delta panel's "Δ" is drawn with
+  plotmath, the breakend label reads `BND chr:pos` instead of `⋈ chr:pos`,
+  and the insertion axis label uses `...`; these characters stopped `pdf()`
+  with a "conversion failure" error or warning.
 - A VCF breakend without a parseable mate (a single breakend, `<BND>`) is
-  labelled "⋈" instead of "⋈ NA:NA".
+  labelled "BND" instead of "⋈ NA:NA".
 - The SNV overlay skips reads whose stored sequence or CIGAR is `NA` (was an
   error).
 

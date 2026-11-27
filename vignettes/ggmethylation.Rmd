@@ -236,7 +236,7 @@ plot_methylation(merged)
   overlapping the SV span (DEL a dark red line with end ticks, DUP two teal
   parallel lines, INV a purple dashed line), with chevrons where the span is
   cut at the region edge;
-- **BND**: a label `⋈ mate_chrom:mate_pos` at the bottom of the read panel,
+- **BND**: a label `BND mate_chrom:mate_pos` at the bottom of the read panel,
   plus a coloured border on the SA marker of reads whose supplementary
   alignment matches the breakend mate within `bnd_match_tol` (only with
   `show_supplementary = TRUE`, the default).
@@ -336,12 +336,11 @@ p = plot_methylation(meth)
 p & theme(text = element_text(size = 14))
 ```
 
-Save it with `ggplot2::ggsave()`, giving an explicit size. For PDF output use
-`device = cairo_pdf`: the default `pdf()` device cannot draw some of the
-symbols used in the plots (e.g. the breakend label `⋈`).
+Save it with `ggplot2::ggsave()`, giving an explicit size. Every label the
+package draws works on the default `pdf()` device.
 
 ```{r ggsave, eval = FALSE}
-ggsave("my_methylation_plot.pdf", p, width = 10, height = 6, device = cairo_pdf)
+ggsave("my_methylation_plot.pdf", p, width = 10, height = 6)
 ```
 
 ## Exporting data

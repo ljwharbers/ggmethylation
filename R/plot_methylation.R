@@ -141,7 +141,7 @@
 #'     DEL a dark red line with end ticks, DUP two teal parallel lines, INV a
 #'     purple dashed line. Chevrons (« ») mark a span cut at the region
 #'     edge.
-#'   * **BND**: one text label `"⋈ mate_chrom:mate_pos"` at the bottom of
+#'   * **BND**: one text label `"BND mate_chrom:mate_pos"` at the bottom of
 #'     the read panel, centred on the breakend position. When
 #'     `show_supplementary = TRUE`, the SA marker of each read whose
 #'     supplementary alignment lies on the BND mate chromosome within the

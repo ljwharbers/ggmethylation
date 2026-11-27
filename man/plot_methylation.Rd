@@ -99,7 +99,7 @@ every read overlapping the SV span, clipped to the read and the region:
 DEL a dark red line with end ticks, DUP two teal parallel lines, INV a
 purple dashed line. Chevrons (« ») mark a span cut at the region
 edge.
-\item \strong{BND}: one text label \code{"⋈ mate_chrom:mate_pos"} at the bottom of
+\item \strong{BND}: one text label \code{"BND mate_chrom:mate_pos"} at the bottom of
 the read panel, centred on the breakend position. When
 \code{show_supplementary = TRUE}, the SA marker of each read whose
 supplementary alignment lies on the BND mate chromosome within the

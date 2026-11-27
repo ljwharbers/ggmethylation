@@ -224,5 +224,5 @@ test_that("build_bnd_layer labels a breakend without a mate with the bare symbol
   )
   result = ggmethylation:::build_bnd_layer(bnd_df)
   expect_identical(result[[1]]$data$mate_label,
-                   c("⋈ chr7:1,234,567", "⋈"))
+                   c("BND chr7:1,234,567", "BND"))
 })

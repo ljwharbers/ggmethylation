@@ -45,11 +45,13 @@
 # the smooth panel's y-axis title. The "(group2 - group1)" line it used to carry
 # is now redundant: the area is filled with the colour of whichever group is
 # higher, so the sign is readable off the plot itself.
+# The delta sign is a plotmath `Delta` (drawn from the symbol font) rather
+# than the character U+0394, which the default pdf() device cannot draw.
 .delta_y_label = function(binary) {
   if (binary) {
-    "\u0394 fraction\nmethylated"
+    expression(atop(Delta ~ "fraction", "methylated"))
   } else {
-    "\u0394 methylation"
+    expression(Delta ~ "methylation")
   }
 }
 

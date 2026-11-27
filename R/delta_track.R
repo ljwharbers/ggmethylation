@@ -77,7 +77,7 @@
 # with a group palette in hand pass the two group colours instead, so the delta
 # area matches the groups in the panels above (pos = group 2, neg = group 1).
 .build_delta_panel = function(delta_df, region_start, region_end,
-                               y_label = "\u0394 methylation",
+                               y_label = .delta_y_label(FALSE),
                                fill_pos = .DELTA_DIVERGING$pos,
                                fill_neg = .DELTA_DIVERGING$neg) {
   bands = .delta_ribbon_data(delta_df)

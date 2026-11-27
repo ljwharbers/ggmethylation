@@ -398,7 +398,7 @@ plot_insertion_locus = function(data, locus,
   list(
     breaks = c(left, mid, right + mid_width),
     labels = c(scales::comma(left),
-               sprintf("+1\u2026+%d bp", as.integer(mid_width)),
+               sprintf("+1...+%d bp", as.integer(mid_width)),
                scales::comma(right))
   )
 }

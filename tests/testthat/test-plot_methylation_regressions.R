@@ -39,9 +39,8 @@ make_reads = function(read_name, start = 1000L, end = 2000L, group = NULL,
   df
 }
 
-# Both helpers draw on a throwaway PNG device (no stray Rplots.pdf). A bitmap
-# device is used because pdf(NULL) failed to measure the delta panel's
-# "Δ" label under R CMD check ("conversion failure ... in 'mbcsToSbcs'").
+# Both helpers draw on a throwaway PNG device (no stray Rplots.pdf).
+# test-pdf_device.R covers drawing on pdf().
 
 # Render every panel to grobs: scale and "Removed rows" warnings fire here,
 # not in plot_methylation().
